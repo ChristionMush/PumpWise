@@ -1,0 +1,12 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-test-db-backups",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "db/" },
+      "Expiration": { "Days": 35 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 35 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    }
+  ]
+}

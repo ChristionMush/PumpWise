@@ -1,0 +1,10 @@
+line-length = 140
+target-version = "py312"
+extend-exclude = ["migrations"]
+
+[lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B904", "E501", "E702", "E741", "E731", "B905", "B007", "B023", "UP"]  # B904: DRF handlers deliberately re-raise as API errors
+
+[lint.per-file-ignores]
+"config/settings_test.py" = ["F403", "F405", "E402"]

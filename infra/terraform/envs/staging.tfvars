@@ -1,0 +1,11 @@
+environment         = "staging"
+domain_name         = "staging.fuel.example.com"
+certificate_arn     = "arn:aws:acm:af-south-1:ACCOUNT:certificate/REPLACE"
+alert_email         = "alerts@example.com"
+backend_image       = "ACCOUNT.dkr.ecr.af-south-1.amazonaws.com/fuelstation-staging-backend:REPLACE"
+frontend_image      = "ACCOUNT.dkr.ecr.af-south-1.amazonaws.com/fuelstation-staging-frontend:REPLACE"
+db_instance_class   = "db.t4g.small"
+db_backup_days      = 14
+db_multi_az         = false
+web_count           = 1
+deletion_protection = false

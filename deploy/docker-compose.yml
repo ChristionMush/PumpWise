@@ -1,0 +1,135 @@
+# Pumpwise single-server stack (test / demo, scales by swapping parts for AWS services).
+# The app image comes from the app repo: APP_SRC (default ../app) must contain a Dockerfile.
+name: pumpwise
+
+x-app: &app
+  image: pumpwise-app:latest
+  build:
+    context: ${APP_SRC:-../app}
+    dockerfile: Dockerfile
+  env_file: .env
+  restart: unless-stopped
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ROBOTS_TAG: ${ROBOTS_TAG:-noindex, nofollow}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - static:/srv/static:ro
+    depends_on:
+      - web
+    mem_limit: 96m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    <<: *app
+    command: >
+      gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers ${WEB_WORKERS:-2}
+      --timeout 30
+      --access-logfile -
+    volumes:
+      - static:/app/staticfiles
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request as u; u.urlopen(u.Request('http://localhost:8000/health', headers={'X-Forwarded-Proto': 'https'}), timeout=4)"
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 40s
+    mem_limit: 512m
+
+  worker:
+    <<: *app
+    command: celery -A config worker -Q critical,default,bulk -c ${CELERY_CONCURRENCY:-2} -l info
+    mem_limit: 448m
+
+  beat:
+    <<: *app
+    command: celery -A config beat -l info --schedule /tmp/celerybeat-schedule
+    mem_limit: 192m
+
+  # One-off tasks: docker compose run --rm migrate   (runs migrations and collectstatic as the owner role)
+  migrate:
+    <<: *app
+    profiles: ["tools"]
+    restart: "no"
+    command: sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput"
+    environment:
+      DATABASE_URL: ${DATABASE_ADMIN_URL}
+    volumes:
+      - static:/app/staticfiles
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    command: >
+      postgres
+      -c max_connections=50
+      -c shared_buffers=256MB
+      -c effective_cache_size=768MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=64MB
+      -c log_min_duration_statement=500
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/01-roles.sh:/docker-entrypoint-initdb.d/01-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 768m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy noeviction --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 192m
+
+volumes:
+  pgdata:
+  redisdata:
+  static:
+  caddy_data:
+  caddy_config:

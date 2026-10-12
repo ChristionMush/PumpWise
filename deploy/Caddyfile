@@ -1,0 +1,21 @@
+# Caddy gets and renews the HTTPS certificate by itself once DNS points at this server.
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Robots-Tag "{$ROBOTS_TAG:noindex, nofollow}"
+		-Server
+	}
+
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+	}
+
+	handle {
+		reverse_proxy web:8000
+	}
+}

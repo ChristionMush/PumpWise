@@ -1,0 +1,15 @@
+environment         = "production"
+domain_name         = "app.fuel.example.com"
+certificate_arn     = "arn:aws:acm:af-south-1:ACCOUNT:certificate/REPLACE"
+alert_email         = "alerts@example.com"
+backend_image       = "ACCOUNT.dkr.ecr.af-south-1.amazonaws.com/fuelstation-production-backend:REPLACE"
+frontend_image      = "ACCOUNT.dkr.ecr.af-south-1.amazonaws.com/fuelstation-production-frontend:REPLACE"
+vpc_cidr            = "10.30.0.0/16"
+db_instance_class   = "db.t4g.medium"
+db_storage_gb       = 100
+db_backup_days      = 35
+db_multi_az         = true # on from the first paying tenant
+redis_node_type     = "cache.t4g.small"
+web_count           = 2
+deletion_protection = true
+log_retention_days  = 90
