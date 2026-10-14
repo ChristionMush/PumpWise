@@ -2,7 +2,8 @@
 
 It is built through the real services (shifts, readings, deliveries, dips, prices), never by writing derived
 numbers directly, so every screen, report and alert behaves exactly as it will for a real customer.
-Planted on purpose: a fuel-loss day (yesterday, station 1 petrol) and a cash shortage of 4% of that shift's sales (2 days ago, station 1).
+Planted on purpose: a fuel-loss day (yesterday, station 1 petrol) and a cash difference of -4% of that shift's sales (2 days ago, station 1).
+Station 1 runs one attendant per shift with shared pumps; station 2 runs two attendants with assigned pumps (the paid features).
 """
 import random
 import uuid
@@ -15,8 +16,10 @@ from apps.accounts.models import Role, User
 from apps.core.db import db_context
 from apps.insights.alerts import evaluate_tenant
 from apps.operations import services as ops
+from apps.operations.rollups import deferred
 from apps.stations.models import CalibrationPoint, ExchangeRate, FuelType, Nozzle, Pump, Station, Tank
 from apps.stations.services import price_at, set_price
+from apps.tenants.features import set_station_policy, set_tenant_features
 from apps.tenants.models import Subscription
 from apps.tenants.services import create_tenant_with_owner, get_settings
 
@@ -36,13 +39,15 @@ def seed_demo_tenant(*, name="Demo Fuel Services", days=30, seed=7, password):
     with db_context(platform_admin=True):
         tenant, owner, _ = create_tenant_with_owner(business_name=name, owner_name="Demo Owner", owner_email=f"owner.{token}@demo.example", stations=[], source="platform")
         Subscription.objects.filter(tenant_id=tenant.id).update(plan="demo", paid_through=today + timedelta(days=365))
-    with db_context(tenant_id=tenant.id):
+        set_tenant_features(tenant=tenant, multi_attendant=True, pump_assignment=True)
+    with db_context(tenant_id=tenant.id), deferred():
         owner = User.objects.get(pk=owner.pk)
         owner.set_password(password)
         owner.must_change_password = False
         owner.save()
         manager = User.objects.create_user(tenant_id=tenant.id, role=Role.MANAGER, full_name="Demo Manager", email=f"manager.{token}@demo.example", password=password)
         attendant = User.objects.create_user(tenant_id=tenant.id, role=Role.ATTENDANT, full_name="Demo Attendant", email=f"attendant.{token}@demo.example", phone=None, password=password)
+        attendant2 = User.objects.create_user(tenant_id=tenant.id, role=Role.ATTENDANT, full_name="Demo Attendant Two", email=f"attendant2.{token}@demo.example", phone=None, password=password)
         cfg = get_settings(tenant.id)
         cfg.summary_phone, cfg.summary_channel, cfg.onboarding_flags = "+263770000001", "sms", {"qr_printed": True}
         cfg.save()
@@ -52,6 +57,10 @@ def seed_demo_tenant(*, name="Demo Fuel Services", days=30, seed=7, password):
         stations = []
         for idx, sname in enumerate(("Harare CBD", "Borrowdale")):
             st = Station.objects.create(tenant_id=tenant.id, name=sname, address=f"{sname}, Harare", pricing_currency="USD")
+            if idx == 1:  # the platform sets the paid policy at setup
+                with db_context(platform_admin=True):
+                    set_station_policy(station=st, attendants_mode="multiple", assignment_mode="assigned")
+                st.refresh_from_db()
             tanks = {}
             for code in ("PETROL", "DIESEL"):
                 t = Tank.objects.create(tenant_id=tenant.id, station=st, name=f"{code.title()} tank", fuel_type=fuel[code], capacity_litres=20000, reserve_litres=1500)
@@ -69,22 +78,7 @@ def seed_demo_tenant(*, name="Demo Fuel Services", days=30, seed=7, password):
             levels = {tanks["PETROL"].pk: D(15000), tanks["DIESEL"].pk: D(6500)}  # diesel starts low so a delivery happens on day one
             stations.append({"idx": idx, "st": st, "tanks": tanks, "pumps": pumps, "meters": meters, "levels": levels})
 
-        def run_shift(s, day, start_at, end_at, *, factor=1.0, short_frac=0, close=True):
-            st, pumps, meters = s["st"], s["pumps"], s["meters"]
-            start = [{"nozzle": n, "reading": meters[n.pk]} for _, ns in pumps for n in ns]
-            shift = ops.start_shift(user=attendant, station=st, started_at=start_at, readings=start)
-            if not close:
-                return shift, {}
-            litres_by_tank, expected, ends = {}, D(0), []
-            for p, ns in pumps:
-                for n in ns:
-                    base = rnd.uniform(250, 450) if p.tank.fuel_type.code == "PETROL" else rnd.uniform(300, 480)
-                    lit = D(str(round(base * factor * rnd.uniform(0.85, 1.15), 2)))
-                    meters[n.pk] += lit
-                    ends.append({"nozzle": n, "reading": meters[n.pk]})
-                    litres_by_tank[p.tank_id] = litres_by_tank.get(p.tank_id, D(0)) + lit
-                    expected += lit * price_at(st.pk, p.tank.fuel_type_id, "USD", start_at).price_per_litre
-            handed = (expected * (D(str(round(rnd.uniform(0.999, 1.001), 4))) - D(short_frac))).quantize(D("0.01"))  # short_frac: a proportional shortage is flagged on any weekday
+        def cash_lines(handed):
             zwg_part = (handed * D("0.05")).quantize(D("0.01"))
             cash = [
                 {"payment_type": "cash", "currency": "USD", "amount": (handed * D("0.55")).quantize(D("0.01"))},
@@ -93,7 +87,33 @@ def seed_demo_tenant(*, name="Demo Fuel Services", days=30, seed=7, password):
                 {"payment_type": "card", "currency": "USD", "amount": (handed * D("0.10")).quantize(D("0.01"))},
             ]
             cash.append({"payment_type": "credit", "currency": "USD", "amount": max(handed - sum(c["amount"] * (D("0.037") if c["currency"] == "ZWG" else 1) for c in cash), D(0)).quantize(D("0.01"))})
-            ops.end_shift(user=attendant, shift=shift, readings=ends, cash=cash, ended_at=end_at)
+            return cash
+
+        def run_shift(s, day, start_at, end_at, *, factor=1.0, short_frac=0, close=True):
+            st, pumps, meters = s["st"], s["pumps"], s["meters"]
+            start = [{"nozzle": n, "reading": meters[n.pk]} for _, ns in pumps for n in ns]
+            assigned = st.assignment_mode == "assigned"
+            # assigned station: Pumps 1-2 (petrol) with the lead, Pump 3 (diesel) with the second attendant
+            holder = {p.pk: (attendant2 if (assigned and p.name == "Pump 3") else attendant) for p, _ in pumps}
+            shift = ops.start_shift(user=attendant, station=st, started_at=start_at, readings=start,
+                                    attendants=[attendant2] if assigned else None, assignments={str(p): u.pk for p, u in holder.items()} if assigned else None)
+            if not close:
+                return shift, {}
+            litres_by_tank, expected, ends = {}, {}, []
+            for p, ns in pumps:
+                for n in ns:
+                    base = rnd.uniform(250, 450) if p.tank.fuel_type.code == "PETROL" else rnd.uniform(300, 480)
+                    lit = D(str(round(base * factor * rnd.uniform(0.85, 1.15), 2)))
+                    meters[n.pk] += lit
+                    ends.append({"nozzle": n, "reading": meters[n.pk]})
+                    litres_by_tank[p.tank_id] = litres_by_tank.get(p.tank_id, D(0)) + lit
+                    expected[holder[p.pk]] = expected.get(holder[p.pk], D(0)) + lit * price_at(st.pk, p.tank.fuel_type_id, "USD", start_at).price_per_litre
+            hand_in = {}
+            for person, amount in expected.items():  # short_frac: a proportional difference is flagged on any weekday
+                hand_in[person] = (amount * (D(str(round(rnd.uniform(0.999, 1.001), 4))) - D(short_frac))).quantize(D("0.01"))
+            if assigned:  # the second attendant hands in first; the lead's 'end' then closes the shift
+                ops.end_shift(user=attendant2, shift=shift, readings=[], cash=cash_lines(hand_in.get(attendant2, D(0))), ended_at=end_at)
+            ops.end_shift(user=attendant, shift=shift, readings=ends, cash=cash_lines(hand_in.get(attendant, D(0))), ended_at=end_at)
             return shift, litres_by_tank
 
         for ago in range(days, 0, -1):
@@ -131,4 +151,5 @@ def seed_demo_tenant(*, name="Demo Fuel Services", days=30, seed=7, password):
         from apps.tenants.models import Tenant
 
         apply_payment(Tenant.objects.get(pk=tenant.id), provider="demo", event_id=f"demo-{tenant.id}", amount=D("86.00"), currency="USD", months=12)
-    return {"tenant_id": str(tenant.id), "slug": tenant.slug, "password": password, "logins": {"owner": owner.email, "manager": manager.email, "attendant": attendant.email}}
+    return {"tenant_id": str(tenant.id), "slug": tenant.slug, "password": password,
+            "logins": {"owner": owner.email, "manager": manager.email, "attendant": attendant.email, "attendant2": attendant2.email}}

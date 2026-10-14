@@ -6,6 +6,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 
 from apps.operations.models import Shift, TankReading
+from apps.operations.services import people_names
 from apps.reports.reconciliation import cash_summary, tank_range
 from apps.stations.models import Tank
 from apps.tenants.services import get_settings
@@ -41,8 +42,8 @@ def evaluate_tenant(tenant_id, now=None):
         if last is None or now - last.reading_at > timedelta(hours=MISSED_DIP_HOURS):
             hours = "ever" if last is None else f"for {int((now - last.reading_at).total_seconds() // 3600)} hours"
             want(f"dip:{t.pk}", kind="missed_reading", severity="info", station=t.station, tank=t, message=f"{t.station.name} {t.name}: no dip recorded {hours}.", data={})
-    for s in Shift.objects.filter(status="open", started_at__lt=now - timedelta(hours=LONG_SHIFT_HOURS)).select_related("station", "attendant"):
-        want(f"openshift:{s.pk}", kind="missed_reading", severity="warning", station=s.station, message=f"{s.station.name}: {s.attendant.full_name}'s shift has been open since {timezone.localtime(s.started_at):%d %b %H:%M}.", data={})
+    for s in Shift.objects.filter(status="open", started_at__lt=now - timedelta(hours=LONG_SHIFT_HOURS)).select_related("station"):
+        want(f"openshift:{s.pk}", kind="missed_reading", severity="warning", station=s.station, message=f"{s.station.name}: the shift ({', '.join(people_names(s)) or 'no one'}) has been open since {timezone.localtime(s.started_at):%d %b %H:%M}.", data={})
 
     for row in tank_range(tanks, today - timedelta(days=LOOKBACK_DAYS - 1), today):
         if row["flagged"]:
@@ -50,10 +51,10 @@ def evaluate_tenant(tenant_id, now=None):
             what = "unexplained loss" if row["status"] == "loss" else "tank gained fuel it should not have"
             want(f"loss:{t.pk}:{row['date']}", kind="loss", severity="critical" if row["status"] == "loss" else "warning", station=t.station, tank=t,
                  message=f"{t.station.name} {t.name} on {row['date']}: {what} ({row['loss']} L).", data=row)
-    for s in Shift.objects.filter(status__in=["closed", "reviewed"], ended_at__gte=now - timedelta(days=LOOKBACK_DAYS)).select_related("station", "attendant"):
+    for s in Shift.objects.filter(status__in=["closed", "reviewed"], ended_at__gte=now - timedelta(days=LOOKBACK_DAYS)).select_related("station"):
         c = cash_summary(s)
         if c["flagged"]:
-            want(f"cash:{s.pk}", kind="cash", severity="warning", station=s.station, message=f"{s.station.name}, {s.attendant.full_name}: cash {c['status']} by {c['variance']} {c['currency']}.", data=c)
+            want(f"cash:{s.pk}", kind="cash", severity="warning", station=s.station, message=f"{s.station.name}, {', '.join(people_names(s))}: cash difference of {c['variance']} {c['currency']}.", data=c)
 
     open_alerts = {a.dedupe_key: a for a in Alert.objects.filter(status="open")}
     created = resolved = 0

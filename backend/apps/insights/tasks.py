@@ -13,6 +13,14 @@ def run_alerts():
     return for_each_tenant(lambda tid: evaluate_tenant(tid))
 
 
+@shared_task
+def refresh_rollups():
+    """Tank status rollups (level estimate, forecast) age with time even when nothing is recorded (rule 9)."""
+    from apps.operations.rollups import refresh_tenant_tanks
+
+    return for_each_tenant(refresh_tenant_tanks)
+
+
 def send_summary_for(tenant_id):
     from apps.tenants.services import get_settings
 

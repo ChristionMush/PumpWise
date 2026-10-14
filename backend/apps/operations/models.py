@@ -8,6 +8,8 @@ from apps.stations.models import upload_to, validate_currency
 
 
 class Shift(TenantOwnedModel):
+    """One shift at one station. The people on it are ShiftAttendant rows: never a single attendant on the shift."""
+
     class Status(models.TextChoices):
         OPEN = "open", "Open"
         CLOSED = "closed", "Closed"
@@ -15,13 +17,15 @@ class Shift(TenantOwnedModel):
 
     # The id may be generated on the phone (offline), so later offline entries can refer to it.
     station = models.ForeignKey("stations.Station", on_delete=models.PROTECT, related_name="+")
-    attendant = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="+")
     started_at = models.DateTimeField()
     ended_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
     flags = models.JSONField(default=list, blank=True)  # things a manager should look at
     notes = models.TextField(blank=True, default="")
     reviewed_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    # The lead (or a manager) asked to close while someone still had to hand in: it closes by itself when they do.
+    close_requested_at = models.DateTimeField(null=True, blank=True)
+    closed_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
 
     class Meta:
         ordering = ["-started_at"]
@@ -30,6 +34,50 @@ class Shift(TenantOwnedModel):
     def add_flag(self, flag):
         if flag not in self.flags:
             self.flags = [*self.flags, flag]
+
+    def remove_flags(self, prefix):
+        self.flags = [f for f in self.flags if not f.startswith(prefix)]
+
+
+class ShiftAttendant(TenantOwnedModel):
+    """A person on a shift. Joining and leaving mid-shift are joined_at / left_at; nothing is ever deleted."""
+
+    shift = models.ForeignKey(Shift, on_delete=models.PROTECT, related_name="attendants")
+    user = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="+")
+    is_lead = models.BooleanField(default=False)
+    joined_at = models.DateTimeField()
+    left_at = models.DateTimeField(null=True, blank=True)
+    cash_submitted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["joined_at"]
+        constraints = [
+            models.UniqueConstraint(F("shift"), F("user"), condition=Q(deleted_at__isnull=True), name="shiftattendant_unique_user"),
+            models.UniqueConstraint(F("shift"), condition=Q(deleted_at__isnull=True, is_lead=True), name="shiftattendant_one_lead"),
+        ]
+
+    @property
+    def done(self):
+        """Handed in, or marked as left: the shift may close without waiting for this person."""
+        return self.cash_submitted_at is not None or self.left_at is not None
+
+
+class PumpAssignment(TenantOwnedModel):
+    """Assigned-pump stations: who holds a pump, from when to when. A swap ends one row and starts the next at a
+    meter snapshot, so each person is charged only for the litres sold in their own period."""
+
+    shift = models.ForeignKey(Shift, on_delete=models.PROTECT, related_name="assignments")
+    pump = models.ForeignKey("stations.Pump", on_delete=models.PROTECT, related_name="+")
+    user = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="+")
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    assigned_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        ordering = ["started_at"]
+        constraints = [
+            models.UniqueConstraint(F("shift"), F("pump"), condition=Q(deleted_at__isnull=True, ended_at__isnull=True), name="pumpassignment_one_open"),
+        ]
 
 
 class PumpMeterReading(TenantOwnedModel):
@@ -52,8 +100,10 @@ class PumpMeterReading(TenantOwnedModel):
     class Meta:
         ordering = ["reading_at"]
         constraints = [
+            # One start and one end number per nozzle per PERSON: a second person's different number is kept beside the
+            # first and flagged "readings differ", never silently overwritten.
             models.UniqueConstraint(
-                F("shift"), F("nozzle"), "kind", condition=Q(deleted_at__isnull=True) & ~Q(kind="checkpoint"), name="reading_unique_start_end"
+                F("shift"), F("nozzle"), "kind", F("recorded_by"), condition=Q(deleted_at__isnull=True) & ~Q(kind="checkpoint"), name="reading_unique_per_person"
             ),
             models.CheckConstraint(condition=Q(reading__gte=0), name="reading_not_negative"),
         ]
@@ -108,13 +158,14 @@ class CashSubmission(TenantOwnedModel):
         CREDIT = "credit", "Credit / coupon"
 
     shift = models.ForeignKey(Shift, on_delete=models.PROTECT, related_name="cash")
+    attendant = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")  # who handed it in
     payment_type = models.CharField(max_length=15, choices=PaymentType.choices)
     currency = models.CharField(max_length=3, validators=[validate_currency])
     amount = models.DecimalField(max_digits=14, decimal_places=2)
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(F("shift"), "payment_type", "currency", condition=Q(deleted_at__isnull=True), name="cash_unique_per_shift"),
+            models.UniqueConstraint(F("shift"), F("attendant"), "payment_type", "currency", condition=Q(deleted_at__isnull=True), name="cash_unique_per_attendant"),
             models.CheckConstraint(condition=Q(amount__gte=0), name="cash_not_negative"),
         ]
 
@@ -124,6 +175,8 @@ class Transaction(TenantOwnedModel):
 
     station = models.ForeignKey("stations.Station", on_delete=models.PROTECT, related_name="+")
     shift = models.ForeignKey(Shift, null=True, on_delete=models.PROTECT, related_name="transactions")
+    # Assigned-pump stations only: the attendant who held the pump for this whole period (expected cash per person).
+    attendant = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
     nozzle = models.ForeignKey("stations.Nozzle", on_delete=models.PROTECT, related_name="+")
     fuel_type = models.ForeignKey("stations.FuelType", on_delete=models.PROTECT, related_name="+")
     litres = models.DecimalField(max_digits=12, decimal_places=3)
@@ -156,3 +209,47 @@ class SyncOperation(TenantOwnedModel):
 
     class Meta:
         constraints = [models.UniqueConstraint(F("tenant"), "op_id", name="syncop_unique_per_tenant")]
+
+
+# ---- rollups (rule 9): written when a shift closes or a dip/delivery is saved; dashboards read only these ----------
+
+class DailySalesRollup(TenantOwnedModel):
+    station = models.ForeignKey("stations.Station", on_delete=models.PROTECT, related_name="+")
+    day = models.DateField()
+    fuel_type = models.ForeignKey("stations.FuelType", on_delete=models.PROTECT, related_name="+")
+    currency = models.CharField(max_length=3)
+    litres = models.DecimalField(max_digits=14, decimal_places=3)
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(F("station"), "day", F("fuel_type"), "currency", condition=Q(deleted_at__isnull=True), name="dailysales_unique"),
+        ]
+        indexes = [models.Index(fields=["station", "day"], name="dailysales_station_day")]
+
+
+class TankStatus(TenantOwnedModel):
+    """Latest estimated level, forecast and 7-day unexplained loss for one tank."""
+
+    tank = models.ForeignKey("stations.Tank", on_delete=models.PROTECT, related_name="+")
+    data = models.JSONField(default=dict)
+    computed_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(F("tank"), condition=Q(deleted_at__isnull=True), name="tankstatus_one_per_tank")]
+
+
+class ShiftSummary(TenantOwnedModel):
+    """A closed shift's totals and cash check (per payment type and per attendant)."""
+
+    shift = models.ForeignKey(Shift, on_delete=models.PROTECT, related_name="+")
+    station = models.ForeignKey("stations.Station", on_delete=models.PROTECT, related_name="+")
+    day = models.DateField()
+    litres = models.DecimalField(max_digits=14, decimal_places=3)
+    flagged = models.BooleanField(default=False)
+    cash = models.JSONField(default=dict)
+    computed_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(F("shift"), condition=Q(deleted_at__isnull=True), name="shiftsummary_one_per_shift")]
+        indexes = [models.Index(fields=["station", "day"], name="shiftsummary_station_day")]

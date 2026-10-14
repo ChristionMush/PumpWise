@@ -37,19 +37,27 @@ class ManualAdapter(DataSourceAdapter):
     source = "manual"
 
     def record_meter_reading(self, *, shift, nozzle, kind, reading, at, user, photo=None):
+        """Start/end numbers are entered once per nozzle by anyone on the shift. Nothing is ever overwritten:
+        * the same number again (from anyone) returns the row already saved;
+        * the same person sending a different number is a correction: the old row is kept (soft-deleted) and a new
+          one marked `corrected` is added;
+        * a different person's different number is kept beside the first (the caller flags 'readings differ')."""
         at = at or timezone.now()
-        existing = None
+        corrected = False
         if kind != PumpMeterReading.Kind.CHECKPOINT:
-            existing = PumpMeterReading.objects.filter(shift=shift, nozzle=nozzle, kind=kind).first()
-        if existing:
-            if existing.reading != reading:
-                # A correction: keep the row, mark it, and let the audit log carry the old value.
-                existing.reading, existing.reading_at, existing.corrected = reading, at, True
-                existing.save(update_fields=["reading", "reading_at", "corrected", "updated_at"])
-            return existing
+            same = PumpMeterReading.objects.filter(shift=shift, nozzle=nozzle, kind=kind)
+            mine = same.filter(recorded_by=user).first() if user else None
+            if mine and mine.reading == reading:
+                return mine
+            if mine:
+                mine.delete()  # soft delete: the previous number stays in the database
+                corrected = True
+            match = same.filter(reading=reading).first()
+            if match:
+                return match
         return PumpMeterReading.objects.create(
             tenant_id=shift.tenant_id, shift=shift, nozzle=nozzle, kind=kind, reading=reading, reading_at=at,
-            source=self.source, recorded_by=user, photo=photo,
+            source=self.source, recorded_by=user, photo=photo, corrected=corrected,
         )
 
     def record_tank_reading(self, *, tank, litres, dip_mm, at, user, shift=None, photo=None, client_id=None):

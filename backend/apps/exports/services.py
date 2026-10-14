@@ -22,7 +22,7 @@ EXPORT_MODELS = [
     ("tenants", "tenant"), ("tenants", "tenantsettings"), ("tenants", "subscription"), ("accounts", "user"),
     ("stations", "station"), ("stations", "stationassignment"), ("stations", "fueltype"), ("stations", "tank"), ("stations", "calibrationpoint"),
     ("stations", "pump"), ("stations", "nozzle"), ("stations", "fuelprice"), ("stations", "exchangerate"),
-    ("operations", "shift"), ("operations", "pumpmeterreading"), ("operations", "tankreading"), ("operations", "delivery"),
+    ("operations", "shift"), ("operations", "shiftattendant"), ("operations", "pumpassignment"), ("operations", "pumpmeterreading"), ("operations", "tankreading"), ("operations", "delivery"),
     ("operations", "cashsubmission"), ("operations", "transaction"),
     ("insights", "alert"), ("insights", "outboundmessage"), ("billing", "payment"), ("audit", "auditlog"),
 ]
@@ -32,6 +32,9 @@ EXCLUDED = {
     "billing_billingreminder": "internal reminder bookkeeping",
     "billing_paymentevent": "platform-only webhook log",
     "exports_tenantexport": "the export requests themselves",
+    "operations_dailysalesrollup": "dashboard rollup, derived from the exported transactions",
+    "operations_tankstatus": "dashboard rollup, derived from the exported dips, deliveries and transactions",
+    "operations_shiftsummary": "dashboard rollup, derived from the exported shifts, cash and transactions",
 }
 SECRET_FIELDS = {"password", "token_version"}
 

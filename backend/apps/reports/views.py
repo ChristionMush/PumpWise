@@ -59,13 +59,18 @@ class CashReconciliationView(APIView):
 
     def get(self, request):
         frm, to = _dates(request, default_days=14)
-        qs = Shift.objects.select_related("station", "attendant").filter(started_at__date__gte=frm, started_at__date__lte=to).exclude(status="open")
+        qs = Shift.objects.select_related("station").prefetch_related("attendants__user").filter(started_at__date__gte=frm, started_at__date__lte=to).exclude(status="open")
         ids = _stations(request)
         if ids is not None:
             qs = qs.filter(station_id__in=ids)
         rows = []
         for s in qs.order_by("-started_at")[:300]:
-            rows.append({"shift_id": str(s.pk), "station": s.station.name, "attendant": s.attendant.full_name, "started_at": s.started_at, "ended_at": s.ended_at, **reconciliation.cash_summary(s)})
+            people = list(s.attendants.all())
+            rows.append({
+                "shift_id": str(s.pk), "station": s.station.name, "started_at": s.started_at, "ended_at": s.ended_at,
+                "attendant": next((a.user.full_name for a in people if a.is_lead), None), "attendants": [a.user.full_name for a in people],
+                **reconciliation.cash_summary(s),
+            })
         if request.query_params.get("flagged") == "1":
             rows = [r for r in rows if r["flagged"]]
         return Response({"rows": rows})

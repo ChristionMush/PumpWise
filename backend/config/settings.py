@@ -170,6 +170,7 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_ALWAYS_EAGER = env_bool("CELERY_TASK_ALWAYS_EAGER", False)
 CELERY_BEAT_SCHEDULE = {
     "alerts-hourly": {"task": "apps.insights.tasks.run_alerts", "schedule": crontab(minute=5)},
+    "rollups-hourly": {"task": "apps.insights.tasks.refresh_rollups", "schedule": crontab(minute=0)},
     "daily-summary": {"task": "apps.insights.tasks.send_daily_summaries", "schedule": crontab(hour=19, minute=0)},
     "billing-daily": {"task": "apps.billing.tasks.run_billing_cycle", "schedule": crontab(hour=6, minute=0)},
     "monthly-exports": {"task": "apps.exports.tasks.run_monthly_exports", "schedule": crontab(day_of_month=1, hour=2, minute=0)},
