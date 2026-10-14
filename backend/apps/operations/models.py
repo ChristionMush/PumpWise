@@ -61,6 +61,9 @@ class PumpMeterReading(TenantOwnedModel):
 
 
 class TankReading(TenantOwnedModel):
+    """A dip. Recorded only by a manager or owner (rule 11); `client_id` is made on the phone so a retry never duplicates it."""
+
+    client_id = models.UUIDField(null=True, blank=True)
     tank = models.ForeignKey("stations.Tank", on_delete=models.PROTECT, related_name="+")
     shift = models.ForeignKey(Shift, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
     dip_mm = models.DecimalField(max_digits=8, decimal_places=1, null=True, blank=True)
@@ -73,20 +76,28 @@ class TankReading(TenantOwnedModel):
     class Meta:
         ordering = ["-reading_at"]
         indexes = [models.Index(fields=["tank", "-reading_at"])]
+        constraints = [models.UniqueConstraint(F("tenant"), "client_id", condition=Q(client_id__isnull=False), name="tankreading_client_id_unique")]
 
 
 class Delivery(TenantOwnedModel):
+    """Fuel received, recorded by the manager or owner who received it, never by an attendant (rule 11)."""
+
+    client_id = models.UUIDField(null=True, blank=True)
     tank = models.ForeignKey("stations.Tank", on_delete=models.PROTECT, related_name="+")
     delivered_at = models.DateTimeField()
     litres_received = models.DecimalField(max_digits=12, decimal_places=3)
     supplier = models.CharField(max_length=120, blank=True, default="")
     note_number = models.CharField(max_length=60, blank=True, default="")
+    photo = models.FileField(upload_to=upload_to, null=True, blank=True)  # optional photo of the delivery note
     recorded_by = models.ForeignKey("accounts.User", null=True, on_delete=models.PROTECT, related_name="+")
 
     class Meta:
         ordering = ["-delivered_at"]
         indexes = [models.Index(fields=["tank", "-delivered_at"])]
-        constraints = [models.CheckConstraint(condition=Q(litres_received__gt=0), name="delivery_positive")]
+        constraints = [
+            models.CheckConstraint(condition=Q(litres_received__gt=0), name="delivery_positive"),
+            models.UniqueConstraint(F("tenant"), "client_id", condition=Q(client_id__isnull=False), name="delivery_client_id_unique"),
+        ]
 
 
 class CashSubmission(TenantOwnedModel):

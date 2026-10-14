@@ -149,7 +149,10 @@ def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False):
     return shift
 
 
-def record_tank_dip(*, user, tank, litres=None, dip_mm=None, at=None, shift=None, photo=None):
+def record_tank_dip(*, user, tank, litres=None, dip_mm=None, at=None, shift=None, photo=None, client_id=None):
+    """A manager's dip. Idempotent on the phone's client_id (rule 8): a retry returns the row already saved."""
+    if client_id and (existing := TankReading.objects.filter(client_id=client_id).first()):
+        return existing
     if litres is None and dip_mm is None:
         raise ValidationError({"litres": "Enter the dip height or the litres."})
     if litres is None:
@@ -157,12 +160,15 @@ def record_tank_dip(*, user, tank, litres=None, dip_mm=None, at=None, shift=None
     litres = Decimal(str(litres)).quantize(THREE)
     if litres < 0 or litres > tank.capacity_litres * Decimal("1.05"):
         raise ValidationError({"litres": "That is more than the tank can hold. Check the number."})
-    return adapter_for(tank.data_source).record_tank_reading(tank=tank, litres=litres, dip_mm=dip_mm, at=at, user=user, shift=shift, photo=photo)
+    return adapter_for(tank.data_source).record_tank_reading(tank=tank, litres=litres, dip_mm=dip_mm, at=at, user=user, shift=shift, photo=photo, client_id=client_id)
 
 
-def record_delivery(*, user, tank, litres, delivered_at=None, supplier="", note_number=""):
+def record_delivery(*, user, tank, litres, delivered_at=None, supplier="", note_number="", client_id=None):
+    """Fuel received. Idempotent on the phone's client_id (rule 8)."""
+    if client_id and (existing := Delivery.objects.filter(client_id=client_id).first()):
+        return existing
     return Delivery.objects.create(
-        tenant_id=tank.tenant_id, tank=tank, litres_received=Decimal(str(litres)).quantize(THREE),
+        tenant_id=tank.tenant_id, client_id=client_id, tank=tank, litres_received=Decimal(str(litres)).quantize(THREE),
         delivered_at=delivered_at or timezone.now(), supplier=supplier, note_number=note_number, recorded_by=user,
     )
 

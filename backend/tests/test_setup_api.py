@@ -185,7 +185,8 @@ def test_qr_codes_resolve_and_render():
     att = client_for(a[Role.ATTENDANT])
     r = att.get(f"/api/qr/{fc.pump.qr_token}/").json()
     assert r["type"] == "pump" and r["id"] == str(fc.pump.pk) and r["station_id"] == str(fc.station.pk)
-    assert att.get(f"/api/qr/{fc.tank.qr_token}/").json()["type"] == "tank"
+    assert att.get(f"/api/qr/{fc.tank.qr_token}/").status_code == 403  # tank codes are for managers (rule 11)
+    assert client_for(a[Role.MANAGER]).get(f"/api/qr/{fc.tank.qr_token}/").json()["type"] == "tank"
     assert att.get("/api/qr/nonsense/").status_code == 404
     assert client_for(b[Role.ATTENDANT]).get(f"/api/qr/{fc.pump.qr_token}/").status_code == 404  # other tenant's code
     svg = client_for(a[Role.OWNER]).get(f"/api/qr-image/pumps/{fc.pump.pk}/")

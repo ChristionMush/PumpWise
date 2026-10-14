@@ -40,6 +40,7 @@ class CheckpointInput(serializers.Serializer):
 
 
 class TankDipInput(serializers.Serializer):
+    client_id = serializers.UUIDField(required=False, allow_null=True)
     tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.all())
     litres = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal(0), required=False)
     dip_mm = serializers.DecimalField(max_digits=8, decimal_places=1, min_value=Decimal(0), required=False)
@@ -48,6 +49,7 @@ class TankDipInput(serializers.Serializer):
 
 
 class DeliveryInput(serializers.Serializer):
+    client_id = serializers.UUIDField(required=False, allow_null=True)
     tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.all())
     litres = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal("0.001"))
     delivered_at = serializers.DateTimeField(required=False)
@@ -90,12 +92,24 @@ class ShiftSerializer(serializers.ModelSerializer):
 
 
 class TankReadingSerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.CharField(source="recorded_by.full_name", read_only=True, default=None)
+    photo_url = serializers.SerializerMethodField()
+
     class Meta:
         model = TankReading
-        fields = ["id", "tank", "dip_mm", "litres", "reading_at", "source"]
+        fields = ["id", "client_id", "tank", "dip_mm", "litres", "reading_at", "source", "recorded_by", "recorded_by_name", "photo_url"]
+
+    def get_photo_url(self, obj):
+        return f"/api/media/tankreading/{obj.pk}/photo/" if obj.photo else None
 
 
 class DeliverySerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.CharField(source="recorded_by.full_name", read_only=True, default=None)
+    photo_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Delivery
-        fields = ["id", "tank", "delivered_at", "litres_received", "supplier", "note_number"]
+        fields = ["id", "client_id", "tank", "delivered_at", "litres_received", "supplier", "note_number", "recorded_by", "recorded_by_name", "photo_url"]
+
+    def get_photo_url(self, obj):
+        return f"/api/media/delivery/{obj.pk}/photo/" if obj.photo else None

@@ -13,7 +13,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsOwnerOrManager, IsTenantUser
+from apps.accounts.permissions import Allow, IsOwnerOrManager, IsTenantUser, TankRecords, can, require
 from apps.audit import services as audit
 from apps.stations.access import scope, visible_station_ids
 from apps.stations.models import FuelPrice, Pump, Station, Tank
@@ -43,7 +43,7 @@ def _check_station(user, station):
 
 
 def _own_or_manager(user, shift):
-    if shift.attendant_id != user.pk and user.role not in ("owner", "manager"):
+    if shift.attendant_id != user.pk and not can(user, "manage_shift"):
         raise PermissionDenied("This is not your shift.")
 
 
@@ -100,13 +100,15 @@ class PrefillView(APIView):
                     nozzles.append({"id": str(n.pk), "number": n.number, "label": str(n), "meter_max": str(n.meter_max), "last_reading": str(last.reading) if last else None})
                 pumps.append({"id": str(p.pk), "name": p.name, "qr_token": p.qr_token, "data_source": p.data_source, "fuel_type": str(p.tank.fuel_type_id), "fuel_code": p.tank.fuel_type.code, "nozzles": nozzles})
             tanks = []
-            for t in Tank.objects.filter(station=st).select_related("fuel_type"):
+            # Tank levels are for managers and owners only (rule 11): attendants get no tank data at all.
+            for t in (Tank.objects.filter(station=st).select_related("fuel_type") if can(request.user, "view_tank_levels") else []):
                 last = TankReading.objects.filter(tank=t).first()
                 tanks.append({"id": str(t.pk), "name": t.name, "qr_token": t.qr_token, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres), "has_calibration": t.calibration.count() >= 2, "last_litres": str(last.litres) if last else None})
             prices = FuelPrice.objects.filter(station=st).exclude(effective_to__lt=horizon).order_by("effective_from")
             open_shift = Shift.objects.filter(station=st, attendant=request.user, status="open").first()
             out.append({
-                "id": str(st.pk), "name": st.name, "pricing_currency": st.pricing_currency, "pumps": pumps, "tanks": tanks,
+                "id": str(st.pk), "name": st.name, "pricing_currency": st.pricing_currency, "pumps": pumps,
+                **({"tanks": tanks} if can(request.user, "view_tank_levels") else {}),
                 "prices": [{"fuel_type": str(x.fuel_type_id), "currency": x.currency, "price": str(x.price_per_litre), "from": x.effective_from, "to": x.effective_to} for x in prices],
                 "open_shift_id": str(open_shift.pk) if open_shift else None,
             })
@@ -119,7 +121,7 @@ class ShiftListView(ListAPIView):
 
     def get_queryset(self):
         qs = scope(Shift.objects.select_related("attendant", "station"), self.request.user)
-        if self.request.user.role == "attendant":
+        if not can(self.request.user, "see_all_shifts"):
             qs = qs.filter(attendant=self.request.user)
         q = self.request.query_params
         for key, lookup in (("station", "station_id"), ("status", "status"), ("attendant", "attendant_id")):
@@ -145,7 +147,7 @@ def _get_shift(request, pk):
         shift = scope(Shift.objects.select_related("attendant", "station"), request.user).filter(pk=pk).first()
     except Exception:
         shift = None
-    if shift is None or (request.user.role == "attendant" and shift.attendant_id != request.user.pk):
+    if shift is None or (not can(request.user, "see_all_shifts") and shift.attendant_id != request.user.pk):
         raise NotFound("Shift not found.")
     return shift
 
@@ -207,11 +209,13 @@ class ReadingPhotoView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, kind, pk):
-        model = {"meter": PumpMeterReading, "dip": TankReading}.get(kind)
+        model = {"meter": PumpMeterReading, "dip": TankReading, "delivery": Delivery}.get(kind)
         if model is None or "photo" not in request.FILES:
             raise ValidationError({"detail": "Send a photo."})
+        if model is not PumpMeterReading:
+            require(request.user, "tank_records")
         row = model.objects.filter(pk=pk).first()
-        if row is None:
+        if row is None or (model is PumpMeterReading and not can(request.user, "see_all_shifts") and row.shift.attendant_id != request.user.pk):
             raise NotFound()
         row.photo = validate_image(request.FILES["photo"])
         row.save(update_fields=["photo", "updated_at"])
@@ -219,7 +223,9 @@ class ReadingPhotoView(APIView):
 
 
 class TankDipView(APIView):
-    permission_classes = [IsTenantUser]
+    """Dips: managers (their stations) and owners only. Attendants are refused, even to look (rule 11)."""
+
+    permission_classes = [TankRecords]
 
     def get(self, request):
         qs = scope(TankReading.objects.all(), request.user, "tank__station_id")
@@ -232,12 +238,17 @@ class TankDipView(APIView):
         data.is_valid(raise_exception=True)
         d = data.validated_data
         _check_station(request.user, d["tank"].station)
-        row = services.record_tank_dip(user=request.user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=d.get("at"), shift=d.get("shift"))
-        return Response(TankReadingSerializer(row).data, status=status.HTTP_201_CREATED)
+        existed = bool(d.get("client_id")) and TankReading.objects.filter(client_id=d["client_id"]).exists()
+        row = services.record_tank_dip(user=request.user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=d.get("at"), shift=d.get("shift"), client_id=d.get("client_id"))
+        if not existed:
+            audit.log("tank_dip_recorded", actor=request.user, obj=row, changes={"litres": str(row.litres), "tank": d["tank"].name}, request=request)
+        return Response(TankReadingSerializer(row).data, status=status.HTTP_200_OK if existed else status.HTTP_201_CREATED)
 
 
 class DeliveryView(APIView):
-    permission_classes = [IsTenantUser]
+    """Deliveries: recorded by the manager or owner who received the fuel, never by an attendant (rule 11)."""
+
+    permission_classes = [TankRecords]
 
     def get(self, request):
         qs = scope(Delivery.objects.all(), request.user, "tank__station_id")
@@ -250,9 +261,11 @@ class DeliveryView(APIView):
         data.is_valid(raise_exception=True)
         d = data.validated_data
         _check_station(request.user, d["tank"].station)
-        row = services.record_delivery(user=request.user, tank=d["tank"], litres=d["litres"], delivered_at=d.get("delivered_at"), supplier=d["supplier"], note_number=d["note_number"])
-        audit.log("delivery_recorded", actor=request.user, obj=row, changes={"litres": str(row.litres_received), "tank": d["tank"].name}, request=request)
-        return Response(DeliverySerializer(row).data, status=status.HTTP_201_CREATED)
+        existed = bool(d.get("client_id")) and Delivery.objects.filter(client_id=d["client_id"]).exists()
+        row = services.record_delivery(user=request.user, tank=d["tank"], litres=d["litres"], delivered_at=d.get("delivered_at"), supplier=d["supplier"], note_number=d["note_number"], client_id=d.get("client_id"))
+        if not existed:
+            audit.log("delivery_recorded", actor=request.user, obj=row, changes={"litres": str(row.litres_received), "tank": d["tank"].name}, request=request)
+        return Response(DeliverySerializer(row).data, status=status.HTTP_200_OK if existed else status.HTTP_201_CREATED)
 
 
 # ---- QR codes --------------------------------------------------------------------------------------------------
@@ -268,12 +281,13 @@ class QRResolveView(APIView):
             return Response({"type": "pump", "id": str(pump.pk), "station_id": str(pump.station_id), "name": pump.name})
         tank = scope(Tank.objects.select_related("station"), request.user).filter(qr_token=token).first()
         if tank:
+            require(request.user, "tank_records", "Tank codes are for managers.")
             return Response({"type": "tank", "id": str(tank.pk), "station_id": str(tank.station_id), "name": tank.name})
         raise NotFound("Unknown code.")
 
 
 class QRImageView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [Allow("edit_setup")]
 
     def get(self, request, kind, pk):
         model = {"pumps": Pump, "tanks": Tank}.get(kind)
@@ -289,8 +303,10 @@ MEDIA_FIELDS = {
     ("stations", "pump"): {"nameplate_photo", "display_photo"},
     ("operations", "pumpmeterreading"): {"photo"},
     ("operations", "tankreading"): {"photo"},
+    ("operations", "delivery"): {"photo"},
     ("tenants", "tenantsettings"): {"logo"},
 }
+TANK_SIDE_MEDIA = {"tankreading", "delivery"}
 
 
 class MediaView(APIView):
@@ -299,6 +315,8 @@ class MediaView(APIView):
     permission_classes = [IsTenantUser]
 
     def get(self, request, model, pk, field):
+        if model in TANK_SIDE_MEDIA:
+            require(request.user, "tank_records")
         for (app_label, name), fields in MEDIA_FIELDS.items():
             if name == model and field in fields:
                 obj = django_apps.get_model(app_label, name).objects.filter(pk=pk).first()
@@ -340,17 +358,21 @@ def _apply(user, kind, p):
         data.is_valid(raise_exception=True)
         shift = do_shift_end(user, shift, data.validated_data)
         return {"shift_id": str(shift.pk), "flags": shift.flags}
+    if kind in ("tank_dip", "delivery"):
+        require(user, "tank_records", "Dips and deliveries are recorded by a manager.")
     if kind == "tank_dip":
         data = TankDipInput(data=p)
         data.is_valid(raise_exception=True)
         d = data.validated_data
-        row = services.record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=d.get("at"), shift=d.get("shift"))
+        _check_station(user, d["tank"].station)
+        row = services.record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=d.get("at"), shift=d.get("shift"), client_id=d.get("client_id"))
         return {"id": str(row.pk)}
     if kind == "delivery":
         data = DeliveryInput(data=p)
         data.is_valid(raise_exception=True)
         d = data.validated_data
-        row = services.record_delivery(user=user, tank=d["tank"], litres=d["litres"], delivered_at=d.get("delivered_at"), supplier=d["supplier"], note_number=d["note_number"])
+        _check_station(user, d["tank"].station)
+        row = services.record_delivery(user=user, tank=d["tank"], litres=d["litres"], delivered_at=d.get("delivered_at"), supplier=d["supplier"], note_number=d["note_number"], client_id=d.get("client_id"))
         return {"id": str(row.pk)}
     raise ValidationError({"detail": f"Unknown entry type '{kind}'."})
 

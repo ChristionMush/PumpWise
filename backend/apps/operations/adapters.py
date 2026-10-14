@@ -28,7 +28,7 @@ class DataSourceAdapter(ABC):
     def record_meter_reading(self, *, shift, nozzle, kind, reading, at, user, photo=None) -> PumpMeterReading: ...
 
     @abstractmethod
-    def record_tank_reading(self, *, tank, litres, dip_mm, at, user, shift=None, photo=None) -> TankReading: ...
+    def record_tank_reading(self, *, tank, litres, dip_mm, at, user, shift=None, photo=None, client_id=None) -> TankReading: ...
 
 
 class ManualAdapter(DataSourceAdapter):
@@ -52,9 +52,9 @@ class ManualAdapter(DataSourceAdapter):
             source=self.source, recorded_by=user, photo=photo,
         )
 
-    def record_tank_reading(self, *, tank, litres, dip_mm, at, user, shift=None, photo=None):
+    def record_tank_reading(self, *, tank, litres, dip_mm, at, user, shift=None, photo=None, client_id=None):
         return TankReading.objects.create(
-            tenant_id=tank.tenant_id, tank=tank, shift=shift, dip_mm=dip_mm, litres=litres,
+            tenant_id=tank.tenant_id, client_id=client_id, tank=tank, shift=shift, dip_mm=dip_mm, litres=litres,
             reading_at=at or timezone.now(), source=self.source, recorded_by=user, photo=photo,
         )
 

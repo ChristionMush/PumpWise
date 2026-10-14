@@ -6,6 +6,7 @@ from django.utils import timezone
 from apps.operations.models import Shift
 from apps.reports.reconciliation import cash_summary, tank_range
 from apps.reports.sales import daily_sales
+from apps.accounts.permissions import sees_all_stations
 from apps.stations.access import scope
 from apps.stations.models import Station, Tank
 from apps.tenants.services import get_settings
@@ -41,7 +42,7 @@ def build_dashboard(user):
         })
     refills = sorted((f for f in forecasts.values() if f.get("refill_by")), key=lambda f: f["refill_by"])
     open_alerts = Alert.objects.filter(status="open")
-    if user.role != "owner":
+    if not sees_all_stations(user):
         open_alerts = open_alerts.filter(station_id__in=station_ids)
     return {
         "as_of": now,

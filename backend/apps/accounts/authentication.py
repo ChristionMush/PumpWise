@@ -6,6 +6,7 @@ from apps.core.db import clear_db_context, set_db_context
 from apps.tenants.models import Tenant
 
 from .models import Role, User
+from .permissions import LOCKED_WHEN_SUSPENDED
 from .tokens import TokenError, decode_token
 
 FAILED = "Invalid or expired credentials."
@@ -24,7 +25,7 @@ def enforce_access_gates(user, path):
     """
     if user.tenant_id:
         status = user.tenant.status
-        locked = status == Tenant.Status.CANCELLED or (status == Tenant.Status.SUSPENDED and user.role in (Role.OWNER, Role.MANAGER))
+        locked = status == Tenant.Status.CANCELLED or (status == Tenant.Status.SUSPENDED and user.role in LOCKED_WHEN_SUSPENDED)
         if locked and path not in LOCKOUT_ALLOWED:
             raise PermissionDenied({"detail": "This account is suspended. Please pay to reactivate.", "code": "tenant_suspended"})
     if user.must_change_password and path not in PASSWORD_CHANGE_ALLOWED:

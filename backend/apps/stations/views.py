@@ -6,11 +6,11 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsOwnerOrManager, IsTenantUser
+from apps.accounts.models import Role
+from apps.accounts.permissions import Allow, IsOwnerOrManager, IsTenantUser, SetupPermission, require
 from apps.audit import services as audit
 
 from . import services
@@ -29,16 +29,6 @@ from .serializers import (
 )
 
 DUPLICATE = {"detail": "That already exists, or one of the values is not allowed."}
-
-
-class SetupPermission(BasePermission):
-    """Everyone on staff can look; owners and managers can change."""
-
-    def has_permission(self, request, view):
-        u = request.user
-        if not (u and u.is_authenticated and u.role in ("owner", "manager", "attendant")):
-            return False
-        return request.method in SAFE_METHODS or u.role in ("owner", "manager")
 
 
 class SetupViewSet(viewsets.ModelViewSet):
@@ -90,13 +80,11 @@ class StationViewSet(SetupViewSet):
         return scope(self.queryset.all(), self.request.user, "id")
 
     def perform_create(self, serializer):
-        if self.request.user.role != "owner":
-            raise PermissionDenied("Only the owner can add stations.")
+        require(self.request.user, "manage_stations", "Only the owner can add stations.")
         super().perform_create(serializer)
 
     def perform_destroy(self, instance):
-        if self.request.user.role != "owner":
-            raise PermissionDenied("Only the owner can remove stations.")
+        require(self.request.user, "manage_stations", "Only the owner can remove stations.")
         super().perform_destroy(instance)
 
 
@@ -106,6 +94,9 @@ class FuelTypeViewSet(SetupViewSet):
 
 
 class TankViewSet(SetupViewSet):
+    """Tanks hold tank levels and calibration, so attendants are refused even read access (rule 11)."""
+
+    permission_classes = [Allow("edit_setup", read="view_tank_levels")]
     queryset = Tank.objects.select_related("fuel_type").all()
     serializer_class = TankSerializer
     station_field = "station_id"
@@ -116,8 +107,7 @@ class TankViewSet(SetupViewSet):
         tank = self.get_object()
         if request.method == "GET":
             return Response([{"dip_mm": p.dip_mm, "litres": p.litres} for p in tank.calibration.all()])
-        if request.user.role not in ("owner", "manager"):
-            raise PermissionDenied()
+        require(request.user, "edit_setup")
         data = CalibrationInputSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         with transaction.atomic():
@@ -136,8 +126,7 @@ class PumpViewSet(SetupViewSet):
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser], url_path="photos")
     def photos(self, request, pk=None):
         """Optional nameplate / display photos, for later hardware research."""
-        if request.user.role not in ("owner", "manager"):
-            raise PermissionDenied()
+        require(request.user, "edit_setup")
         pump = self.get_object()
         changed = []
         for field in ("nameplate_photo", "display_photo"):
@@ -217,7 +206,7 @@ class StationAssignmentView(APIView):
         from apps.accounts.models import User
 
         user = User.objects.filter(pk=pk).first()
-        if not user or user.role not in ("manager", "attendant"):
+        if not user or user.role not in (Role.MANAGER, Role.ATTENDANT):
             raise NotFound()
         return user
 
@@ -225,8 +214,7 @@ class StationAssignmentView(APIView):
         return Response({"station_ids": [str(i) for i in StationAssignment.objects.filter(user_id=self._user(pk).pk).values_list("station_id", flat=True)]})
 
     def put(self, request, pk):
-        if request.user.role != "owner":
-            raise PermissionDenied()
+        require(request.user, "manage_stations")
         user = self._user(pk)
         ids = request.data.get("station_ids", [])
         stations = list(Station.objects.filter(pk__in=ids))

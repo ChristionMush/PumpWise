@@ -22,22 +22,51 @@ def shift_ops(fc, shift_id, start=(0, 0), end=(100, 50), cash=None):
     ]
 
 
+def tank_ops(fc, sid=None):
+    return [
+        op("tank_dip", {"client_id": str(uuid.uuid4()), "tank": str(fc.tank.pk), "litres": "4000", "at": "2026-10-01T06:05:00Z", "shift": sid}),
+        op("delivery", {"client_id": str(uuid.uuid4()), "tank": str(fc.tank.pk), "litres": "3000", "delivered_at": "2026-10-01T09:00:00Z", "supplier": "Zuva", "note_number": "N-1"}),
+    ]
+
+
 def test_a_whole_offline_shift_syncs_in_one_batch():
     a, _ = two_tenants()
     fc = make_forecourt(a["tenant"], price="1.50")
     sid = str(uuid.uuid4())
-    ops = shift_ops(fc, sid) + [
-        op("tank_dip", {"tank": str(fc.tank.pk), "litres": "4000", "at": "2026-10-01T06:05:00Z", "shift": sid}),
-        op("delivery", {"tank": str(fc.tank.pk), "litres": "3000", "delivered_at": "2026-10-01T09:00:00Z", "supplier": "Zuva", "note_number": "N-1"}),
-    ]
-    res = client_for(a[Role.ATTENDANT]).post("/api/sync/", {"ops": ops}, format="json")
+    res = client_for(a[Role.ATTENDANT]).post("/api/sync/", {"ops": shift_ops(fc, sid)}, format="json")
     assert res.status_code == 200, res.content
-    assert [r["status"] for r in res.json()["results"]] == ["applied"] * 4
+    assert [r["status"] for r in res.json()["results"]] == ["applied"] * 2
+    # the manager's phone syncs the dip and the delivery (attendants never record these)
+    res = client_for(a[Role.MANAGER]).post("/api/sync/", {"ops": tank_ops(fc, sid)}, format="json")
+    assert [r["status"] for r in res.json()["results"]] == ["applied"] * 2
     with db_context(tenant_id=a["tenant"].id):
         shift = Shift.objects.get(pk=sid)
         assert shift.status == "closed"
         assert sum(t.amount for t in Transaction.objects.filter(shift=shift)) == Decimal("225.00")  # 150 litres x 1.50
         assert TankReading.objects.count() == 1 and Delivery.objects.get().litres_received == 3000
+        assert TankReading.objects.get().recorded_by_id == a[Role.MANAGER].pk
+
+
+def test_attendants_cannot_sync_dips_or_deliveries():
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"])
+    res = client_for(a[Role.ATTENDANT]).post("/api/sync/", {"ops": tank_ops(fc)}, format="json").json()["results"]
+    assert [r["status"] for r in res] == ["rejected", "rejected"] and all("manager" in r["error"] for r in res)
+    with db_context(tenant_id=a["tenant"].id):
+        assert TankReading.objects.count() == 0 and Delivery.objects.count() == 0
+
+
+def test_dips_and_deliveries_are_idempotent_on_the_phones_client_id():
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"])
+    ops = tank_ops(fc)
+    mgr = client_for(a[Role.MANAGER])
+    mgr.post("/api/sync/", {"ops": ops}, format="json")
+    # same records, new op ids (e.g. the phone lost the first response and rebuilt its queue): still no duplicates
+    again = [{**o, "op_id": str(uuid.uuid4())} for o in ops]
+    assert [r["status"] for r in mgr.post("/api/sync/", {"ops": again}, format="json").json()["results"]] == ["applied", "applied"]
+    with db_context(tenant_id=a["tenant"].id):
+        assert TankReading.objects.count() == 1 and Delivery.objects.count() == 1
 
 
 def test_resending_the_same_queue_changes_nothing():

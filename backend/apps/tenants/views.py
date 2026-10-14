@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role, User
-from apps.accounts.permissions import IsOwnerOrManager, IsPlatformAdmin
+from apps.accounts.permissions import IsOwnerOrManager, IsPlatformAdmin, require
 from apps.accounts.utils import generate_temporary_password
 from apps.audit import services as audit
 from apps.core.db import tenant_scope
@@ -229,13 +229,10 @@ class TenantSettingsView(APIView):
         return Response(TenantSettingsSerializer(get_settings(request.user.tenant_id)).data)
 
     def patch(self, request):
-        from rest_framework.exceptions import PermissionDenied
-
         from .serializers import TenantSettingsSerializer
         from .services import get_settings
 
-        if request.user.role != "owner":
-            raise PermissionDenied("Only the owner can change settings.")
+        require(request.user, "manage_settings", "Only the owner can change settings.")
         obj = get_settings(request.user.tenant_id)
         before = TenantSettingsSerializer(obj).data
         data = TenantSettingsSerializer(obj, data=request.data, partial=True)
@@ -252,15 +249,12 @@ class TenantLogoView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
-        from rest_framework.exceptions import PermissionDenied
-
         from apps.stations.views import validate_image
 
         from .serializers import TenantSettingsSerializer
         from .services import get_settings
 
-        if request.user.role != "owner":
-            raise PermissionDenied()
+        require(request.user, "manage_settings")
         if "logo" not in request.FILES:
             raise ValidationError({"detail": "Send a 'logo' image."})
         obj = get_settings(request.user.tenant_id)

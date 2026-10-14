@@ -18,7 +18,7 @@ from apps.core.db import clear_db_context, set_db_context
 
 from .authentication import FAILED, set_context_for_user, user_from_claims
 from .models import Role, User
-from .permissions import OwnerWriteManagerRead
+from .permissions import OwnerWriteManagerRead, can
 from .serializers import (
     ChangePasswordSerializer,
     LoginSerializer,
@@ -116,7 +116,7 @@ class MeView(APIView):
                 branding["display_name"] = ts.display_name or None
                 branding["logo_url"] = f"/api/media/tenantsettings/{ts.pk}/logo/" if ts.logo else None
         billing = None
-        if user.tenant_id and user.role in ("owner", "manager"):
+        if user.tenant_id and can(user, "view_billing"):
             from apps.billing.services import banner_for
             from apps.tenants.models import Subscription
 

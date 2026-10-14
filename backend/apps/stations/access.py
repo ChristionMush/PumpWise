@@ -1,9 +1,11 @@
+from apps.accounts.permissions import sees_all_stations
+
 from .models import StationAssignment
 
 
 def visible_station_ids(user):
     """None = all stations of the tenant. Owners see all; a manager/attendant with assignments sees only those."""
-    if user.role == "owner":
+    if sees_all_stations(user):
         return None
     ids = list(StationAssignment.objects.filter(user_id=user.pk).values_list("station_id", flat=True))
     return ids or None
