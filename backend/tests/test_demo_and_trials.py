@@ -64,8 +64,12 @@ def test_the_generator_is_deterministic_and_ends_on_the_requested_day():
 
 def test_the_committed_seed_file_matches_the_generator_format():
     data = demo.load_file()
-    assert data["version"] == 1 and {s["key"] for s in data["staff"]} == {"manager", "att1", "att2"}
+    from mock_data.generate_mock_data import VERSION
+
+    assert data["version"] == VERSION and {s["key"] for s in data["staff"]} == {"manager", "att1", "att2"}
     assert {s["attendants_mode"] for s in data["stations"]} == {"single", "multiple"}
+    for s in data["stations"]:  # every pump: two nozzles, each on its own tank
+        assert all(len({n["tank"] for n in p["nozzles"]}) == 2 == len(p["nozzles"]) for p in s["pumps"])
 
 
 # ---- seed_demo -------------------------------------------------------------------------------------------------------
