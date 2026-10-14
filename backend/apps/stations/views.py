@@ -1,5 +1,4 @@
 from django.db import IntegrityError, transaction
-from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -48,7 +47,7 @@ class SetupViewSet(viewsets.ModelViewSet):
         return qs
 
     def _snap(self, obj):
-        return {k: str(v) for k, v in self.get_serializer(obj).data.items() if k not in ("nozzles", "qr_token")}
+        return {k: str(v) for k, v in self.get_serializer(obj).data.items() if k != "nozzles"}
 
     def perform_create(self, serializer):
         try:
@@ -81,6 +80,12 @@ class StationViewSet(SetupViewSet):
 
     def perform_create(self, serializer):
         require(self.request.user, "manage_stations", "Only the owner can add stations.")
+        from apps.tenants.models import Tenant
+
+        # A new station follows the pump system the platform chose for this business (shared or assigned pumps).
+        tenant = Tenant.objects.get(pk=self.request.user.tenant_id)
+        if tenant.pump_system == "assigned":
+            serializer.validated_data.update(attendants_mode=Station.AttendantsMode.MULTIPLE, assignment_mode=Station.AssignmentMode.ASSIGNED)
         super().perform_create(serializer)
 
     def perform_destroy(self, instance):
@@ -119,9 +124,34 @@ class TankViewSet(SetupViewSet):
 
 
 class PumpViewSet(SetupViewSet):
-    queryset = Pump.objects.prefetch_related("nozzles").all()
+    queryset = Pump.objects.select_related("assigned_to").prefetch_related("nozzles__tank__fuel_type").all()
     serializer_class = PumpSerializer
     station_field = "station_id"
+
+    def perform_create(self, serializer):
+        station = serializer.validated_data["station"]
+        if (ids := visible_station_ids(self.request.user)) is not None and station.pk not in ids:
+            raise PermissionDenied("You are not assigned to this station.")
+        super().perform_create(serializer)
+
+    @action(detail=True, methods=["post"], url_path="assign")
+    def assign(self, request, pk=None):
+        """Assigned-pump stations: a manager or owner gives this pump to an attendant (or takes it back with user=null).
+        If the pump is in use on someone's open shift, this is a swap: send the meter number of both nozzles now."""
+        from apps.operations.serializers import PumpAssignInput
+        from apps.operations.services import Conflict, assign_pump
+
+        require(request.user, "manage_shift", "Only a manager or the owner assigns pumps.")
+        pump = self.get_object()
+        data = PumpAssignInput(data=request.data)
+        data.is_valid(raise_exception=True)
+        d = data.validated_data
+        try:
+            assign_pump(user=request.user, pump=pump, to_user=d.get("user"), readings=d.get("readings") or [], at=d.get("at"), strict=True, request=request)
+        except Conflict as exc:
+            raise ValidationError({"detail": str(exc)})
+        pump.refresh_from_db()
+        return Response(PumpSerializer(pump).data)
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser], url_path="photos")
     def photos(self, request, pk=None):
@@ -149,8 +179,12 @@ def validate_image(f, max_mb=5):
 
 
 class NozzleViewSet(SetupViewSet):
-    queryset = Nozzle.objects.select_related("pump").all()
+    """Nozzles come with their pump (two each, on separate tanks): they can be renamed or moved to another tank,
+    never added or removed on their own."""
+
+    queryset = Nozzle.objects.select_related("pump", "tank__fuel_type").all()
     serializer_class = NozzleSerializer
+    http_method_names = ["get", "patch", "head", "options"]
 
     def get_queryset(self):
         return scope(self.queryset.all(), self.request.user, "pump__station_id")
@@ -236,15 +270,3 @@ class StationListView(ListAPIView):
 
     def get_queryset(self):
         return scope(Station.objects.all(), self.request.user, "id")
-
-
-def qr_svg_response(url):
-    import qrcode
-    import qrcode.image.svg
-
-    img = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, box_size=10)
-    from io import BytesIO
-
-    buf = BytesIO()
-    img.save(buf)
-    return HttpResponse(buf.getvalue(), content_type="image/svg+xml")

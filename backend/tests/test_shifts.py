@@ -191,7 +191,8 @@ def test_prefill_gives_the_phone_everything_for_offline_work():
     assert st["name"] == "Main Station" and st["pricing_currency"] == "USD" and st["open_shift_id"] is None
     nozzles = {n["number"]: n["last_reading"] for n in st["pumps"][0]["nozzles"]}
     assert nozzles == {1: "110.00", 2: "70.00"}  # next shift starts prefilled with the last end number
-    assert st["pumps"][0]["qr_token"] and "tanks" not in st  # attendants never get tank data (rule 11)
+    assert "tanks" not in st and "qr_token" not in st["pumps"][0]  # attendants never get tank data (rule 11); QR is off
+    assert {n["fuel_code"] for n in st["pumps"][0]["nozzles"]} == {"PETROL"}  # each nozzle carries its own fuel
     assert st["prices"][0]["price"] == "1.5000"
     mgr = client_for(a[Role.MANAGER]).get("/api/shifts/prefill/").json()["stations"][0]
     assert mgr["tanks"][0]["capacity_litres"] == "10000.000"

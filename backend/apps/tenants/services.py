@@ -27,7 +27,8 @@ def unique_slug(name):
     return slug
 
 
-def create_tenant_with_owner(*, business_name, owner_name, owner_email=None, owner_phone=None, plan="", paid_through=None, stations=(), actor=None, request=None, source="platform"):
+def create_tenant_with_owner(*, business_name, owner_name, owner_email=None, owner_phone=None, plan="", paid_through=None, stations=(), actor=None, request=None, source="platform",
+                             pump_system="shared"):
     """Create a business: tenant + subscription + owner login + stations + defaults, atomically.
 
     Must run inside a transaction with the platform context on (platform endpoints and the billing webhook do).
@@ -63,6 +64,10 @@ def create_tenant_with_owner(*, business_name, owner_name, owner_email=None, own
             TenantSettings.objects.create(tenant_id=tenant.id, summary_phone=owner_phone or "")
             audit.log(
                 "tenant_created", actor=actor, tenant_id=tenant.id, obj=tenant, request=request, via_platform=source == "platform",
-                changes={"name": tenant.name, "owner": owner.full_name, "stations": [s["name"] for s in stations], "source": source},
+                changes={"name": tenant.name, "owner": owner.full_name, "stations": [s["name"] for s in stations], "source": source, "pump_system": pump_system},
             )
+        if pump_system != "shared":
+            from .features import set_pump_system
+
+            set_pump_system(tenant=tenant, system=pump_system, actor=actor, request=request)
     return tenant, owner, temporary_password

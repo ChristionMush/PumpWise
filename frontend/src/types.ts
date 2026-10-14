@@ -7,10 +7,12 @@ export type AttendantsMode = "single" | "multiple";
 export type AssignmentMode = "shared" | "assigned";
 export interface Station { id: string; name: string; address: string; status: string; attendants_mode?: AttendantsMode; assignment_mode?: AssignmentMode; }
 export interface Features { multi_attendant_enabled: boolean; pump_assignment_enabled: boolean; }
+/** Chosen by the platform when it creates a business: shared pumps, or each attendant works their own assigned pumps. */
+export type PumpSystem = "shared" | "assigned";
 export interface TenantSummary {
   id: string; name: string; slug: string; status: TenantInfo["status"]; created_at: string;
   subscription: Subscription | null; station_count: number; owner: Owner | null; stations?: Station[];
-  features?: Features; is_demo?: boolean; trial_expires_at?: string | null;
+  features?: Features; pump_system?: PumpSystem; is_demo?: boolean; trial_expires_at?: string | null;
 }
 export interface Credentials { login: string; temporary_password: string; }
 export interface Page<T> { count: number; next: string | null; results: T[]; }

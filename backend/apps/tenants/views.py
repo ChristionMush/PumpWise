@@ -20,10 +20,11 @@ from apps.core.db import tenant_scope
 from apps.stations.models import Station
 from apps.stations.serializers import StationInputSerializer, StationSerializer
 
-from .features import set_station_policy, set_tenant_features
+from .features import set_pump_system, set_station_policy, set_tenant_features
 from .models import Subscription, Tenant
 from .serializers import (
     FeaturesSerializer,
+    PumpSystemSerializer,
     StationPolicySerializer,
     SubscriptionSerializer,
     SubscriptionUpdateSerializer,
@@ -74,6 +75,7 @@ def summarize(tenant, *, with_stations=False):
         "station_count": len(stations),
         "owner": _owner_dict(owner),
         "features": {"multi_attendant_enabled": tenant.multi_attendant_enabled, "pump_assignment_enabled": tenant.pump_assignment_enabled},
+        "pump_system": tenant.pump_system,
         "is_demo": tenant.is_demo,
         "trial_expires_at": tenant.trial_expires_at,
     }
@@ -108,7 +110,7 @@ class PlatformTenantListCreateView(APIView):
         try:
             tenant, owner, temporary_password = create_tenant_with_owner(
                 business_name=d["business_name"], owner_name=d["owner_name"], owner_email=d.get("owner_email"), owner_phone=d.get("owner_phone"),
-                plan=d["plan"], paid_through=d["paid_through"], stations=d["stations"], actor=request.user, request=request,
+                plan=d["plan"], paid_through=d["paid_through"], stations=d["stations"], actor=request.user, request=request, pump_system=d["pump_system"],
             )  # atomic: any failure (e.g. duplicate owner email) leaves nothing half-created
         except IntegrityError:
             raise ValidationError({"detail": DUPLICATE})
@@ -161,8 +163,9 @@ class PlatformStationView(APIView):
                 with tenant_scope(tenant.id):
                     station = Station.objects.create(tenant_id=tenant.id, **data.validated_data)
                     audit.log("station_created", actor=request.user, tenant_id=tenant.id, obj=station, changes={"name": station.name}, request=request)
-                if policy.validated_data:
-                    set_station_policy(station=station, actor=request.user, request=request, **policy.validated_data)
+                wanted = policy.validated_data or ({"attendants_mode": "multiple", "assignment_mode": "assigned"} if tenant.pump_system == "assigned" else {})
+                if wanted:  # a new station follows the business's pump system unless the platform chose otherwise
+                    set_station_policy(station=station, actor=request.user, request=request, **wanted)
         except IntegrityError:
             raise ValidationError({"name": "A station with this name already exists."})
         return Response(StationSerializer(station).data, status=status.HTTP_201_CREATED)
@@ -222,6 +225,19 @@ class PlatformFeaturesView(APIView):
             actor=request.user, request=request,
         )
         return Response({**summarize(_get_tenant(pk), with_stations=True), "stations_reset": [s.name for s in reset]})
+
+
+class PlatformPumpSystemView(APIView):
+    """Shared or assigned pumps for the whole business (chosen at creation; can be changed when no shift is open)."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def patch(self, request, pk):
+        tenant = _get_tenant(pk)
+        data = PumpSystemSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        set_pump_system(tenant=tenant, system=data.validated_data["pump_system"], actor=request.user, request=request)
+        return Response(summarize(_get_tenant(pk), with_stations=True))
 
 
 class PlatformStationPolicyView(APIView):

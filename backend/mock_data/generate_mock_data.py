@@ -8,8 +8,10 @@ writes mock_data/seed_demo.json. `manage.py seed_demo` loads that file through t
 Security, pricing, reconciliation and rollups all behave exactly as for a real customer), and the nightly job
 regenerates it with --end set to yesterday so the demo always looks live.
 
-What is in it: two stations in Harare. Station 1 runs one attendant per shift with shared pumps; station 2 runs two
-attendants with assigned pumps (the paid features). One shift per day per station, dips at 05:30 and 15:00, deliveries
+What is in it: two stations in Harare, each with a petrol and a diesel tank and three pumps; every pump has two
+nozzles, one on each tank. Station 1 runs one attendant per shift with shared pumps; station 2 has assigned pumps (the
+paid features): the manager gave Pumps 1 and 2 to one attendant and Pump 3 to the other, and each runs their own shift
+on their own pumps. One shift per day per station (per attendant on station 2), dips at 05:30 and 15:00, deliveries
 when a tank runs low, a price rise 10 days ago, cash in USD and ZiG (ZWG), EcoCash, card and credit. Planted on purpose:
 an unexplained fuel loss on the last day (station 1 petrol) and a cash difference of -4% the day before (station 1).
 
@@ -24,14 +26,15 @@ from decimal import Decimal
 from pathlib import Path
 
 D = Decimal
-VERSION = 1
+VERSION = 2  # 2: two nozzles per pump on separate tanks; assigned pumps run one shift per attendant
 LOSS_DAYS_BEFORE_END, CASH_DAYS_BEFORE_END = 0, 1  # inside the alert look-back window, so a fresh demo shows live alerts
 PLANTED_LOSS_LITRES = D(380)
 CASH_DIFFERENCE = D("0.04")
 WEEKDAY_FACTOR = {4: 1.25, 5: 1.4, 6: 0.8}  # Fri, Sat busy; Sun quiet
 ZWG_RATE = D("0.037")  # 1 ZWG = 0.037 USD
 CALIBRATION = [[0, 0], [400, 6000], [800, 13500], [1200, 20000]]
-PUMPS = (("Pump 1", "PETROL"), ("Pump 2", "PETROL"), ("Pump 3", "DIESEL"))
+PUMPS = ("Pump 1", "Pump 2", "Pump 3")
+NOZZLE_FUELS = ((1, "PETROL"), (2, "DIESEL"))  # every pump: nozzle 1 on the petrol tank, nozzle 2 on the diesel tank
 STAFF = [
     {"key": "manager", "role": "manager", "full_name": "Demo Manager"},
     {"key": "att1", "role": "attendant", "full_name": "Demo Attendant"},
@@ -73,15 +76,16 @@ def generate(*, end: date, days: int = 30, seed: int = 7, name: str = "Demo Fuel
         tanks = [{"key": f"{key}-{code}", "name": f"{code.title()} tank", "fuel": code, "capacity": "20000", "reserve": "1500", "calibration": CALIBRATION}
                  for code in ("PETROL", "DIESEL")]
         pumps, meters, holders = [], {}, {}
-        for pname, code in PUMPS:
+        for pname in PUMPS:
             pkey = f"{key}-{pname.split()[-1]}"
             nozzles = []
-            for number in (1, 2):
+            for number, code in NOZZLE_FUELS:
                 meters[f"{pkey}:{number}"] = D(rnd.randint(1000, 50000))
-                nozzles.append({"number": number, "meter": str(meters[f"{pkey}:{number}"])})
-            pumps.append({"key": pkey, "name": pname, "tank": f"{key}-{code}", "brand": rnd.choice(["Wayne", "Gilbarco", "Tokheim"]),
-                          "model": f"M{rnd.randint(100, 900)}", "year": rnd.randint(2008, 2020), "nozzles": nozzles})
+                nozzles.append({"number": number, "tank": f"{key}-{code}", "fuel": code, "meter": str(meters[f"{pkey}:{number}"])})
             holders[pkey] = "att2" if (assigned and pname == "Pump 3") else "att1"
+            pumps.append({"key": pkey, "name": pname, "brand": rnd.choice(["Wayne", "Gilbarco", "Tokheim"]),
+                          "model": f"M{rnd.randint(100, 900)}", "year": rnd.randint(2008, 2020), "nozzles": nozzles,
+                          **({"assigned_to": holders[pkey]} if assigned else {})})
         prices = []
         for code, (old, new) in {"PETROL": ("1.45", "1.52"), "DIESEL": ("1.50", "1.55")}.items():
             prices.append({"fuel": code, "currency": "USD", "price": old, "from": _at(first - timedelta(days=10), 0)})
@@ -98,26 +102,27 @@ def generate(*, end: date, days: int = 30, seed: int = 7, name: str = "Demo Fuel
         return D({"PETROL": ("1.45", "1.52"), "DIESEL": ("1.50", "1.55")}[fuel][1 if when >= price_rise else 0])
 
     def shift(s, start_at, end_at, when: date, factor, short_frac):
-        st, start_readings, end_readings = state[s["key"]], {}, {}
-        sold_by_tank, expected = {}, {}
+        """One day's shift(s) at a station: one shift on shared pumps, one per attendant on assigned pumps."""
+        st = state[s["key"]]
+        sold_by_tank, runs = {}, {}
         for p in st["pumps"]:
-            fuel = p["tank"].rsplit("-", 1)[1]
+            who = st["holders"][p["key"]]
+            run = runs.setdefault(who, {"start_readings": {}, "end_readings": {}, "expected": D(0)})
             for n in p["nozzles"]:
                 nk = f"{p['key']}:{n['number']}"
-                start_readings[nk] = str(st["meters"][nk])
-                base = rnd.uniform(250, 450) if fuel == "PETROL" else rnd.uniform(300, 480)
+                run["start_readings"][nk] = str(st["meters"][nk])
+                base = rnd.uniform(380, 560) if n["fuel"] == "PETROL" else rnd.uniform(210, 310)
                 lit = D(str(round(base * factor * rnd.uniform(0.85, 1.15), 2)))
                 st["meters"][nk] += lit
-                end_readings[nk] = str(st["meters"][nk])
-                sold_by_tank[p["tank"]] = sold_by_tank.get(p["tank"], D(0)) + lit
-                who = st["holders"][p["key"]]
-                expected[who] = expected.get(who, D(0)) + lit * price(fuel, when)
-        cash = {who: cash_lines(_q(amount * (D(str(round(rnd.uniform(0.999, 1.001), 4))) - short_frac))) for who, amount in sorted(expected.items())}
-        ev = {"type": "shift", "station": s["key"], "start": start_at, "end": end_at, "lead": "att1",
-              "attendants": ["att2"] if st["assigned"] else [], "start_readings": start_readings, "end_readings": end_readings, "cash": cash}
-        if st["assigned"]:
-            ev["assignments"] = dict(st["holders"])
-        return ev, sold_by_tank
+                run["end_readings"][nk] = str(st["meters"][nk])
+                sold_by_tank[n["tank"]] = sold_by_tank.get(n["tank"], D(0)) + lit
+                run["expected"] += lit * price(n["fuel"], when)
+        events = []
+        for who, run in sorted(runs.items()):
+            cash = cash_lines(_q(run["expected"] * (D(str(round(rnd.uniform(0.999, 1.001), 4))) - short_frac)))
+            events.append({"type": "shift", "station": s["key"], "start": start_at, "end": end_at, "lead": who,
+                           "start_readings": run["start_readings"], "end_readings": run["end_readings"], "cash": {who: cash}})
+        return events, sold_by_tank
 
     for i in range(days):
         day = first + timedelta(days=i)
@@ -132,8 +137,8 @@ def generate(*, end: date, days: int = 30, seed: int = 7, name: str = "Demo Fuel
                                    "note_number": f"ZP-{rnd.randint(10000, 99999)}"})
                     st["levels"][t["key"]] += 12000
             short = CASH_DIFFERENCE if (st["idx"] == 0 and day == end - timedelta(days=CASH_DAYS_BEFORE_END)) else D(0)
-            ev, sold = shift(s, _at(day, 6), _at(day, 14), day, factor, short)
-            events.append(ev)
+            evs, sold = shift(s, _at(day, 6), _at(day, 14), day, factor, short)
+            events.extend(evs)
             for t in s["tanks"]:
                 planted = st["idx"] == 0 and day == end - timedelta(days=LOSS_DAYS_BEFORE_END) and t["fuel"] == "PETROL"
                 loss = PLANTED_LOSS_LITRES if planted else D(str(round(rnd.uniform(0, 0.002) * float(sold.get(t["key"], 0)), 2)))
@@ -144,8 +149,8 @@ def generate(*, end: date, days: int = 30, seed: int = 7, name: str = "Demo Fuel
     s1, s2 = stations
     today = end + timedelta(days=1)
     live = [{"type": "dip", "tank": t["key"], "minutes_ago": 310, "litres": str(_q(state["s2"]["levels"][t["key"]], "0.1"))} for t in s2["tanks"]]
-    ev, sold = shift(s2, None, None, today, 0.5, D(0))
-    live.append({**ev, "start_minutes_ago": 300, "end_minutes_ago": 60})
+    evs, sold = shift(s2, None, None, today, 0.5, D(0))
+    live.extend({**ev, "start_minutes_ago": 300, "end_minutes_ago": 60} for ev in evs)
     for t in s2["tanks"]:
         state["s2"]["levels"][t["key"]] -= sold.get(t["key"], D(0))
         live.append({"type": "dip", "tank": t["key"], "minutes_ago": 50, "litres": str(_q(state["s2"]["levels"][t["key"]], "0.1"))})

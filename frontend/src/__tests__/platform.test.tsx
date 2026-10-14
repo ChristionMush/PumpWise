@@ -46,6 +46,7 @@ describe("platform: create business", () => {
     await user.type(screen.getAllByLabelText("Station name")[0], "Msasa Road");
     await user.click(screen.getByRole("button", { name: "+ Add another station" }));
     await user.type(screen.getAllByLabelText("Station name")[1], "Borrowdale");
+    await user.click(screen.getByLabelText(/Assigned pumps/));
   }
 
   it("sends the right payload and shows the temporary password once, with copy", async () => {
@@ -66,7 +67,7 @@ describe("platform: create business", () => {
     expect(screen.getByText(/shown only once/i)).toBeInTheDocument();
     expect(calls.find((c) => c.method === "POST" && c.path === "/api/platform/tenants/")?.body).toEqual({
       business_name: "Msasa Fuel Services", owner_name: "Rudo Chikwanha", owner_phone: "0772123456", owner_email: null,
-      plan: "", paid_through: null, stations: [{ name: "Msasa Road", address: "" }, { name: "Borrowdale", address: "" }],
+      plan: "", paid_through: null, stations: [{ name: "Msasa Road", address: "" }, { name: "Borrowdale", address: "" }], pump_system: "assigned",
     });
 
     await user.click(screen.getByRole("button", { name: "Copy" }));
@@ -101,6 +102,10 @@ describe("platform: create business", () => {
     expect(screen.getAllByLabelText("Station name")).toHaveLength(2);
     await user.click(screen.getAllByRole("button", { name: "Remove station" })[1]);
     expect(screen.getAllByLabelText("Station name")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Create business" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("shared or assigned"); // the pump system is asked up front
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    await user.click(screen.getByLabelText(/Shared pumps/));
     await user.click(screen.getByRole("button", { name: "Create business" }));
     await vi.waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     expect(calls.find((c) => c.method === "POST")?.body.stations).toEqual([]);

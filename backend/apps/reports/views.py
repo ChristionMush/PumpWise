@@ -54,15 +54,29 @@ class TankReconciliationView(APIView):
         return Response({"rows": rows})
 
 
+def _closed_shifts(request):
+    frm, to = _dates(request, default_days=14)
+    qs = Shift.objects.select_related("station").prefetch_related("attendants__user").filter(started_at__date__gte=frm, started_at__date__lte=to).exclude(status="open")
+    ids = _stations(request)
+    if ids is not None:
+        qs = qs.filter(station_id__in=ids)
+    return qs
+
+
+class AttendantReportView(APIView):
+    """Managers and owners: litres sold per pump and cash handed in, per attendant, over a period."""
+
+    permission_classes = [IsOwnerOrManager]
+
+    def get(self, request):
+        return Response({"rows": reconciliation.attendant_report(_closed_shifts(request).order_by("started_at")[:2000])})
+
+
 class CashReconciliationView(APIView):
     permission_classes = [IsOwnerOrManager]
 
     def get(self, request):
-        frm, to = _dates(request, default_days=14)
-        qs = Shift.objects.select_related("station").prefetch_related("attendants__user").filter(started_at__date__gte=frm, started_at__date__lte=to).exclude(status="open")
-        ids = _stations(request)
-        if ids is not None:
-            qs = qs.filter(station_id__in=ids)
+        qs = _closed_shifts(request)
         rows = []
         for s in qs.order_by("-started_at")[:300]:
             people = list(s.attendants.all())

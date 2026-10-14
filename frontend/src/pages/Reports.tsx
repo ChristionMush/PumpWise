@@ -8,20 +8,20 @@ const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toISOString().sl
 const CASH_LABEL: Record<string, string> = { ok: "ok", short: "cash difference", over: "cash difference", incomplete: "rate missing", open: "open" };
 
 export default function Reports() {
-  const [tab, setTab] = useState<"sales" | "tank" | "cash">("sales");
+  const [tab, setTab] = useState<"sales" | "tank" | "cash" | "people">("sales");
   const [from, setFrom] = useState(daysAgo(13));
   const [to, setTo] = useState(today());
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     setData(null); setError(null);
-    const path = { sales: "/api/reports/daily-sales/", tank: "/api/reconciliation/tanks/", cash: "/api/reconciliation/cash/" }[tab];
+    const path = { sales: "/api/reports/daily-sales/", tank: "/api/reconciliation/tanks/", cash: "/api/reconciliation/cash/", people: "/api/reports/attendants/" }[tab];
     api(`${path}?date_from=${from}&date_to=${to}`).then(setData).catch((e) => setError(errorMessage(e)));
   }, [tab, from, to]);
   return (
     <>
       <h1>Reports</h1>
-      <div className="chips">{([["sales", "Sales"], ["tank", "Fuel check"], ["cash", "Cash check"]] as const).map(([k, l]) => <button key={k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="chips">{([["sales", "Sales"], ["tank", "Fuel check"], ["cash", "Cash check"], ["people", "By attendant"]] as const).map(([k, l]) => <button key={k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
       <div className="row gap"><label>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></div>
       <ErrorNote message={error} />
       {!data && !error && <p className="muted center">Loading…</p>}
@@ -48,7 +48,22 @@ export default function Reports() {
               <li key={p.user}>{p.name}: handed in {p.submitted}{r.per_attendant_expected ? ` · expected ${p.expected} · cash difference ${p.cash_difference}` : ""}
                 {p.periods?.length ? <span className="muted"> ({p.periods.map((x: any) => x.pump).join(", ")})</span> : null}</li>
             ))}</ul>
+          ) : null}
+          {r.by_pump?.length ? (
+            <ul className="plain muted">{r.by_pump.map((x: any) => (
+              <li key={`${x.pump_id}-${x.fuel_code}-${x.attendant}`}>{x.pump} {x.fuel_code} · {x.attendant_name}: {Number(x.litres).toLocaleString()} L · {r.currency} {x.amount}</li>
+            ))}</ul>
           ) : null}</section>
+      )) : <p className="muted center">No closed shifts in this period.</p>)}
+      {data && tab === "people" && (data.rows.length ? data.rows.map((r: any) => (
+        <section key={r.user} className={`card ${r.flagged_shifts ? "bad" : ""}`}>
+          <div className="row between"><strong>{r.name}</strong><span className="muted">{r.shifts} shift{r.shifts === 1 ? "" : "s"}</span></div>
+          <p>Sold {Number(r.litres).toLocaleString()} L ({r.sales}) · handed in {r.handed_in}
+            {r.cash_difference !== null ? <> · cash difference <strong>{r.cash_difference}</strong></> : <span className="muted"> · shared pumps on {r.shared_shifts} shift{r.shared_shifts === 1 ? "" : "s"}: no cash difference per person</span>}</p>
+          {r.flagged_shifts ? <p className="muted">{r.flagged_shifts} shift{r.flagged_shifts === 1 ? "" : "s"} with a cash difference outside the allowed amount</p> : null}
+          <table className="table"><thead><tr><th>Pump</th><th>Fuel</th><th>Litres</th><th>Sales</th></tr></thead>
+            <tbody>{r.pumps.map((p: any) => <tr key={p.pump + p.fuel_code}><td>{p.pump}</td><td>{p.fuel_code}</td><td>{Number(p.litres).toLocaleString()}</td><td>{p.amount}</td></tr>)}</tbody></table>
+        </section>
       )) : <p className="muted center">No closed shifts in this period.</p>)}
     </>
   );

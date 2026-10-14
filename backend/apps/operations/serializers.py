@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.accounts.models import User
 from apps.stations.models import Nozzle, Pump, Station, Tank, validate_currency
 
 from .models import CashSubmission, Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, TankReading, Transaction
@@ -10,7 +11,7 @@ NUM = {"max_digits": 14, "decimal_places": 2, "min_value": Decimal(0)}
 
 
 class ReadingInput(serializers.Serializer):
-    nozzle = serializers.PrimaryKeyRelatedField(queryset=Nozzle.objects.select_related("pump__tank__fuel_type").all())
+    nozzle = serializers.PrimaryKeyRelatedField(queryset=Nozzle.objects.select_related("pump", "tank__fuel_type").all())
     reading = serializers.DecimalField(**NUM)
 
 
@@ -65,12 +66,21 @@ class ReassignInput(serializers.Serializer):
     at = serializers.DateTimeField(required=False)
 
 
+class PumpAssignInput(serializers.Serializer):
+    """Manager or owner: who works this pump (null takes it back). Meter numbers are needed only for a swap, when the
+    pump is in use on someone's open shift."""
+
+    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), allow_null=True)
+    readings = ReadingInput(many=True, required=False, default=list)
+    at = serializers.DateTimeField(required=False)
+
+
 class ResolveInput(serializers.Serializer):
     reading = serializers.PrimaryKeyRelatedField(queryset=PumpMeterReading.objects.all())
 
 
 class CheckpointInput(serializers.Serializer):
-    nozzle = serializers.PrimaryKeyRelatedField(queryset=Nozzle.objects.select_related("pump__tank__fuel_type").all())
+    nozzle = serializers.PrimaryKeyRelatedField(queryset=Nozzle.objects.select_related("pump", "tank__fuel_type").all())
     reading = serializers.DecimalField(**NUM)
     at = serializers.DateTimeField(required=False)
 

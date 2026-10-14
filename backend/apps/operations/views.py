@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.apps import apps as django_apps
 from django.conf import settings
+from django.db.models import Q
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.http import FileResponse, Http404, HttpResponseRedirect
@@ -15,14 +16,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role, User
-from apps.accounts.permissions import Allow, IsOwnerOrManager, IsTenantUser, TankRecords, can, require
+from apps.accounts.permissions import IsOwnerOrManager, IsTenantUser, TankRecords, can, require
 from apps.audit import services as audit
 from apps.stations.access import scope, visible_station_ids
 from apps.stations.models import FuelPrice, Pump, Station, StationAssignment, Tank
-from apps.stations.views import qr_svg_response, validate_image
+from apps.stations.views import validate_image
 
 from . import services
-from .models import Delivery, PumpMeterReading, Shift, ShiftAttendant, SyncOperation, TankReading
+from .models import Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, SyncOperation, TankReading
 from .serializers import (
     CashInputOnly,
     CashSerializer,
@@ -129,8 +130,11 @@ def _station_staff(station):
 
 
 class PrefillView(APIView):
-    """Everything the phone needs to work offline: stations, pumps/nozzles with their last meter number, prices,
-    the station's attendant policy, its open shift (to join with one tap) and the last pump assignment (to reuse)."""
+    """Everything the phone needs to work offline: stations, pumps/nozzles with their last meter number and fuel,
+    prices, the station's attendant policy and the open shift (mine, or one to join with one tap).
+
+    On assigned-pump stations an attendant receives only the pumps a manager gave them (and any still on their open
+    shift); managers and owners receive every pump with who works it."""
 
     permission_classes = [IsTenantUser]
 
@@ -139,18 +143,31 @@ class PrefillView(APIView):
         stations = scope(Station.objects.filter(status="active"), user, "id")
         out = []
         horizon = timezone.now() - timedelta(days=2)
+        manager = can(user, "manage_shift")
         for st in stations:
+            assigned = services.is_assigned_station(st)
+            qs = Pump.objects.filter(station=st).select_related("assigned_to").prefetch_related("nozzles__tank__fuel_type")
+            if assigned and not manager:
+                on_my_shift = PumpAssignment.objects.filter(user=user, ended_at__isnull=True, shift__status="open", shift__station=st).values("pump_id")
+                qs = qs.filter(Q(assigned_to=user) | Q(pk__in=on_my_shift))
             pumps = []
-            for p in Pump.objects.filter(station=st).select_related("tank__fuel_type").prefetch_related("nozzles"):
+            for p in qs:
                 nozzles = []
                 for n in p.nozzles.all():
                     last = services.last_end_reading(n)
-                    nozzles.append({"id": str(n.pk), "number": n.number, "label": str(n), "meter_max": str(n.meter_max), "last_reading": str(last.reading) if last else None})
-                pumps.append({"id": str(p.pk), "name": p.name, "qr_token": p.qr_token, "data_source": p.data_source, "fuel_type": str(p.tank.fuel_type_id), "fuel_code": p.tank.fuel_type.code, "nozzles": nozzles})
+                    nozzles.append({"id": str(n.pk), "number": n.number, "label": str(n), "meter_max": str(n.meter_max), "last_reading": str(last.reading) if last else None,
+                                    "fuel_type": str(n.tank.fuel_type_id), "fuel_code": n.tank.fuel_type.code})
+                pump = {"id": str(p.pk), "name": p.name, "data_source": p.data_source, "nozzles": nozzles}
+                if assigned:
+                    pump.update(assigned_to=str(p.assigned_to_id) if p.assigned_to_id else None, assigned_to_name=p.assigned_to.full_name if p.assigned_to_id else None)
+                    if manager:  # who is on it right now: changing a pump in use is a swap (meter numbers needed)
+                        busy = services.open_pump_assignment(p)
+                        pump["in_use_by"] = busy.user.full_name if busy else None
+                pumps.append(pump)
             prices = FuelPrice.objects.filter(station=st).exclude(effective_to__lt=horizon).order_by("effective_from")
             open_shifts = list(Shift.objects.filter(station=st, status="open").order_by("started_at"))
             mine = next((s for s in open_shifts if services.is_on_shift(user, s)), None)
-            joinable = open_shifts[0] if (open_shifts and mine is None and st.attendants_mode == Station.AttendantsMode.MULTIPLE) else None
+            joinable = open_shifts[0] if (open_shifts and mine is None and st.attendants_mode == Station.AttendantsMode.MULTIPLE and not assigned) else None
             entry = {
                 "id": str(st.pk), "name": st.name, "pricing_currency": st.pricing_currency, "pumps": pumps,
                 "attendants_mode": st.attendants_mode, "assignment_mode": st.assignment_mode,
@@ -160,13 +177,11 @@ class PrefillView(APIView):
             }
             if st.attendants_mode == Station.AttendantsMode.MULTIPLE:
                 entry["staff"] = _station_staff(st)
-            if st.assignment_mode == Station.AssignmentMode.ASSIGNED:
-                entry["previous_assignments"] = services.previous_assignments(st)
             if can(user, "view_tank_levels"):  # tank levels are for managers and owners only (rule 11)
                 tanks = []
                 for t in Tank.objects.filter(station=st).select_related("fuel_type"):
                     last = TankReading.objects.filter(tank=t).first()
-                    tanks.append({"id": str(t.pk), "name": t.name, "qr_token": t.qr_token, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres), "has_calibration": t.calibration.count() >= 2, "last_litres": str(last.litres) if last else None})
+                    tanks.append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres), "has_calibration": t.calibration.count() >= 2, "last_litres": str(last.litres) if last else None})
                 entry["tanks"] = tanks
             out.append(entry)
         return Response({"stations": out, "server_time": timezone.now()})
@@ -222,8 +237,9 @@ class ShiftDetailView(APIView):
 
 
 class ShiftStartView(APIView):
-    """Start a shift. An attendant becomes its lead; a manager names the attendants. Assigned-pump stations need every
-    pump assigned (pre-filled from the last shift). On a several-attendants station with a shift already open, this joins it."""
+    """Start a shift. An attendant becomes its lead; a manager names the attendants. On assigned pumps an attendant
+    starts their own shift on the pumps a manager gave them. On a several-attendants station with shared pumps and a
+    shift already open, this joins it."""
 
     permission_classes = [IsTenantUser]
 
@@ -305,7 +321,8 @@ class ShiftCloseView(APIView):
 
 
 class ShiftReassignView(APIView):
-    """Assigned pumps: hand a pump to someone else mid-shift at a meter snapshot (break, swap)."""
+    """Assigned pumps: a manager or owner hands a pump to someone else mid-shift at a meter snapshot (break, swap).
+    Same as POST /api/pumps/<id>/assign/; attendants are refused."""
 
     permission_classes = [IsTenantUser]
 
@@ -424,35 +441,6 @@ class DeliveryView(APIView):
         if not existed:
             audit.log("delivery_recorded", actor=request.user, obj=row, changes={"litres": str(row.litres_received), "tank": d["tank"].name}, request=request)
         return Response(DeliverySerializer(row).data, status=status.HTTP_200_OK if existed else status.HTTP_201_CREATED)
-
-
-# ---- QR codes --------------------------------------------------------------------------------------------------
-
-class QRResolveView(APIView):
-    """One scan -> the right entry screen. Pump codes for everyone on staff; tank codes for managers (rule 11)."""
-
-    permission_classes = [IsTenantUser]
-
-    def get(self, request, token):
-        pump = scope(Pump.objects.select_related("station"), request.user).filter(qr_token=token).first()
-        if pump:
-            return Response({"type": "pump", "id": str(pump.pk), "station_id": str(pump.station_id), "name": pump.name})
-        tank = scope(Tank.objects.select_related("station"), request.user).filter(qr_token=token).first()
-        if tank:
-            require(request.user, "tank_records", "Tank codes are for managers.")
-            return Response({"type": "tank", "id": str(tank.pk), "station_id": str(tank.station_id), "name": tank.name})
-        raise NotFound("Unknown code.")
-
-
-class QRImageView(APIView):
-    permission_classes = [Allow("edit_setup")]
-
-    def get(self, request, kind, pk):
-        model = {"pumps": Pump, "tanks": Tank}.get(kind)
-        obj = model.objects.filter(pk=pk).first() if model else None
-        if obj is None:
-            raise NotFound()
-        return qr_svg_response(f"{settings.FRONTEND_BASE_URL}/q/{obj.qr_token}")
 
 
 # ---- private media (photos) ------------------------------------------------------------------------------------

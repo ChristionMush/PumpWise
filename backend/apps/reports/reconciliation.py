@@ -3,8 +3,9 @@
 Tank:  opening + deliveries - dispensed - closing = unexplained loss (litres). Dispensed comes from the attendants' pump
        meters; dips and deliveries come from managers. Different people, so a mismatch is a stronger signal.
 Cash:  what was handed in (all payment types, all currencies, converted at the owner's rate) vs litres x price.
-       With several attendants, each person's hand-in is shown beside the total; on assigned-pump stations each person
-       also has their own expected cash (litres from their pumps in their own periods x the price in force).
+       With several attendants, each person's hand-in is shown beside the total; on assigned-pump stations (and
+       whenever one person ran the shift) each person also has their own expected cash. `by_pump` shows the litres
+       and sales of every pump and fuel, with who worked it, so a manager can follow each attendant's numbers.
 Wording is neutral on purpose: a "cash difference", never an accusation.
 """
 from datetime import date
@@ -59,21 +60,36 @@ def cash_summary(shift):
     limit = allowed(expected)
     closed = shift.status != "open"
 
-    # per attendant: always what each person handed in; expected per person only when pumps are assigned
+    # per attendant: always what each person handed in; expected per person when pumps are assigned, or when one
+    # person ran the whole shift (then all of it is theirs)
+    on_shift = list(shift.attendants.select_related("user"))
+    solo = on_shift[0].user_id if len(on_shift) == 1 else None
+    names = {a.user_id: a.user.full_name for a in on_shift}
     assigned = shift.assignments.exists()
     expected_by = {}
     if assigned:
         for row in shift.transactions.values("attendant_id").annotate(s=Sum("amount")).order_by():
             expected_by[row["attendant_id"]] = row["s"] or Decimal(0)
+    elif solo:
+        expected_by[solo] = expected
+    per_person = assigned or solo is not None
+    by_pump = []
+    pump_rows = (shift.transactions.values("attendant_id", "nozzle__pump_id", "nozzle__pump__name", "fuel_type__code")
+                 .annotate(litres=Sum("litres"), amount=Sum("amount")).order_by("nozzle__pump__name", "fuel_type__code"))
+    for row in pump_rows:
+        who = row["attendant_id"] or solo
+        by_pump.append({"pump_id": str(row["nozzle__pump_id"]), "pump": row["nozzle__pump__name"], "fuel_code": row["fuel_type__code"],
+                        "attendant": str(who) if who else None, "attendant_name": names.get(who, "Shared") if who else "Shared",
+                        "litres": str((row["litres"] or Decimal(0)).quantize(Q3)), "amount": str((row["amount"] or Decimal(0)).quantize(Q2))})
     periods = {}
     for a in shift.assignments.select_related("pump"):
         periods.setdefault(a.user_id, []).append({"pump": a.pump.name, "from": _iso(a.started_at), "to": _iso(a.ended_at)})
     people, person_flagged = [], False
-    for a in shift.attendants.select_related("user"):
+    for a in on_shift:
         submitted = by_person.get(a.user_id, Decimal(0))
         row = {"user": str(a.user_id), "name": a.user.full_name, "is_lead": a.is_lead, "joined_at": _iso(a.joined_at), "left_at": _iso(a.left_at),
                "handed_in": a.cash_submitted_at is not None, "submitted": str(submitted.quantize(Q2))}
-        if assigned:
+        if per_person:
             mine = expected_by.get(a.user_id, Decimal(0))
             difference = submitted - mine
             status = _status(closed, missing, difference, allowed(mine))
@@ -88,7 +104,7 @@ def cash_summary(shift):
         "currency": currency, "expected": str(expected.quantize(Q2)), "submitted_total": str(total.quantize(Q2)), "variance": str(variance.quantize(Q2)),
         "cash_difference": str(variance.quantize(Q2)), "variance_pct": str(pct), "status": status,
         "flagged": closed and (status != "ok" or person_flagged), "missing_rate": sorted(set(missing)), "by_payment_type": lines,
-        "allowed_variance": str(limit.quantize(Q2)), "per_attendant_expected": assigned, "by_attendant": people,
+        "allowed_variance": str(limit.quantize(Q2)), "per_attendant_expected": per_person, "by_attendant": people, "by_pump": by_pump,
         **({"unassigned_expected": str(unattributed.quantize(Q2))} if unattributed else {}),
     }
 
@@ -104,7 +120,7 @@ def reconcile_window(tank, opening, closing, cfg=None):
     if opening is None or closing is None or closing.reading_at <= opening.reading_at:
         return {**base, "status": "insufficient_data", "flagged": False}
     deliveries = Delivery.objects.filter(tank=tank, delivered_at__gt=opening.reading_at, delivered_at__lte=closing.reading_at).aggregate(s=Sum("litres_received"))["s"] or Decimal(0)
-    dispensed = Transaction.objects.filter(nozzle__pump__tank=tank, occurred_at__gt=opening.reading_at, occurred_at__lte=closing.reading_at).aggregate(s=Sum("litres"))["s"] or Decimal(0)
+    dispensed = Transaction.objects.filter(nozzle__tank=tank, occurred_at__gt=opening.reading_at, occurred_at__lte=closing.reading_at).aggregate(s=Sum("litres"))["s"] or Decimal(0)
     loss = opening.litres + deliveries - dispensed - closing.litres
     limit = max(cfg.loss_threshold_litres, dispensed * cfg.loss_threshold_pct / 100)
     status = "loss" if loss > limit else "gain" if loss < -limit else "ok"
@@ -144,3 +160,47 @@ def tanks_for(user_scope_ids, station=None):
     if station:
         qs = qs.filter(station_id=station)
     return list(qs)
+
+
+def attendant_report(shifts):
+    """Per attendant over a period: litres and sales per pump and fuel, what they handed in, what was expected of
+    them and the cash difference. Built from closed shifts, so an attendant's mistakes can be followed one by one.
+    Shifts where several people shared the pumps count their hand-in, but no expected cash per person."""
+    people = {}
+
+    def person(uid, name):
+        return people.setdefault(uid, {"user": uid, "name": name, "shifts": 0, "pumps": {}, "litres": Decimal(0), "sales": Decimal(0),
+                                       "handed_in": Decimal(0), "expected": Decimal(0), "shared_shifts": 0, "flagged_shifts": 0})
+
+    for shift in shifts:
+        s = cash_summary(shift)
+        for p in s["by_attendant"]:
+            row = person(p["user"], p["name"])
+            row["shifts"] += 1
+            row["handed_in"] += Decimal(p["submitted"])
+            if s["per_attendant_expected"]:
+                row["expected"] += Decimal(p["expected"])
+                row["flagged_shifts"] += 1 if p.get("flagged") else 0
+            else:
+                row["shared_shifts"] += 1
+        for line in s["by_pump"]:
+            if line["attendant"] is None:
+                continue
+            row = person(line["attendant"], line["attendant_name"])
+            key = (line["pump"], line["fuel_code"])
+            got = row["pumps"].setdefault(key, {"pump": line["pump"], "fuel_code": line["fuel_code"], "litres": Decimal(0), "amount": Decimal(0)})
+            got["litres"] += Decimal(line["litres"])
+            got["amount"] += Decimal(line["amount"])
+            row["litres"] += Decimal(line["litres"])
+            row["sales"] += Decimal(line["amount"])
+    out = []
+    for row in sorted(people.values(), key=lambda r: r["name"]):
+        own = row["shifts"] - row["shared_shifts"]
+        out.append({
+            "user": row["user"], "name": row["name"], "shifts": row["shifts"], "shared_shifts": row["shared_shifts"], "flagged_shifts": row["flagged_shifts"],
+            "litres": str(row["litres"].quantize(Q3)), "sales": str(row["sales"].quantize(Q2)), "handed_in": str(row["handed_in"].quantize(Q2)),
+            "expected": str(row["expected"].quantize(Q2)) if own else None,
+            "cash_difference": str((row["handed_in"] - row["expected"]).quantize(Q2)) if own and not row["shared_shifts"] else None,
+            "pumps": [{**p, "litres": str(p["litres"].quantize(Q3)), "amount": str(p["amount"].quantize(Q2))} for p in sorted(row["pumps"].values(), key=lambda p: (p["pump"], p["fuel_code"]))],
+        })
+    return out

@@ -24,6 +24,10 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # stations back to one attendant and shared pumps; no data is deleted.
     multi_attendant_enabled = models.BooleanField(default=False)
     pump_assignment_enabled = models.BooleanField(default=False)
+    # Chosen by the platform owner when the business is created: shared pumps (everyone on the shift uses every pump)
+    # or assigned pumps (each attendant works only the pumps a manager gave them, on their own shift). New stations
+    # follow it. "assigned" needs the pump assignment grant.
+    pump_system = models.CharField(max_length=10, choices=[("shared", "Shared pumps"), ("assigned", "Assigned pumps")], default="shared")
     # Demo and trial businesses (Phase 12): never send real SMS/WhatsApp/email, use the billing sandbox, and are the
     # only tenants the demo loader may ever wipe and reload. A trial expires (suspended), then is removed if not converted.
     is_demo = models.BooleanField(default=False)
@@ -35,6 +39,7 @@ class Tenant(UUIDModel, SoftDeleteModel):
             models.CheckConstraint(
                 condition=models.Q(pump_assignment_enabled=False) | models.Q(multi_attendant_enabled=True), name="tenant_assignment_needs_multi"
             ),
+            models.CheckConstraint(condition=models.Q(pump_system="shared") | models.Q(pump_assignment_enabled=True), name="tenant_assigned_system_needs_grant"),
         ]
 
     def __str__(self):
@@ -87,5 +92,5 @@ class TenantSettings(UUIDModel):
     refill_lead_days = models.PositiveSmallIntegerField(default=2)
     summary_channel = models.CharField(max_length=10, default="sms", choices=[("sms", "SMS"), ("whatsapp", "WhatsApp"), ("none", "Off")])
     summary_phone = models.CharField(max_length=20, blank=True, default="")
-    # Manual onboarding steps the technician ticks off (e.g. {"qr_printed": true})
+    # Manual onboarding steps the technician ticks off (see apps/onboarding/checklist.py MANUAL_FLAGS)
     onboarding_flags = models.JSONField(default=dict, blank=True)

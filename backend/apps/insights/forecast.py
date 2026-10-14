@@ -24,14 +24,14 @@ def estimated_level(tank, now=None):
     if last is None:
         return None, None
     delivered = Delivery.objects.filter(tank=tank, delivered_at__gt=last.reading_at, delivered_at__lte=now).aggregate(s=Sum("litres_received"))["s"] or Decimal(0)
-    sold = Transaction.objects.filter(nozzle__pump__tank=tank, occurred_at__gt=last.reading_at, occurred_at__lte=now).aggregate(s=Sum("litres"))["s"] or Decimal(0)
+    sold = Transaction.objects.filter(nozzle__tank=tank, occurred_at__gt=last.reading_at, occurred_at__lte=now).aggregate(s=Sum("litres"))["s"] or Decimal(0)
     return max(last.litres + delivered - sold, Decimal(0)), last.reading_at
 
 
 def usage_profile(tank, today):
     """(average litres/day, {weekday: average}) over recent history, counting quiet days but not days before the tank was in use."""
     history = tank_daily_litres(tank, days=HISTORY_DAYS, until=today - timedelta(days=1))
-    first = Transaction.objects.filter(nozzle__pump__tank=tank).order_by("occurred_at").values_list("occurred_at", flat=True).first()
+    first = Transaction.objects.filter(nozzle__tank=tank).order_by("occurred_at").values_list("occurred_at", flat=True).first()
     if first is None:
         return Decimal(0), {}
     start = timezone.localtime(first).date()

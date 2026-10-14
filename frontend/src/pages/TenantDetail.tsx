@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { Badge, CredentialsCard, ErrorNote } from "../components";
-import type { AssignmentMode, AttendantsMode, Credentials, Subscription, TenantSummary } from "../types";
+import type { AssignmentMode, AttendantsMode, Credentials, PumpSystem, Subscription, TenantSummary } from "../types";
 
 const SUB_STATUSES = ["active", "past_due", "suspended", "cancelled"] as const;
 
@@ -52,6 +52,12 @@ export default function TenantDetail() {
       setStationName("");
       setStationAddress("");
     });
+  };
+
+  // Shared or assigned pumps for the whole business (chosen when it was created).
+  const setPumpSystem = (pump_system: PumpSystem) => {
+    if (!window.confirm(`Move every station of ${tenant?.name} to ${pump_system} pumps?`)) return;
+    void run(async () => { await api(`/api/platform/tenants/${id}/pump-system/`, { method: "PATCH", body: { pump_system } }); });
   };
 
   // Paid features (platform only): several attendants per shift, and pump assignment (which needs the first).
@@ -125,6 +131,19 @@ export default function TenantDetail() {
           </form>
         )}
       </section>
+
+      {tenant.pump_system && (
+        <section className="card">
+          <h2>Pump system</h2>
+          <label>How the pumps are worked
+            <select aria-label="Pump system" value={tenant.pump_system} onChange={(e) => setPumpSystem(e.target.value as PumpSystem)}>
+              <option value="shared">Shared pumps: everyone on the shift uses every pump</option>
+              <option value="assigned">Assigned pumps: each attendant works their own pumps</option>
+            </select>
+          </label>
+          <p className="muted">New stations follow this. Not possible while a shift is open.</p>
+        </section>
+      )}
 
       {tenant.features && (
         <section className="card">

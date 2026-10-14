@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { CredentialsCard, ErrorNote } from "../components";
-import type { Credentials, TenantSummary } from "../types";
+import type { Credentials, PumpSystem, TenantSummary } from "../types";
 
 interface StationRow { name: string; address: string }
 
@@ -14,6 +14,7 @@ export default function CreateTenant() {
   const [plan, setPlan] = useState("");
   const [paidThrough, setPaidThrough] = useState("");
   const [stations, setStations] = useState<StationRow[]>([{ name: "", address: "" }]);
+  const [pumpSystem, setPumpSystem] = useState<PumpSystem | "">(""); // asked up front: no default
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<(TenantSummary & { owner_credentials: Credentials }) | null>(null);
@@ -23,6 +24,7 @@ export default function CreateTenant() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!pumpSystem) return setError("Choose how the pumps are worked: shared or assigned.");
     setBusy(true);
     setError(null);
     try {
@@ -34,6 +36,7 @@ export default function CreateTenant() {
         plan: plan.trim(),
         paid_through: paidThrough || null,
         stations: stations.filter((s) => s.name.trim()).map((s) => ({ name: s.name.trim(), address: s.address.trim() })),
+        pump_system: pumpSystem,
       };
       setCreated(await api("/api/platform/tenants/", { method: "POST", body }));
     } catch (err) {
@@ -62,6 +65,14 @@ export default function CreateTenant() {
         <label>Plan (optional)<input value={plan} onChange={(e) => setPlan(e.target.value)} /></label>
         <label>Paid through (optional)<input type="date" value={paidThrough} onChange={(e) => setPaidThrough(e.target.value)} /></label>
       </section>
+      <fieldset className="card form">
+        <legend><h2>Pump system</h2></legend>
+        <p className="muted">How does this business work its pumps?</p>
+        <label className="row gap"><input type="radio" name="pump_system" value="shared" checked={pumpSystem === "shared"} onChange={() => setPumpSystem("shared")} />
+          Shared pumps: everyone on the shift uses every pump</label>
+        <label className="row gap"><input type="radio" name="pump_system" value="assigned" checked={pumpSystem === "assigned"} onChange={() => setPumpSystem("assigned")} />
+          Assigned pumps: a manager gives each attendant their own pumps</label>
+      </fieldset>
       <section className="card form">
         <h2>Owner</h2>
         <label>Owner name<input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} required /></label>

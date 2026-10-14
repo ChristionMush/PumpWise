@@ -7,6 +7,8 @@ Paid feature grants and per-station attendant policy (PLAN.md section 4). Platfo
 * Removing a grant (for example when unpaid) falls the stations back to one attendant and shared pumps.
   No data is deleted: past shifts keep their attendants and assignments.
 * Policy cannot change while a shift is open at the station.
+* The pump system (shared or assigned pumps) is chosen when the business is created. "assigned" grants both features
+  and puts every station on several attendants with assigned pumps; new stations follow it.
 
 The database backs this up: a trigger on stations_station refuses policy changes outside the platform context
 and modes the tenant has not been granted (stations migration 0005).
@@ -45,7 +47,9 @@ def set_tenant_features(*, tenant, multi_attendant=None, pump_assignment=None, a
         if busy := _open_shift_stations(fall_back):
             raise ValidationError({"detail": "A shift is open at " + ", ".join(s.name for s in busy) + ". Change this after it closes."})
         tenant.multi_attendant_enabled, tenant.pump_assignment_enabled = multi, assign
-        tenant.save(update_fields=["multi_attendant_enabled", "pump_assignment_enabled", "updated_at"])
+        if not assign:
+            tenant.pump_system = SHARED
+        tenant.save(update_fields=["multi_attendant_enabled", "pump_assignment_enabled", "pump_system", "updated_at"])
         for s in fall_back:
             s.attendants_mode = s.attendants_mode if multi else SINGLE
             s.assignment_mode = s.assignment_mode if assign else SHARED
@@ -56,6 +60,33 @@ def set_tenant_features(*, tenant, multi_attendant=None, pump_assignment=None, a
             changes={**audit.diff(before, after), **({"stations_reset": [s.name for s in fall_back]} if fall_back else {})},
         )
     return fall_back
+
+
+def set_pump_system(*, tenant, system, actor=None, request=None):
+    """Shared or assigned pumps for the whole business: grants what "assigned" needs and moves every station to it."""
+    from apps.stations.models import Station
+
+    if system not in (SHARED, ASSIGNED):
+        raise ValidationError({"pump_system": "Choose shared or assigned pumps."})
+    with transaction.atomic(), tenant_scope(tenant.id):
+        stations = list(Station.objects.all())
+        changing = [s for s in stations if s.assignment_mode != system]
+        if busy := _open_shift_stations(changing):
+            raise ValidationError({"detail": "A shift is open at " + ", ".join(s.name for s in busy) + ". Change this after it closes."})
+        before = tenant.pump_system
+        if system == ASSIGNED:
+            tenant.multi_attendant_enabled = tenant.pump_assignment_enabled = True
+        tenant.pump_system = system
+        tenant.save(update_fields=["multi_attendant_enabled", "pump_assignment_enabled", "pump_system", "updated_at"])
+        for s in changing:
+            if system == ASSIGNED:
+                s.attendants_mode, s.assignment_mode = MULTIPLE, ASSIGNED
+            else:
+                s.assignment_mode = SHARED
+            s.save(update_fields=["attendants_mode", "assignment_mode", "updated_at"])
+        audit.log("tenant_pump_system_set", actor=actor, tenant_id=tenant.id, obj=tenant, request=request,
+                  changes={"pump_system": [before, system], **({"stations": [s.name for s in changing]} if changing else {})})
+    return changing
 
 
 def set_station_policy(*, station, attendants_mode=None, assignment_mode=None, actor=None, request=None):

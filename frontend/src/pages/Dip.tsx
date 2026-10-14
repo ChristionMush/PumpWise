@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
 import { ErrorNote } from "../components";
 import { enqueue, uuid } from "../offline";
 import { loadPrefill, type StationInfo } from "./Shift";
@@ -12,9 +11,8 @@ export default function Dip() {
   const [delivered, setDelivered] = useState({ litres: "", supplier: "", note: "" });
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [params] = useSearchParams();
 
-  useEffect(() => { void loadPrefill().then((s) => { setStations(s); setTankId(params.get("tank") ?? s[0]?.tanks?.[0]?.id ?? ""); }); }, [params]);
+  useEffect(() => { void loadPrefill().then((s) => { setStations(s); setTankId(s[0]?.tanks?.[0]?.id ?? ""); }); }, []);
   const tanks = stations.flatMap((s) => (s.tanks ?? []).map((t) => ({ ...t, station: s.name })));
   const tank = tanks.find((t) => t.id === tankId);
 

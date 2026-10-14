@@ -30,7 +30,7 @@ def daily_sales(*, station_ids=None, date_from: date, date_to: date, tank=None):
     if station_ids is not None:
         qs = qs.filter(station_id__in=station_ids)
     if tank is not None:
-        qs = qs.filter(nozzle__pump__tank=tank)
+        qs = qs.filter(nozzle__tank=tank)
     rows = (
         qs.annotate(day=TruncDate("occurred_at"))
         .values("day", "fuel_type__code", "nozzle__pump_id", "nozzle__pump__name", "currency")

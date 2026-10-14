@@ -87,6 +87,7 @@ def create_demo_tenant(*, name, password=None, owner_email=None, owner_phone=Non
     tenant.refresh_from_db()
     Subscription.objects.filter(tenant_id=tenant.id).update(plan="trial" if trial_days else "demo", paid_through=expires or today + timedelta(days=365))
     set_tenant_features(tenant=tenant, multi_attendant=True, pump_assignment=True)
+    Tenant.objects.filter(pk=tenant.pk).update(pump_system="assigned")  # stations added later get assigned pumps too
     if password:
         with tenant_scope(tenant.id):
             owner = User.objects.get(pk=owner.pk)
@@ -110,7 +111,7 @@ def load_demo(tenant, data, *, password=None):
                                                 password=password or generate_temporary_password())
             staff[s["key"]] = user
         cfg = get_settings(tenant.id)
-        cfg.summary_phone, cfg.summary_channel, cfg.onboarding_flags = data["business"]["summary_phone"], "sms", {**cfg.onboarding_flags, "qr_printed": True}
+        cfg.summary_phone, cfg.summary_channel = data["business"]["summary_phone"], "sms"
         cfg.save()
         fuel = {f.code: f for f in FuelType.objects.all()}
         for fname, code in DEFAULT_FUEL_TYPES:
@@ -134,10 +135,12 @@ def load_demo(tenant, data, *, password=None):
                     CalibrationPoint.objects.create(tenant_id=tenant.id, tank=tank, dip_mm=dip_mm, litres=litres)
                 tanks[t["key"]] = tank
             for p in s["pumps"]:
-                pump = Pump.objects.create(tenant_id=tenant.id, station=st, tank=tanks[p["tank"]], name=p["name"], brand=p["brand"], model=p["model"], year=p["year"])
+                pump = Pump.objects.create(tenant_id=tenant.id, station=st, name=p["name"], brand=p["brand"], model=p["model"], year=p["year"],
+                                           assigned_to=staff[p["assigned_to"]] if p.get("assigned_to") else None)
                 pumps[p["key"]] = pump
-                for n in p["nozzles"]:
-                    nozzles[f"{p['key']}:{n['number']}"] = Nozzle.objects.create(tenant_id=tenant.id, pump=pump, number=n["number"])
+                for n in p["nozzles"]:  # two per pump, each on its own tank
+                    nozzles[f"{p['key']}:{n['number']}"] = Nozzle.objects.create(tenant_id=tenant.id, pump=pump, tank=tanks[n["tank"]], number=n["number"],
+                                                                                 label=tanks[n["tank"]].fuel_type.name)
             for pr in s["prices"]:
                 set_price(tenant_id=tenant.id, station=st, fuel_type=fuel[pr["fuel"]], currency=pr["currency"], price=D(pr["price"]), effective_from=_local(pr["from"]), user=owner)
 
@@ -147,10 +150,9 @@ def load_demo(tenant, data, *, password=None):
             return [{"nozzle": nozzles[k], "reading": D(v)} for k, v in values.items()]
 
         def run_shift(ev, start_at, end_at):
-            lead = staff[ev["lead"]]
-            assignments = {str(pumps[p].pk): staff[who].pk for p, who in ev.get("assignments", {}).items()}
+            lead = staff[ev["lead"]]  # on assigned pumps: the attendant whose pumps these are
             shift = ops.start_shift(user=lead, station=stations[ev["station"]], started_at=start_at, readings=readings(ev["start_readings"]),
-                                    attendants=[staff[k] for k in ev.get("attendants", [])], assignments=assignments or None)
+                                    attendants=[staff[k] for k in ev.get("attendants", [])])
             if end_at is None:
                 return
             for who, cash in ev["cash"].items():  # the others hand in first; the lead's 'end' then closes the shift

@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import CalibrationPoint, ExchangeRate, FuelPrice, FuelType, Nozzle, Pump, Station, Tank, validate_currency
+from .models import NOZZLES_PER_PUMP, CalibrationPoint, ExchangeRate, FuelPrice, FuelType, Nozzle, Pump, Station, Tank, validate_currency
 
 
 def file_url(obj, field):
@@ -53,8 +53,8 @@ class TankSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Tank
-        fields = ["id", "station", "name", "fuel_type", "fuel_code", "capacity_litres", "reserve_litres", "data_source", "qr_token", "has_calibration"]
-        read_only_fields = ["id", "qr_token"]
+        fields = ["id", "station", "name", "fuel_type", "fuel_code", "capacity_litres", "reserve_litres", "data_source", "has_calibration"]
+        read_only_fields = ["id"]
 
     def get_has_calibration(self, obj):
         return obj.calibration.count() >= 2
@@ -83,25 +83,61 @@ class CalibrationInputSerializer(serializers.Serializer):
 
 
 class NozzleSerializer(serializers.ModelSerializer):
-    pump = serializers.PrimaryKeyRelatedField(queryset=Pump.objects.all())
+    """A nozzle's label, meter limit and tank can be changed; nozzles are created with their pump (always two)."""
+
+    pump = serializers.PrimaryKeyRelatedField(read_only=True)
+    tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.all())
+    tank_name = serializers.CharField(source="tank.name", read_only=True)
+    fuel_type = serializers.CharField(source="tank.fuel_type_id", read_only=True)
+    fuel_code = serializers.CharField(source="tank.fuel_type.code", read_only=True)
 
     class Meta:
         model = Nozzle
-        fields = ["id", "pump", "number", "label", "meter_max"]
-        read_only_fields = ["id"]
+        fields = ["id", "pump", "number", "label", "meter_max", "tank", "tank_name", "fuel_type", "fuel_code"]
+        read_only_fields = ["id", "number"]
+
+    def validate_tank(self, tank):
+        nozzle = self.instance
+        if nozzle is not None:
+            if tank.station_id != nozzle.pump.station_id:
+                raise serializers.ValidationError("Choose a tank at this pump's station.")
+            if Nozzle.objects.filter(pump=nozzle.pump_id, tank=tank).exclude(pk=nozzle.pk).exists():
+                raise serializers.ValidationError("The other nozzle of this pump already draws from that tank. Each nozzle needs its own tank.")
+        return tank
+
+
+class NewNozzleSerializer(serializers.Serializer):
+    tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.all())
+    label = serializers.CharField(max_length=40, required=False, allow_blank=True, default="")
+    meter_max = serializers.DecimalField(max_digits=14, decimal_places=2, required=False)
 
 
 class PumpSerializer(serializers.ModelSerializer):
+    """A pump always has two nozzles, each drawing from a different tank at the pump's station. They are sent with
+    the pump when it is created: {"nozzles": [{"tank": <id>, "label": "Petrol"}, {"tank": <id>, "label": "Diesel"}]}."""
+
     station = serializers.PrimaryKeyRelatedField(queryset=Station.objects.all())
-    tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.all())
     nozzles = NozzleSerializer(many=True, read_only=True)
+    new_nozzles = NewNozzleSerializer(many=True, write_only=True, required=False, source="nozzle_input")
+    assigned_to = serializers.PrimaryKeyRelatedField(read_only=True)
+    assigned_to_name = serializers.SerializerMethodField()
     nameplate_photo_url = serializers.SerializerMethodField()
     display_photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Pump
-        fields = ["id", "station", "tank", "name", "brand", "model", "year", "data_source", "qr_token", "nozzles", "nameplate_photo_url", "display_photo_url"]
-        read_only_fields = ["id", "qr_token"]
+        fields = ["id", "station", "name", "brand", "model", "year", "data_source", "nozzles", "new_nozzles", "assigned_to", "assigned_to_name",
+                  "nameplate_photo_url", "display_photo_url"]
+        read_only_fields = ["id"]
+
+    def to_internal_value(self, data):
+        # The app sends "nozzles" when creating a pump; it is the same list as new_nozzles.
+        if hasattr(data, "get") and "nozzles" in data and "new_nozzles" not in data:
+            data = {**data, "new_nozzles": data["nozzles"]}
+        return super().to_internal_value(data)
+
+    def get_assigned_to_name(self, obj):
+        return obj.assigned_to.full_name if obj.assigned_to_id else None
 
     def get_nameplate_photo_url(self, obj):
         return file_url(obj, "nameplate_photo")
@@ -111,13 +147,31 @@ class PumpSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         station = attrs.get("station", getattr(self.instance, "station", None))
-        tank = attrs.get("tank", getattr(self.instance, "tank", None))
-        if station and tank and tank.station_id != station.pk:
-            raise serializers.ValidationError("The tank must be at the same station as the pump.")
+        if self.instance is not None and "station" in attrs and attrs["station"].pk != self.instance.station_id:
+            raise serializers.ValidationError({"station": "A pump cannot move to another station."})
         year = attrs.get("year")
         if year and not (1950 <= year <= timezone.now().year + 1):
             raise serializers.ValidationError({"year": "Enter a valid year."})
+        if self.instance is None:
+            nozzles = attrs.get("nozzle_input") or []
+            if len(nozzles) != NOZZLES_PER_PUMP:
+                raise serializers.ValidationError({"nozzles": "A pump has two nozzles. Choose the tank each one draws from."})
+            tanks = [n["tank"] for n in nozzles]
+            if any(t.station_id != station.pk for t in tanks):
+                raise serializers.ValidationError({"nozzles": "Both tanks must be at the pump's station."})
+            if tanks[0].pk == tanks[1].pk:
+                raise serializers.ValidationError({"nozzles": "The two nozzles must draw from separate tanks."})
+        elif "nozzle_input" in attrs:
+            raise serializers.ValidationError({"nozzles": "Change a nozzle's tank on the nozzle itself."})
         return attrs
+
+    def create(self, validated_data):
+        nozzles = validated_data.pop("nozzle_input")
+        pump = super().create(validated_data)
+        for number, n in enumerate(nozzles, start=1):
+            extra = {"meter_max": n["meter_max"]} if n.get("meter_max") is not None else {}
+            Nozzle.objects.create(tenant_id=pump.tenant_id, pump=pump, tank=n["tank"], number=number, label=n.get("label") or n["tank"].fuel_type.name, **extra)
+        return pump
 
 
 class FuelPriceSerializer(serializers.ModelSerializer):

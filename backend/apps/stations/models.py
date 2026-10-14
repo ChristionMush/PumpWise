@@ -128,7 +128,6 @@ class Pump(TenantOwnedModel):
         CONTROLLER = "controller", "Forecourt controller"
 
     station = models.ForeignKey(Station, on_delete=models.PROTECT, related_name="pumps")
-    tank = models.ForeignKey(Tank, on_delete=models.PROTECT, related_name="pumps")
     name = models.CharField(max_length=80)
     # Hardware details, optional at first. Used later to research which pumps can be automated.
     brand = models.CharField(max_length=80, blank=True, default="")
@@ -137,7 +136,10 @@ class Pump(TenantOwnedModel):
     nameplate_photo = models.FileField(upload_to=upload_to, null=True, blank=True)
     display_photo = models.FileField(upload_to=upload_to, null=True, blank=True)
     data_source = models.CharField(max_length=20, choices=DataSource.choices, default=DataSource.MANUAL)
-    qr_token = models.CharField(max_length=24, default=new_qr_token, editable=False)
+    qr_token = models.CharField(max_length=24, default=new_qr_token, editable=False)  # QR labels are switched off for now
+    # Assigned-pump stations: the attendant who works this pump. Set by a manager or owner only, never by an attendant.
+    # The attendant sees only their own pumps and starts and ends their own shift on them.
+    assigned_to = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
 
     class Meta:
         ordering = ["station__name", "name"]
@@ -150,8 +152,14 @@ class Pump(TenantOwnedModel):
         return self.name
 
 
+# Every pump has two nozzles, and each draws from its own tank (for example petrol and diesel).
+NOZZLES_PER_PUMP = 2
+
+
 class Nozzle(TenantOwnedModel):
     pump = models.ForeignKey(Pump, on_delete=models.PROTECT, related_name="nozzles")
+    # The tank this nozzle draws from. The two nozzles of a pump use different tanks at the pump's station.
+    tank = models.ForeignKey(Tank, on_delete=models.PROTECT, related_name="nozzles")
     number = models.PositiveSmallIntegerField()
     label = models.CharField(max_length=40, blank=True, default="")
     # Meter rolls over to zero after this value.

@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role
 from apps.onboarding.demo import seed_demo_tenant
 
-from .helpers import at, client_for, dip, make_forecourt, platform_client, run_shift, two_tenants
+from .helpers import at, client_for, dip, make_forecourt, platform_client, run_shift, second_tank, two_tenants
 
 
 def items(client):
@@ -19,23 +19,30 @@ def test_checklist_starts_empty_and_each_step_flips_when_the_real_work_is_done()
     a, _ = two_tenants()
     owner = client_for(a[Role.OWNER])
     first = owner.get("/api/onboarding/checklist/").json()
-    assert first["done"] == 1 and first["percent"] == 10 and first["ready"] is False and first["total"] == 10  # only "attendant exists" (fixture) is done
+    assert first["done"] == 1 and first["percent"] == 11 and first["ready"] is False and first["total"] == 9  # only "attendant exists" (fixture) is done
+    assert "qr" not in items(owner)  # QR labels are switched off: pumps and tanks are labelled physically
     fc = make_forecourt(a["tenant"], price=None)
     i = items(owner)
-    assert i["stations"]["done"] and i["tanks"]["done"] and i["calibration"]["done"] and i["pumps"]["done"]
-    assert not i["prices"]["done"] and "PETROL" in i["prices"]["detail"]
-    owner.post("/api/prices/", {"station": str(fc.station.pk), "fuel_type": str(fc.fuel.pk), "price_per_litre": "1.5"}, format="json")
+    assert i["stations"]["done"] and i["tanks"]["done"] and i["calibration"]["done"]
+    assert not i["pumps"]["done"] and "Pump 1" in i["pumps"]["detail"]  # both nozzles on one tank
+    diesel = second_tank(fc)
+    owner.put(f"/api/tanks/{diesel.pk}/calibration/", {"points": [{"dip_mm": 0, "litres": 0}, {"dip_mm": 1000, "litres": 10000}]}, format="json")
+    assert owner.patch(f"/api/nozzles/{fc.nozzles[1].pk}/", {"tank": str(diesel.pk)}, format="json").status_code == 200
+    assert items(owner)["pumps"]["done"]
+    assert not items(owner)["prices"]["done"] and "PETROL" in items(owner)["prices"]["detail"]
+    for fuel in (fc.fuel.pk, diesel.fuel_type_id):
+        owner.post("/api/prices/", {"station": str(fc.station.pk), "fuel_type": str(fuel), "price_per_litre": "1.5"}, format="json")
     assert items(owner)["prices"]["done"]
     assert items(owner)["staff"]["done"]  # the fixture tenant already has an attendant
     assert not items(owner)["dips"]["done"] and "Tank 1" in items(owner)["dips"]["detail"]
     dip(a["tenant"], a[Role.OWNER], fc, 5000, timezone.now())
+    owner.post("/api/tank-readings/", {"tank": str(diesel.pk), "litres": "4000"}, format="json")
     assert items(owner)["dips"]["done"]
     run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [10, 0], started_at=at(2026, 10, 1, 6), ended_at=at(2026, 10, 1, 12))
     assert items(owner)["shift"]["done"]
     assert not items(owner)["summary"]["done"]
     owner.patch("/api/settings/", {"summary_phone": "0772000111"}, format="json")
-    assert items(owner)["summary"]["done"] and not items(owner)["qr"]["done"]
-    res = owner.post("/api/onboarding/flags/", {"key": "qr_printed", "value": True}, format="json").json()
+    res = owner.get("/api/onboarding/checklist/").json()
     assert res["ready"] is True and res["percent"] == 100
 
 
@@ -44,10 +51,9 @@ def test_calibration_and_nozzles_are_checked():
     fc = make_forecourt(a["tenant"])
     owner = client_for(a[Role.OWNER])
     owner.post("/api/tanks/", {"station": str(fc.station.pk), "name": "Tank 2", "fuel_type": str(fc.fuel.pk), "capacity_litres": "1000"}, format="json")
-    owner.post("/api/pumps/", {"station": str(fc.station.pk), "tank": str(fc.tank.pk), "name": "Pump 9"}, format="json")
     i = items(owner)
     assert not i["calibration"]["done"] and "Tank 2" in i["calibration"]["detail"]
-    assert not i["pumps"]["done"] and "Pump 9" in i["pumps"]["detail"]
+    assert not i["pumps"]["done"] and "Pump 1" in i["pumps"]["detail"] and "separate tanks" in i["pumps"]["detail"]
 
 
 def test_checklist_roles_flags_and_tenant_separation():
@@ -55,8 +61,8 @@ def test_checklist_roles_flags_and_tenant_separation():
     assert client_for(a[Role.ATTENDANT]).get("/api/onboarding/checklist/").status_code == 403
     assert client_for(a[Role.MANAGER]).get("/api/onboarding/checklist/").status_code == 200
     assert client_for(a[Role.OWNER]).post("/api/onboarding/flags/", {"key": "hack", "value": True}, format="json").status_code == 400
-    client_for(a[Role.OWNER]).post("/api/onboarding/flags/", {"key": "qr_printed"}, format="json")
-    assert items(client_for(a[Role.OWNER]))["qr"]["done"] and not items(client_for(b[Role.OWNER]))["qr"]["done"]
+    assert client_for(a[Role.OWNER]).post("/api/onboarding/flags/", {"key": "qr_printed"}, format="json").status_code == 400  # QR step removed
+    assert "qr" not in items(client_for(b[Role.OWNER]))
 
 
 def test_the_setup_technician_can_follow_any_businesss_progress_without_seeing_their_data():

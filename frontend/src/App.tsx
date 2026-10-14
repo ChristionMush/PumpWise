@@ -9,7 +9,7 @@ import Alerts from "./pages/Alerts";
 import Dashboard from "./pages/Dashboard";
 import Dip from "./pages/Dip";
 import Prices from "./pages/Prices";
-import QR from "./pages/QR";
+import Pumps from "./pages/Pumps";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Setup from "./pages/Setup";
@@ -22,11 +22,11 @@ import Login from "./pages/Login";
 import PlatformTenants from "./pages/PlatformTenants";
 import TenantDetail from "./pages/TenantDetail";
 
-// Attendants record meters and their own cash only. Dips and deliveries are for managers and owners (PLAN.md rule 11);
-// the server refuses attendants anyway, this just keeps the screen out of their way.
+// Attendants record meters and their own cash only. Dips and deliveries (PLAN.md rule 11) and assigning pumps are for
+// managers and owners; the server refuses attendants anyway, this just keeps the screens out of their way.
 const NAV: Record<string, [string, string][]> = {
-  owner: [["/", "Today"], ["/dip", "Dip & delivery"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/prices", "Prices"], ["/setup", "Setup"], ["/settings", "Settings"]],
-  manager: [["/", "Today"], ["/dip", "Dip & delivery"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/prices", "Prices"], ["/setup", "Setup"]],
+  owner: [["/", "Today"], ["/dip", "Dip & delivery"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/prices", "Prices"], ["/pumps", "Pumps"], ["/setup", "Setup"], ["/settings", "Settings"]],
+  manager: [["/", "Today"], ["/dip", "Dip & delivery"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/prices", "Prices"], ["/pumps", "Pumps"], ["/setup", "Setup"]],
   attendant: [["/", "Shift"]],
 };
 
@@ -75,7 +75,7 @@ export default function App() {
       <Route path="/dashboard" element={<Private><Dashboard /></Private>} />
       <Route path="/shift" element={<Private><Shift /></Private>} />
       <Route path="/dip" element={<Private managers><Dip /></Private>} />
-      <Route path="/q/:token" element={<Private><QR /></Private>} />
+      <Route path="/pumps" element={<Private managers><Pumps /></Private>} />
       <Route path="/reports" element={<Private><Reports /></Private>} />
       <Route path="/alerts" element={<Private><Alerts /></Private>} />
       <Route path="/prices" element={<Private><Prices /></Private>} />

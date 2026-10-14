@@ -11,7 +11,7 @@ from apps.core.db import db_context
 from apps.stations.models import Nozzle, Pump
 from apps.stations.services import price_at
 
-from .helpers import at, client_for, make_forecourt, two_tenants
+from .helpers import at, client_for, make_forecourt, second_tank, two_tenants
 
 
 def test_owner_builds_a_forecourt_through_the_api():
@@ -22,21 +22,34 @@ def test_owner_builds_a_forecourt_through_the_api():
     fuel = c.post("/api/fuel-types/", {"name": "Diesel", "code": "diesel"}, format="json").json()
     assert fuel["code"] == "DIESEL"
     tank = c.post("/api/tanks/", {"station": st.json()["id"], "name": "T1", "fuel_type": fuel["id"], "capacity_litres": "20000", "reserve_litres": "1000"}, format="json")
-    assert tank.status_code == 201 and tank.json()["data_source"] == "manual" and tank.json()["qr_token"]
-    pump = c.post("/api/pumps/", {"station": st.json()["id"], "tank": tank.json()["id"], "name": "Pump 1", "brand": "Wayne", "model": "Helix", "year": 2018}, format="json")
-    assert pump.status_code == 201
+    assert tank.status_code == 201 and tank.json()["data_source"] == "manual"
+    petrol = c.post("/api/fuel-types/", {"name": "Petrol", "code": "petrol"}, format="json").json()
+    tank2 = c.post("/api/tanks/", {"station": st.json()["id"], "name": "T2", "fuel_type": petrol["id"], "capacity_litres": "20000"}, format="json").json()
+    body = {"station": st.json()["id"], "name": "Pump 1", "brand": "Wayne", "model": "Helix", "year": 2018}
+    # a pump has two nozzles, each drawing from its own tank
+    one = c.post("/api/pumps/", {**body, "nozzles": [{"tank": tank.json()["id"]}]}, format="json")
+    assert one.status_code == 400 and "two nozzles" in str(one.json())
+    same = c.post("/api/pumps/", {**body, "nozzles": [{"tank": tank.json()["id"]}, {"tank": tank.json()["id"]}]}, format="json")
+    assert same.status_code == 400 and "separate tanks" in str(same.json())
+    pump = c.post("/api/pumps/", {**body, "nozzles": [{"tank": tank.json()["id"], "label": "Diesel"}, {"tank": tank2["id"]}]}, format="json")
+    assert pump.status_code == 201, pump.content
     assert pump.json()["data_source"] == "manual" and pump.json()["brand"] == "Wayne" and pump.json()["year"] == 2018
-    noz = c.post("/api/nozzles/", {"pump": pump.json()["id"], "number": 1, "label": "Diesel 1"}, format="json")
-    assert noz.status_code == 201
     listed = c.get(f"/api/pumps/{pump.json()['id']}/").json()
-    assert [n["number"] for n in listed["nozzles"]] == [1]
-    assert c.post("/api/nozzles/", {"pump": pump.json()["id"], "number": 1}, format="json").status_code == 400  # duplicate number
+    assert [(n["number"], n["fuel_code"], n["label"]) for n in listed["nozzles"]] == [(1, "DIESEL", "Diesel"), (2, "PETROL", "Petrol")]
+    # nozzles come with the pump: never added or removed on their own, and never both on one tank
+    nozzle1, nozzle2 = listed["nozzles"]
+    assert c.post("/api/nozzles/", {"pump": pump.json()["id"], "number": 3, "tank": tank2["id"]}, format="json").status_code == 405
+    assert c.delete(f"/api/nozzles/{nozzle1['id']}/").status_code == 405
+    assert c.patch(f"/api/nozzles/{nozzle1['id']}/", {"tank": tank2["id"]}, format="json").status_code == 400
+    assert c.patch(f"/api/nozzles/{nozzle2['id']}/", {"label": "Unleaded"}, format="json").status_code == 200
 
 
 def test_pump_hardware_fields_are_optional_and_default_to_manual():
     a, _ = two_tenants()
     fc = make_forecourt(a["tenant"])
-    res = client_for(a[Role.OWNER]).post("/api/pumps/", {"station": str(fc.station.pk), "tank": str(fc.tank.pk), "name": "Bare pump"}, format="json")
+    other = second_tank(fc)
+    nozzles = [{"tank": str(fc.tank.pk)}, {"tank": str(other.pk)}]
+    res = client_for(a[Role.OWNER]).post("/api/pumps/", {"station": str(fc.station.pk), "name": "Bare pump", "nozzles": nozzles}, format="json")
     assert res.status_code == 201
     assert res.json()["brand"] == "" and res.json()["year"] is None and res.json()["data_source"] == "manual"
 
@@ -58,10 +71,12 @@ def test_cannot_link_another_tenants_records_or_mismatched_stations():
     c = client_for(a[Role.OWNER])
     other_tank = c.post("/api/tanks/", {"station": str(fa.station.pk), "name": "X", "fuel_type": str(fb.fuel.pk), "capacity_litres": "100"}, format="json")
     assert other_tank.status_code == 400  # B's fuel type is invisible to A
-    assert c.post("/api/pumps/", {"station": str(fa.station.pk), "tank": str(fb.tank.pk), "name": "P"}, format="json").status_code == 400
+    mine = second_tank(fa)
+    theirs = {"station": str(fa.station.pk), "name": "P", "nozzles": [{"tank": str(fa.tank.pk)}, {"tank": str(fb.tank.pk)}]}
+    assert c.post("/api/pumps/", theirs, format="json").status_code == 400  # B's tank is invisible to A
     st2 = c.post("/api/stations/", {"name": "Second"}, format="json").json()
-    mismatch = c.post("/api/pumps/", {"station": st2["id"], "tank": str(fa.tank.pk), "name": "P"}, format="json")
-    assert mismatch.status_code == 400 and "same station" in str(mismatch.json())
+    mismatch = c.post("/api/pumps/", {"station": st2["id"], "name": "P", "nozzles": [{"tank": str(fa.tank.pk)}, {"tank": str(mine.pk)}]}, format="json")
+    assert mismatch.status_code == 400 and "pump's station" in str(mismatch.json())
     assert c.get(f"/api/tanks/{fb.tank.pk}/").status_code == 404
 
 
@@ -179,16 +194,12 @@ def test_pump_photos_are_private_to_their_tenant():
     assert client_for(a[Role.ATTENDANT]).post(f"/api/pumps/{fc.pump.pk}/photos/", {"display_photo": png}, format="multipart").status_code == 403
 
 
-def test_qr_codes_resolve_and_render():
-    a, b = two_tenants()
+def test_qr_codes_are_switched_off():
+    """Pumps and tanks are labelled physically for now: no QR endpoints, and no QR tokens in what the app receives."""
+    a, _ = two_tenants()
     fc = make_forecourt(a["tenant"])
-    att = client_for(a[Role.ATTENDANT])
-    r = att.get(f"/api/qr/{fc.pump.qr_token}/").json()
-    assert r["type"] == "pump" and r["id"] == str(fc.pump.pk) and r["station_id"] == str(fc.station.pk)
-    assert att.get(f"/api/qr/{fc.tank.qr_token}/").status_code == 403  # tank codes are for managers (rule 11)
-    assert client_for(a[Role.MANAGER]).get(f"/api/qr/{fc.tank.qr_token}/").json()["type"] == "tank"
-    assert att.get("/api/qr/nonsense/").status_code == 404
-    assert client_for(b[Role.ATTENDANT]).get(f"/api/qr/{fc.pump.qr_token}/").status_code == 404  # other tenant's code
-    svg = client_for(a[Role.OWNER]).get(f"/api/qr-image/pumps/{fc.pump.pk}/")
-    assert svg.status_code == 200 and svg["Content-Type"] == "image/svg+xml" and b"<svg" in svg.content
-    assert att.get(f"/api/qr-image/pumps/{fc.pump.pk}/").status_code == 403
+    owner = client_for(a[Role.OWNER])
+    assert owner.get(f"/api/qr/{fc.pump.qr_token}/").status_code == 404
+    assert owner.get(f"/api/qr-image/pumps/{fc.pump.pk}/").status_code == 404
+    assert "qr_token" not in owner.get(f"/api/pumps/{fc.pump.pk}/").json()
+    assert "qr_token" not in owner.get(f"/api/tanks/{fc.tank.pk}/").json()

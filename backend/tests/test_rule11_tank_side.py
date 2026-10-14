@@ -44,7 +44,6 @@ def tank_get_endpoints(s):
         "/api/tanks/",
         f"/api/tanks/{fc.tank.pk}/",
         f"/api/tanks/{fc.tank.pk}/calibration/",
-        f"/api/qr/{fc.tank.qr_token}/",
         f"/api/media/tankreading/{s['dip'].pk}/photo/",
         f"/api/media/delivery/{s['delivery'].pk}/photo/",
         "/api/reconciliation/tanks/",
@@ -56,7 +55,7 @@ def tank_get_endpoints(s):
     ]
 
 
-GET_INDEXES = range(15)
+GET_INDEXES = range(14)
 
 
 @pytest.mark.parametrize("i", GET_INDEXES)

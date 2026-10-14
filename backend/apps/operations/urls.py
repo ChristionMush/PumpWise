@@ -19,8 +19,6 @@ urlpatterns = [
     path("tank-readings/", views.TankDipView.as_view()),
     path("deliveries/", views.DeliveryView.as_view()),
     path("readings/<str:kind>/<str:pk>/photo/", views.ReadingPhotoView.as_view()),
-    path("qr/<str:token>/", views.QRResolveView.as_view()),
-    path("qr-image/<str:kind>/<str:pk>/", views.QRImageView.as_view()),
     path("media/<str:model>/<str:pk>/<str:field>/", views.MediaView.as_view()),
     path("sync/", views.SyncView.as_view()),
     path("sync/rejected/", views.SyncRejectedView.as_view()),

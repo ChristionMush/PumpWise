@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { allOps, enqueue, expectedVsHanded, kvGet, litres, priceAt, resetOffline, syncNow, type PriceRow } from "../offline";
 import { mockApi, renderApp, signedIn } from "./helpers";
 
@@ -84,7 +84,7 @@ describe("attendant shift screen", () => {
   const station = {
     id: "st1", name: "Main", pricing_currency: "USD", open_shift_id: null, tanks: [],
     prices: [{ fuel_type: "p", currency: "USD", price: "2.00", from: "2026-01-01T00:00:00Z", to: null }],
-    pumps: [{ id: "pu1", name: "Pump 1", qr_token: "qr1", fuel_type: "p", fuel_code: "PETROL", nozzles: [{ id: "n1", number: 1, label: "Nozzle 1", meter_max: "99999999.99", last_reading: "1000.00" }] }],
+    pumps: [{ id: "pu1", name: "Pump 1", nozzles: [{ id: "n1", number: 1, label: "Nozzle 1", meter_max: "99999999.99", last_reading: "1000.00", fuel_type: "p", fuel_code: "PETROL" }] }],
   };
 
   it("starts a shift with prefilled numbers, shows expected vs handed in live, and ends it, all saved on the phone first", async () => {
@@ -142,19 +142,6 @@ describe("attendant shift screen", () => {
     fetchMock.mockImplementation(async (u: any, i?: RequestInit) => { if (String(u).includes("prefill")) throw new TypeError("offline"); return real(u, i); });
     renderApp("/");
     expect(await screen.findByPlaceholderText("Meter number")).toHaveValue("1000.00");
-  });
-
-  it("opens the right screen from a QR scan using only the saved copy", async () => {
-    signedIn(); localStorage.setItem("fs_tutorial_done", "1");
-    const { kvSet } = await import("../offline");
-    await kvSet("prefill", [station]);
-    mockApi({
-      "GET /api/auth/me/": { body: { user: { id: "a", role: "attendant", full_name: "Tendai", must_change_password: false, tenant_id: "t" }, tenant: { id: "t", name: "Msasa", slug: "m", status: "active" } } },
-      "GET /api/shifts/prefill/": { body: { stations: [station] } },
-    });
-    renderApp("/q/qr1");
-    expect(await screen.findByRole("heading", { name: "Start shift" })).toBeInTheDocument();
-    expect(vi.isMockFunction(fetch)).toBe(true);
   });
 
   it("shows the first-run tutorial once", async () => {

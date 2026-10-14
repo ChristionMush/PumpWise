@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
 import { enqueue, expectedVsHanded, kvGet, kvSet, uuid, type PriceRow } from "../offline";
 
-export interface Nozzle { id: string; number: number; label: string; meter_max: string; last_reading: string | null }
-export interface PumpInfo { id: string; name: string; qr_token: string; fuel_type: string; fuel_code: string; nozzles: Nozzle[] }
+/** Each nozzle draws from its own tank, so the fuel (and its price) is per nozzle. */
+export interface Nozzle { id: string; number: number; label: string; meter_max: string; last_reading: string | null; fuel_type: string; fuel_code: string }
+export interface PumpInfo {
+  id: string; name: string; nozzles: Nozzle[];
+  assigned_to?: string | null; assigned_to_name?: string | null; // assigned-pump stations
+  in_use_by?: string | null; // managers only: who has it on an open shift right now
+}
 export interface StationInfo {
   id: string; name: string; pricing_currency: string; pumps: PumpInfo[]; prices: PriceRow[]; open_shift_id: string | null;
   tanks?: any[]; // only sent to managers and owners (attendants never see tank data)
   attendants_mode?: "single" | "multiple"; assignment_mode?: "shared" | "assigned";
   joinable_shift?: { id: string; started_at: string; people: string[] } | null;
   staff?: { id: string; name: string }[];
-  previous_assignments?: Record<string, string>;
 }
 /** The shift this phone is working. `member`: joined someone else's shift (hands in cash only; the lead enters meters). */
 export interface Active { id: string; station_id: string; started_at: string; starts: Record<string, number>; member?: boolean }
@@ -33,19 +36,14 @@ const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["c
 const money = (n: number) => n.toFixed(2);
 
 export default function Shift() {
-  const { user } = useAuth();
   const [stations, setStations] = useState<StationInfo[]>([]);
   const [stationId, setStationId] = useState("");
   const [active, setActive] = useState<Active | null>(null);
   const [nums, setNums] = useState<Record<string, string>>({});
   const [cash, setCash] = useState<Record<string, string>>({});
   const [other, setOther] = useState({ currency: "ZWG", amount: "", rate: "" });
-  const [assign, setAssign] = useState<Record<string, string>>({});
-  const [swap, setSwap] = useState<{ pump: string; to: string; nums: Record<string, string> }>({ pump: "", to: "", nums: {} });
-  const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
-  const [params] = useSearchParams();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -60,29 +58,18 @@ export default function Shift() {
   }, []);
 
   const station = stations.find((s) => s.id === stationId);
+  // On assigned pumps the server sends an attendant only the pumps a manager gave them.
   const nozzles = useMemo(() => station?.pumps.flatMap((p) => p.nozzles.map((n) => ({ ...n, pump: p }))) ?? [], [station]);
-  const highlight = params.get("pump");
   const assigned = station?.assignment_mode === "assigned";
-  const staff = station?.staff ?? [];
-
-  // Assigned pumps: pre-fill from the last shift so starting is one tap; anyone missing defaults to me.
-  useEffect(() => {
-    if (!station || !assigned) return;
-    setAssign(Object.fromEntries(station.pumps.map((p) => [p.id, station.previous_assignments?.[p.id] ?? user?.id ?? ""])));
-  }, [station, assigned, user?.id]);
 
   const start = async () => {
     if (!station) return;
     const readings = nozzles.filter((n) => nums[n.id] !== "" && nums[n.id] !== undefined);
     if (!readings.length) return setError("Enter the meter number for at least one pump.");
-    if (assigned && station.pumps.some((p) => !assign[p.id])) return setError("Choose who works each pump.");
+    if (assigned && readings.length < nozzles.length) return setError("Enter the meter number of both nozzles on each of your pumps.");
     const a: Active = { id: uuid(), station_id: station.id, started_at: new Date().toISOString(), starts: Object.fromEntries(readings.map((n) => [n.id, Number(nums[n.id])])) };
     await kvSet("activeShift", a); // saved on the phone first
-    const others = assigned ? [...new Set(Object.values(assign))].filter((id) => id && id !== user?.id) : [];
-    await enqueue("shift_start", {
-      shift_id: a.id, station: station.id, started_at: a.started_at, readings: readings.map((n) => ({ nozzle: n.id, reading: nums[n.id] })),
-      ...(assigned ? { assignments: assign, attendants: others } : {}),
-    });
+    await enqueue("shift_start", { shift_id: a.id, station: station.id, started_at: a.started_at, readings: readings.map((n) => ({ nozzle: n.id, reading: nums[n.id] })) });
     setActive(a); setNums({}); setError(null);
   };
 
@@ -107,13 +94,14 @@ export default function Shift() {
     setActive(null); setSaved(message); setNums({}); setCash({}); setError(null);
   };
 
+  // A pump the manager swapped away mid-shift drops out of the prefill: its end number was taken at the swap.
   const rows = active ? nozzles.filter((n) => n.id in active.starts) : [];
   const handed = [
     ...TYPES.map(([t]) => ({ amount: Number(cash[t] || 0), rate: 1 })),
     { amount: Number(other.amount || 0), rate: Number(other.rate || 0) },
   ];
   const calc = active && station && !active.member ? expectedVsHanded(
-    rows.filter((n) => nums[n.id]).map((n) => ({ fuel_type: n.pump.fuel_type, start: active.starts[n.id], end: Number(nums[n.id]), meter_max: Number(n.meter_max) })),
+    rows.filter((n) => nums[n.id]).map((n) => ({ fuel_type: n.fuel_type, start: active.starts[n.id], end: Number(nums[n.id]), meter_max: Number(n.meter_max) })),
     station.prices, station.pricing_currency, new Date(active.started_at), handed) : null;
 
   const end = async () => {
@@ -123,22 +111,11 @@ export default function Shift() {
       return finish("Your cash is saved. The lead closes the shift.");
     }
     const missing = rows.filter((n) => !nums[n.id]);
-    if (missing.length) return setError(`Enter the end number for ${missing.length} more pump${missing.length > 1 ? "s" : ""}.`);
+    if (missing.length) return setError(`Enter the end number for ${missing.length} more nozzle${missing.length > 1 ? "s" : ""}.`);
     await enqueue("shift_end", { shift_id: active.id, ended_at: new Date().toISOString(), readings: rows.map((n) => ({ nozzle: n.id, reading: nums[n.id] })), cash: cashLines() });
-    return finish(station?.attendants_mode === "multiple"
+    return finish(station?.attendants_mode === "multiple" && !assigned
       ? "Saved. The shift closes once everyone on it has handed in."
       : "It is safe on this phone and will sync when there is signal.");
-  };
-
-  // Assigned pumps: hand a pump to someone else mid-shift (break, swap). The meter numbers at the swap split the litres.
-  const swapPump = async () => {
-    if (!active || !station) return;
-    const pump = station.pumps.find((p) => p.id === swap.pump);
-    if (!pump || !swap.to) return setError("Choose the pump and who takes it over.");
-    if (pump.nozzles.some((n) => !swap.nums[n.id])) return setError("Enter the meter number of each nozzle on that pump now.");
-    await enqueue("pump_reassign", { shift_id: active.id, pump: pump.id, user: swap.to, at: new Date().toISOString(), readings: pump.nozzles.map((n) => ({ nozzle: n.id, reading: swap.nums[n.id] })) });
-    setSwap({ pump: "", to: "", nums: {} }); setError(null);
-    setNote(`${pump.name} handed to ${staff.find((s) => s.id === swap.to)?.name ?? "the next attendant"}.`);
   };
 
   const leave = async () => {
@@ -154,12 +131,15 @@ export default function Shift() {
   if (!station) return <p className="muted center">No stations yet. Ask the owner to set up a station.</p>;
 
   const title = active ? (active.member ? "Hand in my cash" : "End shift") : "Start shift";
+  const noPumps = !active && assigned && station.pumps.length === 0;
   return (
     <>
       <div className="row between"><h1>{title}</h1>{active && <Badge kind="active">open</Badge>}</div>
       {!active && stations.length > 1 && (
         <label>Station<select value={stationId} onChange={(e) => setStationId(e.target.value)}>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
       )}
+      {!active && assigned && station.pumps.length > 0 && <p className="muted">Your pumps: {station.pumps.map((p) => p.name).join(", ")}</p>}
+      {noPumps && <section className="card" role="status"><p>No pump is assigned to you at {station.name}. Ask your manager to assign your pumps.</p></section>}
       {!active && station.joinable_shift && (
         <section className="card">
           <p>A shift is already open here{station.joinable_shift.people.length ? ` (${station.joinable_shift.people.join(", ")})` : ""}.</p>
@@ -167,24 +147,11 @@ export default function Shift() {
         </section>
       )}
       {!active?.member && (active ? rows : nozzles).map((n) => (
-        <label key={n.id} className={`card pump ${highlight === n.pump.id ? "hl" : ""}`}>
-          <strong>{n.pump.name} · {n.label}</strong><span className="muted">{n.pump.fuel_code}{active ? ` · started at ${active.starts[n.id]}` : n.last_reading ? ` · last ${n.last_reading}` : ""}</span>
+        <label key={n.id} className="card pump">
+          <strong>{n.pump.name} · {n.label}</strong><span className="muted">{n.fuel_code}{active ? ` · started at ${active.starts[n.id]}` : n.last_reading ? ` · last ${n.last_reading}` : ""}</span>
           <input inputMode="decimal" value={nums[n.id] ?? ""} placeholder={active ? "Meter number now" : "Meter number"} onChange={(e) => setNums({ ...nums, [n.id]: e.target.value.replace(",", ".") })} />
         </label>
       ))}
-      {!active && assigned && (
-        <section className="card form">
-          <h2>Who works each pump</h2>
-          {station.pumps.map((p) => (
-            <label key={p.id}>{p.name}
-              <select aria-label={`Who works ${p.name}`} value={assign[p.id] ?? ""} onChange={(e) => setAssign({ ...assign, [p.id]: e.target.value })}>
-                <option value="">Choose…</option>
-                {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </label>
-          ))}
-        </section>
-      )}
       {active && (
         <section className="card form">
           <h2>{active.member ? "My cash" : "Handed in"} ({station.pricing_currency})</h2>
@@ -202,23 +169,9 @@ export default function Shift() {
           )}
         </section>
       )}
-      {active && !active.member && assigned && (
-        <section className="card form">
-          <h2>Hand a pump to someone else</h2>
-          <label>Pump<select value={swap.pump} onChange={(e) => setSwap({ ...swap, pump: e.target.value, nums: {} })}>
-            <option value="">Choose…</option>{station.pumps.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-          <label>To<select value={swap.to} onChange={(e) => setSwap({ ...swap, to: e.target.value })}>
-            <option value="">Choose…</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-          {station.pumps.find((p) => p.id === swap.pump)?.nozzles.map((n) => (
-            <label key={n.id}>{n.label}: meter number now<input inputMode="decimal" value={swap.nums[n.id] ?? ""} onChange={(e) => setSwap({ ...swap, nums: { ...swap.nums, [n.id]: e.target.value.replace(",", ".") } })} /></label>
-          ))}
-          <button className="btn" onClick={() => void swapPump()}>Swap pump</button>
-        </section>
-      )}
-      {note && <p role="status" className="ok-note">{note}</p>}
       <ErrorNote message={error} />
-      <button className="btn primary big" onClick={() => void (active ? end() : start())}>{active ? (active.member ? "Hand in my cash" : "End shift") : "Start shift"}</button>
-      {active && station.attendants_mode === "multiple" && <button className="btn" onClick={() => void leave()}>Leave the shift</button>}
+      {!noPumps && <button className="btn primary big" onClick={() => void (active ? end() : start())}>{active ? (active.member ? "Hand in my cash" : "End shift") : "Start shift"}</button>}
+      {active && station.attendants_mode === "multiple" && !assigned && <button className="btn" onClick={() => void leave()}>Leave the shift</button>}
     </>
   );
 }

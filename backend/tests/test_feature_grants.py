@@ -84,6 +84,7 @@ def test_removing_a_grant_falls_stations_back_without_deleting_anything():
     c = platform_client()
     features(c, a["tenant"], multi_attendant_enabled=True, pump_assignment_enabled=True)
     policy(c, a["tenant"], fc.station, attendants_mode="multiple", assignment_mode="assigned")
+    assert client_for(a[Role.MANAGER]).post(f"/api/pumps/{fc.pump.pk}/assign/", {"user": str(a[Role.ATTENDANT].pk)}, format="json").status_code == 200
     run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [10, 0], started_at=at(2026, 10, 1, 6), ended_at=at(2026, 10, 1, 14))
     res = features(c, a["tenant"], multi_attendant_enabled=False)  # e.g. unpaid
     assert res.status_code == 200 and res.json()["stations_reset"] == [fc.station.name]
