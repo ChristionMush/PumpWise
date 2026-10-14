@@ -3,10 +3,10 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from apps.accounts.permissions import sees_all_stations
 from apps.operations.models import Shift
 from apps.reports.reconciliation import cash_summary, tank_range
 from apps.reports.sales import daily_sales
-from apps.accounts.permissions import sees_all_stations
 from apps.stations.access import scope
 from apps.stations.models import Station, Tank
 from apps.tenants.services import get_settings
