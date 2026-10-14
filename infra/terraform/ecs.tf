@@ -41,7 +41,7 @@ resource "aws_iam_role_policy_attachment" "execution" {
 resource "aws_iam_role_policy" "execution_secrets" {
   role = aws_iam_role.execution.id
   policy = jsonencode({
-    Version = "2012-10-17"
+    Version   = "2012-10-17"
     Statement = [{ Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = [aws_secretsmanager_secret.app.arn, aws_db_instance.main.master_user_secret[0].secret_arn] }]
   })
 }
@@ -91,13 +91,13 @@ resource "aws_ecs_task_definition" "backend" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
   container_definitions = jsonencode([{
-    name         = each.key
-    image        = var.backend_image
-    command      = each.value
-    essential    = true
-    portMappings = each.key == "web" ? [{ containerPort = 8000 }] : []
-    environment  = local.app_env
-    secrets      = local.app_secrets
+    name             = each.key
+    image            = var.backend_image
+    command          = each.value
+    essential        = true
+    portMappings     = each.key == "web" ? [{ containerPort = 8000 }] : []
+    environment      = local.app_env
+    secrets          = local.app_secrets
     logConfiguration = { logDriver = "awslogs", options = { "awslogs-group" = aws_cloudwatch_log_group.app.name, "awslogs-region" = var.region, "awslogs-stream-prefix" = each.key } }
   }])
 }
@@ -112,12 +112,12 @@ resource "aws_ecs_task_definition" "migrate" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
   container_definitions = jsonencode([{
-    name      = "migrate"
-    image     = var.backend_image
-    command   = ["sh", "-c", "python manage.py bootstrap_db && python manage.py migrate --database=owner"]
-    essential = true
-    environment = concat(local.app_env, [{ name = "DB_ADMIN_USER", value = "fs_admin" }])
-    secrets     = concat(local.app_secrets, [{ name = "DB_ADMIN_PASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" }])
+    name             = "migrate"
+    image            = var.backend_image
+    command          = ["sh", "-c", "python manage.py bootstrap_db && python manage.py migrate --database=owner"]
+    essential        = true
+    environment      = concat(local.app_env, [{ name = "DB_ADMIN_USER", value = "fs_admin" }])
+    secrets          = concat(local.app_secrets, [{ name = "DB_ADMIN_PASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" }])
     logConfiguration = { logDriver = "awslogs", options = { "awslogs-group" = aws_cloudwatch_log_group.app.name, "awslogs-region" = var.region, "awslogs-stream-prefix" = "migrate" } }
   }])
 }
@@ -130,10 +130,10 @@ resource "aws_ecs_task_definition" "frontend" {
   memory                   = 512
   execution_role_arn       = aws_iam_role.execution.arn
   container_definitions = jsonencode([{
-    name         = "frontend"
-    image        = var.frontend_image
-    essential    = true
-    portMappings = [{ containerPort = 80 }]
+    name             = "frontend"
+    image            = var.frontend_image
+    essential        = true
+    portMappings     = [{ containerPort = 80 }]
     logConfiguration = { logDriver = "awslogs", options = { "awslogs-group" = aws_cloudwatch_log_group.app.name, "awslogs-region" = var.region, "awslogs-stream-prefix" = "frontend" } }
   }])
 }

@@ -91,7 +91,7 @@ resource "aws_cloudwatch_metric_alarm" "beat_down" {
 resource "aws_sns_topic_policy" "rds_events" {
   arn = aws_sns_topic.alerts.arn
   policy = jsonencode({
-    Version = "2012-10-17"
+    Version   = "2012-10-17"
     Statement = [{ Effect = "Allow", Principal = { Service = "events.rds.amazonaws.com" }, Action = "sns:Publish", Resource = aws_sns_topic.alerts.arn }]
   })
 }
