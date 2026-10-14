@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ErrorNote } from "../components";
-import { enqueue } from "../offline";
+import { enqueue, uuid } from "../offline";
 import { loadPrefill, type StationInfo } from "./Shift";
 
 export default function Dip() {
@@ -14,21 +14,22 @@ export default function Dip() {
   const [error, setError] = useState<string | null>(null);
   const [params] = useSearchParams();
 
-  useEffect(() => { void loadPrefill().then((s) => { setStations(s); setTankId(params.get("tank") ?? s[0]?.tanks[0]?.id ?? ""); }); }, [params]);
-  const tanks = stations.flatMap((s) => s.tanks.map((t) => ({ ...t, station: s.name })));
+  useEffect(() => { void loadPrefill().then((s) => { setStations(s); setTankId(params.get("tank") ?? s[0]?.tanks?.[0]?.id ?? ""); }); }, [params]);
+  const tanks = stations.flatMap((s) => (s.tanks ?? []).map((t) => ({ ...t, station: s.name })));
   const tank = tanks.find((t) => t.id === tankId);
 
   const saveDip = async (e: FormEvent) => {
     e.preventDefault();
     if (!litres && !dipMm) return setError("Enter the dip height or the litres.");
     if (dipMm && !litres && !tank?.has_calibration) return setError("This tank has no calibration chart yet. Enter litres instead.");
-    await enqueue("tank_dip", { tank: tankId, at: new Date().toISOString(), ...(litres ? { litres } : {}), ...(dipMm ? { dip_mm: dipMm } : {}) });
+    // client_id: made on the phone, so a retry can never record the same dip twice (rule 8)
+    await enqueue("tank_dip", { client_id: uuid(), tank: tankId, at: new Date().toISOString(), ...(litres ? { litres } : {}), ...(dipMm ? { dip_mm: dipMm } : {}) });
     setLitres(""); setDipMm(""); setError(null); setMsg("Dip saved.");
   };
   const saveDelivery = async (e: FormEvent) => {
     e.preventDefault();
     if (!delivered.litres) return setError("Enter the litres received.");
-    await enqueue("delivery", { tank: tankId, litres: delivered.litres, delivered_at: new Date().toISOString(), supplier: delivered.supplier, note_number: delivered.note });
+    await enqueue("delivery", { client_id: uuid(), tank: tankId, litres: delivered.litres, delivered_at: new Date().toISOString(), supplier: delivered.supplier, note_number: delivered.note });
     setDelivered({ litres: "", supplier: "", note: "" }); setError(null); setMsg("Delivery saved.");
   };
 

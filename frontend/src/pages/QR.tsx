@@ -13,7 +13,7 @@ export default function QR() {
       for (const s of st) {
         const p = s.pumps.find((x) => x.qr_token === token);
         if (p) return setTo(`/shift?pump=${p.id}`);
-        const t = s.tanks.find((x) => x.qr_token === token);
+        const t = (s.tanks ?? []).find((x) => x.qr_token === token); // tanks are only sent to managers and owners
         if (t) return setTo(`/dip?tank=${t.id}`);
       }
       setTo("/");

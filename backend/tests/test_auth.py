@@ -132,4 +132,4 @@ def test_failed_login_for_known_user_is_audited_and_unknown_is_not():
 
 
 def test_health_endpoint():
-    assert APIClient().get("/health/").json() == {"status": "ok"}
+    assert APIClient().get("/health/").json() == {"status": "ok", "version": "dev"}

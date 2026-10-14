@@ -19,7 +19,7 @@ export default function Dashboard() {
   const t = d.totals;
   return (
     <>
-      <h1>Today</h1>
+      <div className="row between"><h1>Today</h1><span className="muted" data-testid="updated">Updated {new Date(d.as_of).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
       <div className="grid">
         <div className="card stat"><span className="muted">Sold today</span><strong>{Number(t.today_litres).toLocaleString()} L</strong><span>{amt(t.today_amount_by_currency)}</span></div>
         <div className="card stat"><span className="muted">Next refill by</span><strong>{d.next_refill?.refill_by ?? "—"}</strong><span>{d.next_refill?.tank ?? "No forecast yet"}</span></div>
@@ -34,7 +34,7 @@ export default function Dashboard() {
               <div className="bar"><div className={k.low ? "fill low" : "fill"} style={{ width: `${Math.min(k.level_pct, 100)}%` }} /></div>
               <span className="muted">{k.days_to_empty != null ? `${k.days_to_empty} days left · order by ${k.refill_by}` : "Not enough sales history to forecast"}</span></div>
           ) : <p key={k.tank_id} className="muted">{k.tank}: no dip recorded yet</p>)}
-          {s.open_shifts.map((o: any) => <p key={o.id} className="muted">Shift open: {o.attendant} for {o.hours_open} h</p>)}
+          {s.open_shifts.map((o: any) => <p key={o.id} className="muted">Shift open: {(o.attendants?.length ? o.attendants : [o.attendant]).filter(Boolean).join(", ") || "no one yet"} for {o.hours_open} h</p>)}
         </section>
       ))}
     </>

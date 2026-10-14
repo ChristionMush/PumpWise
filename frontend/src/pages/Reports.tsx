@@ -4,6 +4,8 @@ import { Badge, ErrorNote } from "../components";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
+// Neutral wording (PLAN.md section 4): a "cash difference", never an accusation.
+const CASH_LABEL: Record<string, string> = { ok: "ok", short: "cash difference", over: "cash difference", incomplete: "rate missing", open: "open" };
 
 export default function Reports() {
   const [tab, setTab] = useState<"sales" | "tank" | "cash">("sales");
@@ -37,10 +39,16 @@ export default function Reports() {
           <p>Unexplained: <strong>{r.loss} L</strong>{r.loss_pct && ` (${r.loss_pct}%)`}</p></section>
       )) : <p className="muted center">No tank checks yet. They appear once a tank has been dipped on two occasions.</p>)}
       {data && tab === "cash" && (data.rows.length ? data.rows.map((r: any) => (
-        <section key={r.shift_id} className={`card ${r.flagged ? "bad" : ""}`}><div className="row between"><strong>{r.station} · {r.attendant}</strong><Badge kind={r.status === "ok" ? "active" : "suspended"}>{r.status}</Badge></div>
+        <section key={r.shift_id} className={`card ${r.flagged ? "bad" : ""}`}><div className="row between"><strong>{r.station} · {(r.attendants?.length ? r.attendants : [r.attendant]).join(", ")}</strong><Badge kind={r.status === "ok" ? "active" : "suspended"}>{CASH_LABEL[r.status] ?? r.status}</Badge></div>
           <p className="muted">{new Date(r.started_at).toLocaleDateString()}</p>
-          <p>Expected {r.expected} · handed in {r.submitted_total} {r.currency} · difference <strong>{r.variance}</strong></p>
-          <p className="muted">{r.by_payment_type.map((l: any) => `${l.payment_type.replace("_", " ")} ${l.currency} ${l.amount}`).join(" · ")}</p></section>
+          <p>Expected {r.expected} · handed in {r.submitted_total} {r.currency} · cash difference <strong>{r.variance}</strong></p>
+          <p className="muted">{r.by_payment_type.map((l: any) => `${l.payment_type.replace("_", " ")} ${l.currency} ${l.amount}`).join(" · ")}</p>
+          {r.by_attendant?.length > 1 || r.per_attendant_expected ? (
+            <ul className="plain">{r.by_attendant.map((p: any) => (
+              <li key={p.user}>{p.name}: handed in {p.submitted}{r.per_attendant_expected ? ` · expected ${p.expected} · cash difference ${p.cash_difference}` : ""}
+                {p.periods?.length ? <span className="muted"> ({p.periods.map((x: any) => x.pump).join(", ")})</span> : null}</li>
+            ))}</ul>
+          ) : null}</section>
       )) : <p className="muted center">No closed shifts in this period.</p>)}
     </>
   );

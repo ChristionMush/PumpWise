@@ -2,7 +2,7 @@
 // Every entry carries a client-made op_id, so retrying is always safe (the server ignores repeats).
 import { api, ApiError } from "./api";
 
-export type OpKind = "shift_start" | "checkpoint" | "shift_end" | "tank_dip" | "delivery";
+export type OpKind = "shift_start" | "checkpoint" | "shift_end" | "shift_join" | "shift_leave" | "shift_cash" | "shift_close" | "pump_reassign" | "tank_dip" | "delivery";
 export interface QueuedOp { op_id: string; kind: OpKind; payload: any; queued_at: number }
 export type SyncState = { pending: number; syncing: boolean; online: boolean; lastError: string | null; rejected: number };
 
@@ -74,6 +74,18 @@ export async function enqueue(kind: OpKind, payload: any): Promise<string> {
   return op.op_id;
 }
 
+/** One batch call per shift (rule 8): the leading run of queued entries that belong to the same shift, in order. */
+export function nextBatch(ops: QueuedOp[], max = 50): QueuedOp[] {
+  const key = (o: QueuedOp) => o.payload?.shift_id ?? null;
+  const first = ops.length ? key(ops[0]) : null;
+  const out: QueuedOp[] = [];
+  for (const o of ops) {
+    if (key(o) !== first || out.length >= max) break;
+    out.push(o);
+  }
+  return out;
+}
+
 /** Send the queue in order. Applied or rejected entries leave the queue (rejections are kept on the server for a manager). */
 export function syncNow(): Promise<void> {
   inflight ??= runSync().finally(() => { inflight = null; }); // callers join a sync already in progress and wait for it
@@ -82,7 +94,7 @@ export function syncNow(): Promise<void> {
 async function runSync(): Promise<void> {
   try {
     for (;;) {
-      const ops = (await allOps()).slice(0, 50);
+      const ops = nextBatch(await allOps());
       if (!ops.length) break;
       emit({ syncing: true, lastError: null });
       let res: { results: { op_id: string; status: string; error?: string }[] };

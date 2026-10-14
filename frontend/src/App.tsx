@@ -22,10 +22,12 @@ import Login from "./pages/Login";
 import PlatformTenants from "./pages/PlatformTenants";
 import TenantDetail from "./pages/TenantDetail";
 
+// Attendants record meters and their own cash only. Dips and deliveries are for managers and owners (PLAN.md rule 11);
+// the server refuses attendants anyway, this just keeps the screen out of their way.
 const NAV: Record<string, [string, string][]> = {
-  owner: [["/", "Today"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/prices", "Prices"], ["/setup", "Setup"], ["/settings", "Settings"]],
-  manager: [["/", "Today"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/prices", "Prices"], ["/setup", "Setup"]],
-  attendant: [["/", "Shift"], ["/dip", "Dip & delivery"]],
+  owner: [["/", "Today"], ["/dip", "Dip & delivery"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/prices", "Prices"], ["/setup", "Setup"], ["/settings", "Settings"]],
+  manager: [["/", "Today"], ["/dip", "Dip & delivery"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/prices", "Prices"], ["/setup", "Setup"]],
+  attendant: [["/", "Shift"]],
 };
 
 function Shell({ children }: { children: ReactNode }) {
@@ -43,6 +45,7 @@ function Shell({ children }: { children: ReactNode }) {
         <span className="who">{user?.full_name}</span>
         <button className="link" onClick={() => void logout()}>{t("common.signOut")}</button>
       </header>
+      {tenant?.is_demo && <div className="banner demo" role="status">Demo data{tenant.trial_expires_at ? ` · trial until ${tenant.trial_expires_at}` : ""}. Nothing here is a real business.</div>}
       {billing && billing.level !== "info" && <div className={`banner ${billing.level}`} role="status">{billing.message}</div>}
       {nav && <nav className="nav" aria-label="Main">{nav.map(([to, label]) => <NavLink key={to} to={to} end={to === "/"}>{label}</NavLink>)}</nav>}
       <main className="main">{children}</main>
@@ -52,13 +55,14 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-function Private({ children, platform = false }: { children: ReactNode; platform?: boolean }) {
+function Private({ children, platform = false, managers = false }: { children: ReactNode; platform?: boolean; managers?: boolean }) {
   const { user, loading } = useAuth();
   const { pathname } = useLocation();
   if (loading) return <p className="center muted">{t("common.loading")}</p>;
   if (!user) return <Navigate to="/login" replace />;
   if (user.must_change_password && pathname !== "/change-password") return <Navigate to="/change-password" replace />;
   if (platform && user.role !== "platform_admin") return <Navigate to="/" replace />;
+  if (managers && user.role !== "owner" && user.role !== "manager") return <Navigate to="/" replace />;
   return <Shell>{children}</Shell>;
 }
 
@@ -70,7 +74,7 @@ export default function App() {
       <Route path="/change-password" element={<Private><ChangePassword /></Private>} />
       <Route path="/dashboard" element={<Private><Dashboard /></Private>} />
       <Route path="/shift" element={<Private><Shift /></Private>} />
-      <Route path="/dip" element={<Private><Dip /></Private>} />
+      <Route path="/dip" element={<Private managers><Dip /></Private>} />
       <Route path="/q/:token" element={<Private><QR /></Private>} />
       <Route path="/reports" element={<Private><Reports /></Private>} />
       <Route path="/alerts" element={<Private><Alerts /></Private>} />
