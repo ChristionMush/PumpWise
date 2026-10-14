@@ -130,7 +130,7 @@ describe("attendant shift screen", () => {
     await screen.findByPlaceholderText("Meter number");
     await user.click(screen.getByRole("button", { name: "Start shift" }));
     await user.click(await screen.findByRole("button", { name: "End shift" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Enter the end number for 1 more pump");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Enter the end number for 1 more nozzle");
   });
 
   it("works from the saved copy when the phone has no signal", async () => {

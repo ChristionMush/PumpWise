@@ -19,7 +19,7 @@ from django.db import transaction as db_tx
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from apps.accounts.models import Role, User
+from apps.accounts.models import Role
 from apps.accounts.permissions import can
 from apps.audit import services as audit
 from apps.stations.models import FuelType, Nozzle, Pump, Station, Tank
