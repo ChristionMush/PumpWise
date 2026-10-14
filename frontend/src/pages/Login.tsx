@@ -30,7 +30,7 @@ export default function Login() {
   return (
     <div className="app narrow">
       <main className="main center-col">
-        <h1><img src="/icon.svg" className="login-logo" alt="PumpWise logo" width="200" height="200" /></h1>
+        <h1 aria-label="PumpWise"><img src="/icon.svg" className="login-logo" alt="PumpWise logo" width="200" height="200" /></h1>
         <form onSubmit={submit} className="card form">
           <h2>{t("login.title")}</h2>
           <label>{t("login.identifier")}

@@ -83,11 +83,19 @@ resource "aws_s3_bucket_versioning" "media" {
 }
 resource "aws_s3_bucket_server_side_encryption_configuration" "exports" {
   bucket = aws_s3_bucket.exports.id
-  rule { apply_server_side_encryption_by_default { sse_algorithm = "AES256" } }
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
 }
 resource "aws_s3_bucket_server_side_encryption_configuration" "media" {
   bucket = aws_s3_bucket.media.id
-  rule { apply_server_side_encryption_by_default { sse_algorithm = "AES256" } }
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
 }
 resource "aws_s3_bucket_public_access_block" "exports" {
   bucket                  = aws_s3_bucket.exports.id
