@@ -17,3 +17,4 @@ variable "web_cpu" { default = 512 }
 variable "web_memory" { default = 1024 }
 variable "deletion_protection" { default = false }
 variable "log_retention_days" { default = 30 }
+variable "monthly_budget_usd" { default = "50" } # cost alarm: email at 80% of actual spend and 100% of forecast

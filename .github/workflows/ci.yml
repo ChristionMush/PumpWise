@@ -35,6 +35,18 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+  deploy:
+    runs-on: ubuntu-latest
+    defaults: {run: {working-directory: deploy}}
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose config -q
+      - run: docker compose -f docker-compose.yml -f docker-compose.demo.yml config -q
+      - run: |
+          for f in Caddyfile Caddyfile.demo; do
+            docker run --rm -e DOMAIN=example.com -v "$PWD:/cfg:ro" caddy:2 caddy validate --config /cfg/$f --adapter caddyfile
+          done
   terraform:
     runs-on: ubuntu-latest
     defaults: {run: {working-directory: infra/terraform}}

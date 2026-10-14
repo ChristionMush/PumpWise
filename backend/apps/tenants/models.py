@@ -24,6 +24,10 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # stations back to one attendant and shared pumps; no data is deleted.
     multi_attendant_enabled = models.BooleanField(default=False)
     pump_assignment_enabled = models.BooleanField(default=False)
+    # Demo and trial businesses (Phase 12): never send real SMS/WhatsApp/email, use the billing sandbox, and are the
+    # only tenants the demo loader may ever wipe and reload. A trial expires (suspended), then is removed if not converted.
+    is_demo = models.BooleanField(default=False)
+    trial_expires_at = models.DateField(null=True, blank=True)
 
     class Meta:
         ordering = ["name"]

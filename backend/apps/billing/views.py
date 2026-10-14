@@ -178,7 +178,11 @@ class CheckoutView(APIView):
         q = services.quote(plan, max(Station.objects.count(), 1), sub.addons, 1)
         from django.conf import settings
 
-        provider = get_provider(settings.BILLING_DEFAULT_PROVIDER)
-        url = provider.create_checkout(tenant=request.user.tenant, amount=q["monthly_total"], currency=q["currency"], return_url=settings.FRONTEND_BASE_URL)
-        audit.log("checkout_started", actor=request.user, obj=sub, changes={"amount": q["monthly_total"]}, request=request)
-        return Response({"url": url, "amount": q["monthly_total"], "currency": q["currency"]})
+        tenant = request.user.tenant
+        if tenant.is_demo:  # demo and trial businesses only ever see the payment provider's sandbox
+            url = f"{settings.BILLING_SANDBOX_CHECKOUT_URL}?tenant={tenant.pk}&amount={q['monthly_total']}&currency={q['currency']}&return={settings.FRONTEND_BASE_URL}"
+        else:
+            provider = get_provider(settings.BILLING_DEFAULT_PROVIDER)
+            url = provider.create_checkout(tenant=tenant, amount=q["monthly_total"], currency=q["currency"], return_url=settings.FRONTEND_BASE_URL)
+        audit.log("checkout_started", actor=request.user, obj=sub, changes={"amount": q["monthly_total"], "sandbox": tenant.is_demo}, request=request)
+        return Response({"url": url, "amount": q["monthly_total"], "currency": q["currency"], "sandbox": tenant.is_demo})

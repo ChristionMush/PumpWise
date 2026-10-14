@@ -9,9 +9,15 @@ Two database roles are used against the SAME database (see docs/rls.md):
   (``manage.py migrate --database=owner``). Also subject to RLS (FORCE).
 
 All secrets come from environment variables. Nothing secret is committed.
+
+Two ways to configure the database, so the same image runs in CI/dev and on the server:
+* DB_HOST / DB_NAME / DB_APP_USER / DB_APP_PASSWORD / DB_OWNER_USER / DB_OWNER_PASSWORD (dev, CI, tests), or
+* DATABASE_URL (the limited app role) and DATABASE_ADMIN_URL (the owner role, migrations only), as the
+  single-server deploy kit in deploy/ provides them.
 """
 import os
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -29,10 +35,14 @@ def env_bool(name, default=False):
 
 DEBUG = env_bool("DJANGO_DEBUG", False)
 
-# No insecure fallback: a missing key must fail loudly outside of DEBUG.
-SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-only-insecure-key" if DEBUG else None, required=True)
+# No insecure fallback: a missing key must fail loudly outside of DEBUG. (SECRET_KEY is the deploy kit's name for it.)
+SECRET_KEY = env("DJANGO_SECRET_KEY") or env("SECRET_KEY") or ("dev-only-insecure-key" if DEBUG else None)
+if not SECRET_KEY:
+    raise RuntimeError("Environment variable DJANGO_SECRET_KEY is required")
 
-ALLOWED_HOSTS = [h for h in env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h]
+ALLOWED_HOSTS = [h for h in (env("DJANGO_ALLOWED_HOSTS") or env("ALLOWED_HOSTS") or "localhost,127.0.0.1").split(",") if h]
+CSRF_TRUSTED_ORIGINS = [o for o in env("CSRF_TRUSTED_ORIGINS", "").split(",") if o]
+APP_VERSION = env("APP_VERSION", "dev")
 
 INSTALLED_APPS = [
     "rest_framework",
@@ -82,10 +92,28 @@ def _db(user, password_var, atomic):
     }
 
 
-DATABASES = {
-    "default": _db(DB_APP_USER, "DB_APP_PASSWORD", atomic=True),
-    "owner": _db(DB_OWNER_USER, "DB_OWNER_PASSWORD", atomic=False),
-}
+def db_from_url(url, atomic):
+    """postgres://user:password@host:port/name -> a Django DATABASES entry."""
+    u = urlparse(url)
+    if u.scheme not in ("postgres", "postgresql") or not u.path.strip("/"):
+        raise RuntimeError("DATABASE_URL must look like postgres://user:password@host:5432/name")
+    return {
+        "ENGINE": "django.db.backends.postgresql", "NAME": unquote(u.path.lstrip("/")), "USER": unquote(u.username or ""),
+        "PASSWORD": unquote(u.password or ""), "HOST": u.hostname or "", "PORT": str(u.port or 5432),
+        "CONN_MAX_AGE": int(env("DB_CONN_MAX_AGE", "60")), "ATOMIC_REQUESTS": atomic,
+    }
+
+
+if env("DATABASE_URL"):
+    DATABASES = {
+        "default": db_from_url(env("DATABASE_URL"), atomic=True),
+        "owner": db_from_url(env("DATABASE_ADMIN_URL") or env("DATABASE_URL"), atomic=False),
+    }
+else:
+    DATABASES = {
+        "default": _db(DB_APP_USER, "DB_APP_PASSWORD", atomic=True),
+        "owner": _db(DB_OWNER_USER, "DB_OWNER_PASSWORD", atomic=False),
+    }
 DATABASE_ROUTERS = ["apps.core.routers.OwnerMigrationRouter"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -143,7 +171,7 @@ JWT_REFRESH_LIFETIME_SECONDS = 30 * 24 * 3600
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", True)
-    SECURE_REDIRECT_EXEMPT = [r"^health/$"]  # load-balancer health checks arrive over plain HTTP
+    SECURE_REDIRECT_EXEMPT = [r"^health/?$"]  # load-balancer health checks arrive over plain HTTP
     SECURE_HSTS_SECONDS = 31536000
 
 LOGGING = {
@@ -175,6 +203,8 @@ CELERY_BEAT_SCHEDULE = {
     "billing-daily": {"task": "apps.billing.tasks.run_billing_cycle", "schedule": crontab(hour=6, minute=0)},
     "monthly-exports": {"task": "apps.exports.tasks.run_monthly_exports", "schedule": crontab(day_of_month=1, hour=2, minute=0)},
     "purge-expired-exports": {"task": "apps.exports.tasks.purge_expired_exports", "schedule": crontab(hour=3, minute=30)},
+    "demo-nightly": {"task": "apps.onboarding.tasks.refresh_demo_tenants", "schedule": crontab(hour=2, minute=15)},
+    "trials-daily": {"task": "apps.onboarding.tasks.run_trial_lifecycle", "schedule": crontab(hour=6, minute=30)},
 }
 
 # ---- outbound messages (SMS / WhatsApp) behind one interface ----
@@ -187,6 +217,7 @@ BILLING_PROVIDERS = {"hmac": "apps.billing.providers.HmacJsonProvider"}  # add t
 BILLING_DEFAULT_PROVIDER = env("BILLING_DEFAULT_PROVIDER", "hmac")
 BILLING_WEBHOOK_SECRET = env("BILLING_WEBHOOK_SECRET", "")
 BILLING_CHECKOUT_URL = env("BILLING_CHECKOUT_URL", "https://pay.example.invalid/checkout")
+BILLING_SANDBOX_CHECKOUT_URL = env("BILLING_SANDBOX_CHECKOUT_URL", "https://sandbox.pay.example.invalid/checkout")  # demo and trial businesses
 BILLING_REMINDER_DAYS = (1, 3, 7)  # days past due
 BILLING_SUSPEND_AFTER_DAYS = 10
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "PumpWise <no-reply@localhost>")

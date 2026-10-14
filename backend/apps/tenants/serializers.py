@@ -102,3 +102,20 @@ class FeaturesSerializer(serializers.Serializer):
 class StationPolicySerializer(serializers.Serializer):
     attendants_mode = serializers.ChoiceField(choices=["single", "multiple"], required=False)
     assignment_mode = serializers.ChoiceField(choices=["shared", "assigned"], required=False)
+
+
+class TrialCreateSerializer(serializers.Serializer):
+    prospect_name = serializers.CharField(max_length=200)
+    owner_email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
+    owner_phone = serializers.CharField(max_length=20, required=False, allow_null=True, allow_blank=True)
+
+    def validate_prospect_name(self, value):
+        value = " ".join(value.split())
+        if not value:
+            raise serializers.ValidationError("Enter the prospect's business name.")
+        return value
+
+    def validate(self, attrs):
+        attrs["owner_email"] = normalize_email(attrs.get("owner_email")) or None
+        attrs["owner_phone"] = normalize_phone(attrs.get("owner_phone")) or None
+        return attrs

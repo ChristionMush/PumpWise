@@ -1,0 +1,28 @@
+# Demo server: the API and the phone app (PWA) on one domain. Used by docker-compose.demo.yml.
+# Caddy gets and renews the HTTPS certificate by itself once DNS points at this server.
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Robots-Tag "{$ROBOTS_TAG:noindex, nofollow}"
+		-Server
+	}
+
+	@api path /api/* /health /health/
+	handle @api {
+		reverse_proxy web:8000
+	}
+
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+	}
+
+	# Everything else is the PWA (it routes on the phone)
+	handle {
+		reverse_proxy frontend:80
+	}
+}

@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 APP_DIR=$(grep -E '^APP_SRC=' .env 2>/dev/null | cut -d= -f2- || true)
-APP_DIR="${APP_DIR:-../app}"
+APP_DIR="${APP_DIR:-../backend}"
 
 echo "1/5 Backup"; ./backup.sh
 echo "2/5 Pull latest code"; git -C "$APP_DIR" pull --ff-only

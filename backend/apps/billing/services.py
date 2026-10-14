@@ -148,7 +148,7 @@ def _notify(tenant, owner, text, kind):
     phone = cfg.summary_phone or (owner.phone if owner else "")
     channel = cfg.summary_channel if cfg.summary_channel != "none" else "sms"
     send_message(tenant_id=tenant.id, channel=channel, to=phone, kind=kind, body=text)
-    if owner and owner.email:
+    if owner and owner.email and not tenant.is_demo:  # demo businesses never send real email
         try:
             send_mail("PumpWise: subscription", text, settings.DEFAULT_FROM_EMAIL, [owner.email], fail_silently=True)
         except Exception:  # noqa: BLE001

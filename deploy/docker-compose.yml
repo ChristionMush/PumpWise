@@ -1,11 +1,11 @@
 # Pumpwise single-server stack (test / demo, scales by swapping parts for AWS services).
-# The app image comes from the app repo: APP_SRC (default ../app) must contain a Dockerfile.
+# The app image is built from APP_SRC (default ../backend, the Django project in this repo), which holds the Dockerfile.
 name: pumpwise
 
 x-app: &app
   image: pumpwise-app:latest
   build:
-    context: ${APP_SRC:-../app}
+    context: ${APP_SRC:-../backend}
     dockerfile: Dockerfile
   env_file: .env
   restart: unless-stopped
@@ -76,12 +76,14 @@ services:
     command: celery -A config beat -l info --schedule /tmp/celerybeat-schedule
     mem_limit: 192m
 
-  # One-off tasks: docker compose run --rm migrate   (runs migrations and collectstatic as the owner role)
+  # One-off tasks: docker compose run --rm migrate   (runs migrations as the owner role)
+  # The app only allows schema changes through its "owner" database alias (DATABASE_ADMIN_URL), so --database=owner
+  # is required: a plain `migrate` would record the migrations without applying them. No static files, so no collectstatic.
   migrate:
     <<: *app
     profiles: ["tools"]
     restart: "no"
-    command: sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput"
+    command: python manage.py migrate --database=owner --noinput
     environment:
       DATABASE_URL: ${DATABASE_ADMIN_URL}
     volumes:

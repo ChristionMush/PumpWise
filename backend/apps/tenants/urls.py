@@ -2,12 +2,14 @@ from django.urls import path
 
 from .views import (
     MySubscriptionView,
+    PlatformConvertTrialView,
     PlatformFeaturesView,
     PlatformStationPolicyView,
     PlatformStationView,
     PlatformSubscriptionView,
     PlatformTenantDetailView,
     PlatformTenantListCreateView,
+    PlatformTrialView,
     ResetOwnerPasswordView,
     TenantLogoView,
     TenantSettingsView,
@@ -17,6 +19,8 @@ urlpatterns = [
     path("platform/tenants/", PlatformTenantListCreateView.as_view(), name="platform-tenants"),
     path("platform/tenants/<str:pk>/", PlatformTenantDetailView.as_view(), name="platform-tenant"),
     path("platform/tenants/<str:pk>/stations/", PlatformStationView.as_view(), name="platform-tenant-stations"),
+    path("platform/trials/", PlatformTrialView.as_view(), name="platform-trials"),
+    path("platform/tenants/<str:pk>/convert-trial/", PlatformConvertTrialView.as_view(), name="platform-convert-trial"),
     path("platform/tenants/<str:pk>/features/", PlatformFeaturesView.as_view(), name="platform-tenant-features"),
     path("platform/tenants/<str:pk>/stations/<str:station_id>/policy/", PlatformStationPolicyView.as_view(), name="platform-station-policy"),
     path("platform/tenants/<str:pk>/subscription/", PlatformSubscriptionView.as_view(), name="platform-tenant-subscription"),

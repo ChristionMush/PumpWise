@@ -29,6 +29,7 @@ from .serializers import (
     SubscriptionUpdateSerializer,
     TenantCreateSerializer,
     TenantUpdateSerializer,
+    TrialCreateSerializer,
 )
 from .services import create_tenant_with_owner
 
@@ -73,6 +74,8 @@ def summarize(tenant, *, with_stations=False):
         "station_count": len(stations),
         "owner": _owner_dict(owner),
         "features": {"multi_attendant_enabled": tenant.multi_attendant_enabled, "pump_assignment_enabled": tenant.pump_assignment_enabled},
+        "is_demo": tenant.is_demo,
+        "trial_expires_at": tenant.trial_expires_at,
     }
     if with_stations:
         data["stations"] = StationSerializer(stations, many=True).data
@@ -163,6 +166,45 @@ class PlatformStationView(APIView):
         except IntegrityError:
             raise ValidationError({"name": "A station with this name already exists."})
         return Response(StationSerializer(station).data, status=status.HTTP_201_CREATED)
+
+
+class PlatformTrialView(APIView):
+    """'Create trial tenant': a demo business for a prospect, filled from the template, with an owner login whose random
+    password is shown once. It expires after 14 days (suspended) and is removed 30 days later unless converted."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def post(self, request):
+        from apps.onboarding.demo import create_trial_tenant
+
+        data = TrialCreateSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        d = data.validated_data
+        try:
+            tenant, owner, password = create_trial_tenant(prospect_name=d["prospect_name"], owner_email=d.get("owner_email"), owner_phone=d.get("owner_phone"),
+                                                          actor=request.user, request=request)
+        except IntegrityError:
+            raise ValidationError({"detail": DUPLICATE})
+        body = summarize(_get_tenant(tenant.pk), with_stations=True)
+        body["owner_credentials"] = {"login": owner.email or owner.phone, "temporary_password": password}
+        response = Response(body, status=status.HTTP_201_CREATED)
+        response["Cache-Control"] = "no-store"
+        return response
+
+
+class PlatformConvertTrialView(APIView):
+    """The prospect signed up: drop the demo data and keep the business (logins, settings) as a real customer."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def post(self, request, pk):
+        from apps.onboarding.demo import convert_trial
+
+        tenant = _get_tenant(pk)
+        if not tenant.is_demo:
+            raise ValidationError({"detail": "This business is not a trial."})
+        convert_trial(tenant, actor=request.user, request=request)
+        return Response(summarize(_get_tenant(pk), with_stations=True))
 
 
 class PlatformFeaturesView(APIView):

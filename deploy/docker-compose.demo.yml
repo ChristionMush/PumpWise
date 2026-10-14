@@ -1,0 +1,42 @@
+# Single-server DEMO (PLAN.md Phase 12): the API stack from docker-compose.yml plus the phone app (PWA) and a
+# one-off task that loads the demo business. Opt-in; the base stack is unchanged without it.
+#
+# Turn it on by adding this line to deploy/.env (every `docker compose` command, update.sh included, then uses both files):
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml
+# and set a private password for the demo logins:
+#   DEMO_PASSWORD=...
+#
+# First load:   docker compose run --rm seed     (creates "Demo Fuel Services" and prints its logins once)
+# After that the nightly Celery job reloads every demo business with fresh data (up to yesterday), so it always looks live.
+# Prospects get their own copy from the platform screen: "Create trial tenant".
+services:
+  frontend:
+    image: pumpwise-frontend:latest
+    build:
+      context: ${FRONTEND_SRC:-../frontend}
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    volumes:
+      - ./Caddyfile.demo:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - frontend
+
+  seed:
+    image: pumpwise-app:latest
+    env_file: .env
+    profiles: ["tools"]
+    restart: "no"
+    command: python manage.py seed_demo --password ${DEMO_PASSWORD:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

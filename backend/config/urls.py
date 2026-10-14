@@ -4,6 +4,7 @@ from apps.core.views import health
 
 urlpatterns = [
     path("health/", health),
+    path("health", health),  # the deploy kit's smoke test and container health check call it without the slash
     path("api/", include("apps.accounts.urls")),
     path("api/", include("apps.tenants.urls")),
     path("api/", include("apps.stations.urls")),

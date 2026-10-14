@@ -60,8 +60,17 @@ def get_provider() -> MessageProvider:
     return import_string(settings.MESSAGE_PROVIDER)()
 
 
+def is_demo_tenant(tenant_id):
+    from apps.tenants.models import Tenant
+
+    return bool(tenant_id) and Tenant.objects.filter(pk=tenant_id, is_demo=True).exists()
+
+
 def send_message(*, tenant_id, channel, to, kind, body):
-    """Send and record. Never raises: a failed SMS must not break the job that wanted to send it."""
+    """Send and record. Never raises: a failed SMS must not break the job that wanted to send it (rule 10).
+    Demo and trial businesses never send real messages: the message is recorded as skipped."""
+    if is_demo_tenant(tenant_id):
+        return OutboundMessage.objects.create(tenant_id=tenant_id, channel=channel or "none", to=to or "", kind=kind, body=body, status="skipped", detail="demo business: not sent")
     if channel == "none" or not to:
         return OutboundMessage.objects.create(tenant_id=tenant_id, channel=channel or "none", to=to or "", kind=kind, body=body, status="skipped", detail="no channel or phone")
     try:
