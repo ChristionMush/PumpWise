@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import NOZZLES_PER_PUMP, CalibrationPoint, ExchangeRate, FuelPrice, FuelType, Nozzle, Pump, Station, Tank, validate_currency
+from .models import CalibrationPoint, ExchangeRate, FuelPrice, FuelType, Nozzle, Pump, Station, Tank, pump_nozzle_problem, validate_currency
 
 
 def file_url(obj, field):
@@ -83,9 +83,10 @@ class CalibrationInputSerializer(serializers.Serializer):
 
 
 class NozzleSerializer(serializers.ModelSerializer):
-    """A nozzle's label, meter limit and tank can be changed; nozzles are created with their pump (always two)."""
+    """A pump's nozzle. More can be added to a pump, and one can be removed or moved to another tank, as long as the
+    pump keeps at least two nozzles on at least two separate tanks."""
 
-    pump = serializers.PrimaryKeyRelatedField(read_only=True)
+    pump = serializers.PrimaryKeyRelatedField(queryset=Pump.objects.all())
     tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.all())
     tank_name = serializers.CharField(source="tank.name", read_only=True)
     fuel_type = serializers.CharField(source="tank.fuel_type_id", read_only=True)
@@ -96,14 +97,27 @@ class NozzleSerializer(serializers.ModelSerializer):
         fields = ["id", "pump", "number", "label", "meter_max", "tank", "tank_name", "fuel_type", "fuel_code"]
         read_only_fields = ["id", "number"]
 
-    def validate_tank(self, tank):
+    def validate(self, attrs):
         nozzle = self.instance
-        if nozzle is not None:
-            if tank.station_id != nozzle.pump.station_id:
-                raise serializers.ValidationError("Choose a tank at this pump's station.")
-            if Nozzle.objects.filter(pump=nozzle.pump_id, tank=tank).exclude(pk=nozzle.pk).exists():
-                raise serializers.ValidationError("The other nozzle of this pump already draws from that tank. Each nozzle needs its own tank.")
-        return tank
+        pump = nozzle.pump if nozzle is not None else attrs["pump"]
+        if nozzle is not None and "pump" in attrs and attrs["pump"].pk != nozzle.pump_id:
+            raise serializers.ValidationError({"pump": "A nozzle cannot move to another pump."})
+        tank = attrs.get("tank")
+        if tank is not None:
+            if tank.station_id != pump.station_id:
+                raise serializers.ValidationError({"tank": "Choose a tank at this pump's station."})
+            if nozzle is not None:
+                tanks = [n.tank_id if n.pk != nozzle.pk else tank.pk for n in pump.nozzles.all()]
+                if problem := pump_nozzle_problem(tanks):
+                    raise serializers.ValidationError({"tank": problem})
+        return attrs
+
+    def create(self, validated_data):
+        last = Nozzle.objects.filter(pump=validated_data["pump"]).order_by("-number").first()
+        validated_data["number"] = (last.number if last else 0) + 1
+        if not validated_data.get("label"):
+            validated_data["label"] = validated_data["tank"].fuel_type.name
+        return super().create(validated_data)
 
 
 class NewNozzleSerializer(serializers.Serializer):
@@ -113,8 +127,9 @@ class NewNozzleSerializer(serializers.Serializer):
 
 
 class PumpSerializer(serializers.ModelSerializer):
-    """A pump always has two nozzles, each drawing from a different tank at the pump's station. They are sent with
-    the pump when it is created: {"nozzles": [{"tank": <id>, "label": "Petrol"}, {"tank": <id>, "label": "Diesel"}]}."""
+    """A pump has at least two nozzles, drawing from at least two separate tanks at the pump's station (some pumps
+    have more). They are sent with the pump when it is created:
+    {"nozzles": [{"tank": <id>, "label": "Petrol"}, {"tank": <id>, "label": "Diesel"}, ...]}."""
 
     station = serializers.PrimaryKeyRelatedField(queryset=Station.objects.all())
     nozzles = NozzleSerializer(many=True, read_only=True)
@@ -153,16 +168,13 @@ class PumpSerializer(serializers.ModelSerializer):
         if year and not (1950 <= year <= timezone.now().year + 1):
             raise serializers.ValidationError({"year": "Enter a valid year."})
         if self.instance is None:
-            nozzles = attrs.get("nozzle_input") or []
-            if len(nozzles) != NOZZLES_PER_PUMP:
-                raise serializers.ValidationError({"nozzles": "A pump has two nozzles. Choose the tank each one draws from."})
-            tanks = [n["tank"] for n in nozzles]
+            tanks = [n["tank"] for n in attrs.get("nozzle_input") or []]
             if any(t.station_id != station.pk for t in tanks):
-                raise serializers.ValidationError({"nozzles": "Both tanks must be at the pump's station."})
-            if tanks[0].pk == tanks[1].pk:
-                raise serializers.ValidationError({"nozzles": "The two nozzles must draw from separate tanks."})
+                raise serializers.ValidationError({"nozzles": "Every nozzle's tank must be at the pump's station."})
+            if problem := pump_nozzle_problem(t.pk for t in tanks):
+                raise serializers.ValidationError({"nozzles": problem + " Choose the tank each nozzle draws from."})
         elif "nozzle_input" in attrs:
-            raise serializers.ValidationError({"nozzles": "Change a nozzle's tank on the nozzle itself."})
+            raise serializers.ValidationError({"nozzles": "Add, change or remove nozzles one at a time."})
         return attrs
 
     def create(self, validated_data):

@@ -152,8 +152,20 @@ class Pump(TenantOwnedModel):
         return self.name
 
 
-# Every pump has two nozzles, and each draws from its own tank (for example petrol and diesel).
-NOZZLES_PER_PUMP = 2
+# A pump has at least two nozzles, drawing from at least two separate tanks (for example petrol and diesel).
+# Some pumps have more nozzles; extra nozzles may share a tank with another nozzle of the pump.
+MIN_NOZZLES_PER_PUMP = 2
+MIN_TANKS_PER_PUMP = 2
+
+
+def pump_nozzle_problem(tank_ids):
+    """Why a pump whose nozzles draw from these tanks breaks the rule, or None."""
+    tank_ids = list(tank_ids)
+    if len(tank_ids) < MIN_NOZZLES_PER_PUMP:
+        return "A pump has at least two nozzles."
+    if len(set(tank_ids)) < MIN_TANKS_PER_PUMP:
+        return "A pump's nozzles must draw from at least two separate tanks."
+    return None
 
 
 class Nozzle(TenantOwnedModel):

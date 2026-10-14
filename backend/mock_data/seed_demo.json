@@ -1,5 +1,5 @@
 {
- "version": 2,
+ "version": 3,
  "end": "2026-10-13",
  "days": 30,
  "seed": 7,
@@ -365,52 +365,54 @@
    "station": "s1",
    "start": "2026-09-14T06:00",
    "end": "2026-09-14T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "22222",
-    "s1-1:2": "10886",
-    "s1-2:1": "5747",
-    "s1-2:2": "36119",
-    "s1-3:1": "4801",
-    "s1-3:2": "34255"
-   },
-   "end_readings": {
-    "s1-1:1": "22652.15",
-    "s1-1:2": "11099.46",
-    "s1-2:1": "6125.15",
-    "s1-2:2": "36382.68",
-    "s1-3:1": "5305.89",
-    "s1-3:2": "34505.78"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1646.32"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "22222",
+      "s1-1:2": "10886",
+      "s1-2:1": "5747",
+      "s1-2:2": "36119",
+      "s1-3:1": "4801",
+      "s1-3:2": "34255"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4045.14"
+     "end_readings": {
+      "s1-1:1": "22652.15",
+      "s1-1:2": "11099.46",
+      "s1-2:1": "6125.15",
+      "s1-2:2": "36382.68",
+      "s1-3:1": "5305.89",
+      "s1-3:2": "34505.78"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "748.33"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "299.33"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "149.66"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1646.32"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4045.14"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "748.33"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "299.33"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "149.66"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -449,92 +451,88 @@
    "station": "s2",
    "start": "2026-09-14T06:00",
    "end": "2026-09-14T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "29419",
-    "s2-1:2": "28405",
-    "s2-2:1": "37113",
-    "s2-2:2": "28821"
-   },
-   "end_readings": {
-    "s2-1:1": "29941.73",
-    "s2-1:2": "28632.58",
-    "s2-2:1": "37559.98",
-    "s2-2:2": "29026.11"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1129.29"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "29419",
+      "s2-1:2": "28405",
+      "s2-2:1": "37113",
+      "s2-2:2": "28821"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2774.59"
+     "end_readings": {
+      "s2-1:1": "29941.73",
+      "s2-1:2": "28632.58",
+      "s2-2:1": "37559.98",
+      "s2-2:2": "29026.11"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "513.32"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1129.29"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2774.59"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "513.32"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "205.33"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "102.66"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "15630",
+      "s2-3:2": "42328"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "205.33"
+     "end_readings": {
+      "s2-3:1": "16077.09",
+      "s2-3:2": "42591.21"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "102.66"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-14T06:00",
-   "end": "2026-09-14T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "15630",
-    "s2-3:2": "42328"
-   },
-   "end_readings": {
-    "s2-3:1": "16077.09",
-    "s2-3:2": "42591.21"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "573.70"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1409.73"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "260.78"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "104.31"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "52.15"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "573.70"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1409.73"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "260.78"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "104.31"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "52.15"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -565,52 +563,54 @@
    "station": "s1",
    "start": "2026-09-15T06:00",
    "end": "2026-09-15T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "22652.15",
-    "s1-1:2": "11099.46",
-    "s1-2:1": "6125.15",
-    "s1-2:2": "36382.68",
-    "s1-3:1": "5305.89",
-    "s1-3:2": "34505.78"
-   },
-   "end_readings": {
-    "s1-1:1": "23135.22",
-    "s1-1:2": "11388.32",
-    "s1-2:1": "6627.16",
-    "s1-2:2": "36627.45",
-    "s1-3:1": "5761.61",
-    "s1-3:2": "34710.00"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1758.47"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "22652.15",
+      "s1-1:2": "11099.46",
+      "s1-2:1": "6125.15",
+      "s1-2:2": "36382.68",
+      "s1-3:1": "5305.89",
+      "s1-3:2": "34505.78"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4320.54"
+     "end_readings": {
+      "s1-1:1": "23135.22",
+      "s1-1:2": "11388.32",
+      "s1-2:1": "6627.16",
+      "s1-2:2": "36627.45",
+      "s1-3:1": "5761.61",
+      "s1-3:2": "34710.00"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "799.30"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "319.72"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "159.86"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1758.47"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4320.54"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "799.30"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "319.72"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "159.86"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -641,92 +641,88 @@
    "station": "s2",
    "start": "2026-09-15T06:00",
    "end": "2026-09-15T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "29941.73",
-    "s2-1:2": "28632.58",
-    "s2-2:1": "37559.98",
-    "s2-2:2": "29026.11"
-   },
-   "end_readings": {
-    "s2-1:1": "30436.16",
-    "s2-1:2": "28946.95",
-    "s2-2:1": "38060.93",
-    "s2-2:2": "29279.83"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1262.24"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "29941.73",
+      "s2-1:2": "28632.58",
+      "s2-2:1": "37559.98",
+      "s2-2:2": "29026.11"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3101.35"
+     "end_readings": {
+      "s2-1:1": "30436.16",
+      "s2-1:2": "28946.95",
+      "s2-2:1": "38060.93",
+      "s2-2:2": "29279.83"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "573.74"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1262.24"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3101.35"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "573.74"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "229.50"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "114.75"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "16077.09",
+      "s2-3:2": "42591.21"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "229.50"
+     "end_readings": {
+      "s2-3:1": "16506.32",
+      "s2-3:2": "42847.03"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "114.75"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-15T06:00",
-   "end": "2026-09-15T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "16077.09",
-    "s2-3:2": "42591.21"
-   },
-   "end_readings": {
-    "s2-3:1": "16506.32",
-    "s2-3:2": "42847.03"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "553.81"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1360.81"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "251.73"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "100.69"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "50.34"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "553.81"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1360.81"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "251.73"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "100.69"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "50.34"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -757,52 +753,54 @@
    "station": "s1",
    "start": "2026-09-16T06:00",
    "end": "2026-09-16T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "23135.22",
-    "s1-1:2": "11388.32",
-    "s1-2:1": "6627.16",
-    "s1-2:2": "36627.45",
-    "s1-3:1": "5761.61",
-    "s1-3:2": "34710.00"
-   },
-   "end_readings": {
-    "s1-1:1": "23531.43",
-    "s1-1:2": "11669.75",
-    "s1-2:1": "7215.29",
-    "s1-2:2": "36855.46",
-    "s1-3:1": "6115.23",
-    "s1-3:2": "34945.47"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1682.75"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "23135.22",
+      "s1-1:2": "11388.32",
+      "s1-2:1": "6627.16",
+      "s1-2:2": "36627.45",
+      "s1-3:1": "5761.61",
+      "s1-3:2": "34710.00"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4134.59"
+     "end_readings": {
+      "s1-1:1": "23531.43",
+      "s1-1:2": "11669.75",
+      "s1-2:1": "7215.29",
+      "s1-2:2": "36855.46",
+      "s1-3:1": "6115.23",
+      "s1-3:2": "34945.47"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "764.89"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "305.96"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "152.97"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1682.75"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4134.59"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "764.89"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "305.96"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "152.97"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -833,92 +831,88 @@
    "station": "s2",
    "start": "2026-09-16T06:00",
    "end": "2026-09-16T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "30436.16",
-    "s2-1:2": "28946.95",
-    "s2-2:1": "38060.93",
-    "s2-2:2": "29279.83"
-   },
-   "end_readings": {
-    "s2-1:1": "30899.27",
-    "s2-1:2": "29193.48",
-    "s2-2:1": "38637.59",
-    "s2-2:2": "29560.11"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1263.58"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "30436.16",
+      "s2-1:2": "28946.95",
+      "s2-2:1": "38060.93",
+      "s2-2:2": "29279.83"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3104.59"
+     "end_readings": {
+      "s2-1:1": "30899.27",
+      "s2-1:2": "29193.48",
+      "s2-2:1": "38637.59",
+      "s2-2:2": "29560.11"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "574.36"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1263.58"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3104.59"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "574.36"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "229.74"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "114.87"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "16506.32",
+      "s2-3:2": "42847.03"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "229.74"
+     "end_readings": {
+      "s2-3:1": "17115.86",
+      "s2-3:2": "43130.03"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "114.87"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-16T06:00",
-   "end": "2026-09-16T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "16506.32",
-    "s2-3:2": "42847.03"
-   },
-   "end_readings": {
-    "s2-3:1": "17115.86",
-    "s2-3:2": "43130.03"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "719.44"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1767.57"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "327.02"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "130.81"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "65.40"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "719.44"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1767.57"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "327.02"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "130.81"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "65.40"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -949,52 +943,54 @@
    "station": "s1",
    "start": "2026-09-17T06:00",
    "end": "2026-09-17T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "23531.43",
-    "s1-1:2": "11669.75",
-    "s1-2:1": "7215.29",
-    "s1-2:2": "36855.46",
-    "s1-3:1": "6115.23",
-    "s1-3:2": "34945.47"
-   },
-   "end_readings": {
-    "s1-1:1": "23936.99",
-    "s1-1:2": "11907.61",
-    "s1-2:1": "7702.61",
-    "s1-2:2": "37170.76",
-    "s1-3:1": "6473.48",
-    "s1-3:2": "35203.08"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1668.16"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "23531.43",
+      "s1-1:2": "11669.75",
+      "s1-2:1": "7215.29",
+      "s1-2:2": "36855.46",
+      "s1-3:1": "6115.23",
+      "s1-3:2": "34945.47"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4098.65"
+     "end_readings": {
+      "s1-1:1": "23936.99",
+      "s1-1:2": "11907.61",
+      "s1-2:1": "7702.61",
+      "s1-2:2": "37170.76",
+      "s1-3:1": "6473.48",
+      "s1-3:2": "35203.08"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "758.26"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "303.30"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "151.65"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1668.16"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4098.65"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "758.26"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "303.30"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "151.65"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -1025,92 +1021,88 @@
    "station": "s2",
    "start": "2026-09-17T06:00",
    "end": "2026-09-17T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "30899.27",
-    "s2-1:2": "29193.48",
-    "s2-2:1": "38637.59",
-    "s2-2:2": "29560.11"
-   },
-   "end_readings": {
-    "s2-1:1": "31452.01",
-    "s2-1:2": "29408.92",
-    "s2-2:1": "39189.66",
-    "s2-2:2": "29832.83"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1284.33"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "30899.27",
+      "s2-1:2": "29193.48",
+      "s2-2:1": "38637.59",
+      "s2-2:2": "29560.11"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3155.68"
+     "end_readings": {
+      "s2-1:1": "31452.01",
+      "s2-1:2": "29408.92",
+      "s2-2:1": "39189.66",
+      "s2-2:2": "29832.83"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "583.79"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1284.33"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3155.68"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "583.79"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "233.52"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "116.75"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "17115.86",
+      "s2-3:2": "43130.03"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "233.52"
+     "end_readings": {
+      "s2-3:1": "17546.98",
+      "s2-3:2": "43422.57"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "116.75"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-17T06:00",
-   "end": "2026-09-17T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "17115.86",
-    "s2-3:2": "43130.03"
-   },
-   "end_readings": {
-    "s2-3:1": "17546.98",
-    "s2-3:2": "43422.57"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "585.63"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1438.92"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "266.20"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "106.48"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "53.24"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "585.63"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1438.92"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "266.20"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "106.48"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "53.24"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -1141,52 +1133,54 @@
    "station": "s1",
    "start": "2026-09-18T06:00",
    "end": "2026-09-18T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "23936.99",
-    "s1-1:2": "11907.61",
-    "s1-2:1": "7702.61",
-    "s1-2:2": "37170.76",
-    "s1-3:1": "6473.48",
-    "s1-3:2": "35203.08"
-   },
-   "end_readings": {
-    "s1-1:1": "24605.89",
-    "s1-1:2": "12267.36",
-    "s1-2:1": "8234.29",
-    "s1-2:2": "37509.41",
-    "s1-3:1": "7139.49",
-    "s1-3:2": "35527.69"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "2331.42"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "23936.99",
+      "s1-1:2": "11907.61",
+      "s1-2:1": "7702.61",
+      "s1-2:2": "37170.76",
+      "s1-3:1": "6473.48",
+      "s1-3:2": "35203.08"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "5728.38"
+     "end_readings": {
+      "s1-1:1": "24605.89",
+      "s1-1:2": "12267.36",
+      "s1-2:1": "8234.29",
+      "s1-2:2": "37509.41",
+      "s1-3:1": "7139.49",
+      "s1-3:2": "35527.69"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "1059.74"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "423.90"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "211.94"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "2331.42"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "5728.38"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "1059.74"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "423.90"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "211.94"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -1217,92 +1211,88 @@
    "station": "s2",
    "start": "2026-09-18T06:00",
    "end": "2026-09-18T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "31452.01",
-    "s2-1:2": "29408.92",
-    "s2-2:1": "39189.66",
-    "s2-2:2": "29832.83"
-   },
-   "end_readings": {
-    "s2-1:1": "32185.41",
-    "s2-1:2": "29767.18",
-    "s2-2:1": "39724.59",
-    "s2-2:2": "30166.65"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1581.20"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "31452.01",
+      "s2-1:2": "29408.92",
+      "s2-2:1": "39189.66",
+      "s2-2:2": "29832.83"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3884.86"
+     "end_readings": {
+      "s2-1:1": "32185.41",
+      "s2-1:2": "29767.18",
+      "s2-2:1": "39724.59",
+      "s2-2:2": "30166.65"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "718.72"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1581.20"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3884.86"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "718.72"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "287.49"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "143.75"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "17546.98",
+      "s2-3:2": "43422.57"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "287.49"
+     "end_readings": {
+      "s2-3:1": "18155.90",
+      "s2-3:2": "43758.52"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "143.75"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-18T06:00",
-   "end": "2026-09-18T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "17546.98",
-    "s2-3:2": "43422.57"
-   },
-   "end_readings": {
-    "s2-3:1": "18155.90",
-    "s2-3:2": "43758.52"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "762.70"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1874.05"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "346.68"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "138.67"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "69.33"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "762.70"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1874.05"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "346.68"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "138.67"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "69.33"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -1333,52 +1323,54 @@
    "station": "s1",
    "start": "2026-09-19T06:00",
    "end": "2026-09-19T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "24605.89",
-    "s1-1:2": "12267.36",
-    "s1-2:1": "8234.29",
-    "s1-2:2": "37509.41",
-    "s1-3:1": "7139.49",
-    "s1-3:2": "35527.69"
-   },
-   "end_readings": {
-    "s1-1:1": "25203.74",
-    "s1-1:2": "12624.21",
-    "s1-2:1": "8891.97",
-    "s1-2:2": "37879.91",
-    "s1-3:1": "7789.67",
-    "s1-3:2": "35896.90"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "2422.52"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "24605.89",
+      "s1-1:2": "12267.36",
+      "s1-2:1": "8234.29",
+      "s1-2:2": "37509.41",
+      "s1-3:1": "7139.49",
+      "s1-3:2": "35527.69"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "5952.16"
+     "end_readings": {
+      "s1-1:1": "25203.74",
+      "s1-1:2": "12624.21",
+      "s1-2:1": "8891.97",
+      "s1-2:2": "37879.91",
+      "s1-3:1": "7789.67",
+      "s1-3:2": "35896.90"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "1101.15"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "440.46"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "220.23"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "2422.52"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "5952.16"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "1101.15"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "440.46"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "220.23"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -1409,92 +1401,88 @@
    "station": "s2",
    "start": "2026-09-19T06:00",
    "end": "2026-09-19T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "32185.41",
-    "s2-1:2": "29767.18",
-    "s2-2:1": "39724.59",
-    "s2-2:2": "30166.65"
-   },
-   "end_readings": {
-    "s2-1:1": "32682.17",
-    "s2-1:2": "30138.84",
-    "s2-2:1": "40398.40",
-    "s2-2:2": "30565.38"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1569.26"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "32185.41",
+      "s2-1:2": "29767.18",
+      "s2-2:1": "39724.59",
+      "s2-2:2": "30166.65"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3855.68"
+     "end_readings": {
+      "s2-1:1": "32682.17",
+      "s2-1:2": "30138.84",
+      "s2-2:1": "40398.40",
+      "s2-2:2": "30565.38"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "713.30"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1569.26"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3855.68"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "713.30"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "285.32"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "142.66"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "18155.90",
+      "s2-3:2": "43758.52"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "285.32"
+     "end_readings": {
+      "s2-3:1": "18832.81",
+      "s2-3:2": "44139.87"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "142.66"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-19T06:00",
-   "end": "2026-09-19T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "18155.90",
-    "s2-3:2": "43758.52"
-   },
-   "end_readings": {
-    "s2-3:1": "18832.81",
-    "s2-3:2": "44139.87"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "853.59"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2097.30"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "388.00"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "155.20"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "77.60"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "853.59"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2097.30"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "388.00"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "155.20"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "77.60"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -1533,52 +1521,54 @@
    "station": "s1",
    "start": "2026-09-20T06:00",
    "end": "2026-09-20T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "25203.74",
-    "s1-1:2": "12624.21",
-    "s1-2:1": "8891.97",
-    "s1-2:2": "37879.91",
-    "s1-3:1": "7789.67",
-    "s1-3:2": "35896.90"
-   },
-   "end_readings": {
-    "s1-1:1": "25675.30",
-    "s1-1:2": "12795.33",
-    "s1-2:1": "9211.21",
-    "s1-2:2": "38079.31",
-    "s1-3:1": "8113.68",
-    "s1-3:2": "36127.14"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1384.55"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "25203.74",
+      "s1-1:2": "12624.21",
+      "s1-2:1": "8891.97",
+      "s1-2:2": "37879.91",
+      "s1-3:1": "7789.67",
+      "s1-3:2": "35896.90"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3401.89"
+     "end_readings": {
+      "s1-1:1": "25675.30",
+      "s1-1:2": "12795.33",
+      "s1-2:1": "9211.21",
+      "s1-2:2": "38079.31",
+      "s1-3:1": "8113.68",
+      "s1-3:2": "36127.14"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "629.34"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "251.74"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "125.86"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1384.55"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3401.89"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "629.34"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "251.74"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "125.86"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -1617,92 +1607,88 @@
    "station": "s2",
    "start": "2026-09-20T06:00",
    "end": "2026-09-20T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "32682.17",
-    "s2-1:2": "30138.84",
-    "s2-2:1": "40398.40",
-    "s2-2:2": "30565.38"
-   },
-   "end_readings": {
-    "s2-1:1": "33009.07",
-    "s2-1:2": "30396.39",
-    "s2-2:1": "40822.46",
-    "s2-2:2": "30726.01"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "943.98"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "32682.17",
+      "s2-1:2": "30138.84",
+      "s2-2:1": "40398.40",
+      "s2-2:2": "30565.38"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2319.46"
+     "end_readings": {
+      "s2-1:1": "33009.07",
+      "s2-1:2": "30396.39",
+      "s2-2:1": "40822.46",
+      "s2-2:2": "30726.01"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "429.08"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "943.98"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2319.46"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "429.08"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "171.63"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "85.82"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "18832.81",
+      "s2-3:2": "44139.87"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "171.63"
+     "end_readings": {
+      "s2-3:1": "19181.18",
+      "s2-3:2": "44322.27"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "85.82"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-20T06:00",
-   "end": "2026-09-20T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "18832.81",
-    "s2-3:2": "44139.87"
-   },
-   "end_readings": {
-    "s2-3:1": "19181.18",
-    "s2-3:2": "44322.27"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "428.31"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1052.43"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "194.68"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "77.87"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "38.94"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "428.31"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1052.43"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "194.68"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "77.87"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "38.94"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -1733,52 +1719,54 @@
    "station": "s1",
    "start": "2026-09-21T06:00",
    "end": "2026-09-21T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "25675.30",
-    "s1-1:2": "12795.33",
-    "s1-2:1": "9211.21",
-    "s1-2:2": "38079.31",
-    "s1-3:1": "8113.68",
-    "s1-3:2": "36127.14"
-   },
-   "end_readings": {
-    "s1-1:1": "26016.12",
-    "s1-1:2": "13014.40",
-    "s1-2:1": "9681.28",
-    "s1-2:2": "38356.32",
-    "s1-3:1": "8558.68",
-    "s1-3:2": "36365.44"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1608.40"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "25675.30",
+      "s1-1:2": "12795.33",
+      "s1-2:1": "9211.21",
+      "s1-2:2": "38079.31",
+      "s1-3:1": "8113.68",
+      "s1-3:2": "36127.14"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3951.89"
+     "end_readings": {
+      "s1-1:1": "26016.12",
+      "s1-1:2": "13014.40",
+      "s1-2:1": "9681.28",
+      "s1-2:2": "38356.32",
+      "s1-3:1": "8558.68",
+      "s1-3:2": "36365.44"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "731.09"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "292.44"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "146.21"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1608.40"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3951.89"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "731.09"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "292.44"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "146.21"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -1809,92 +1797,88 @@
    "station": "s2",
    "start": "2026-09-21T06:00",
    "end": "2026-09-21T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "33009.07",
-    "s2-1:2": "30396.39",
-    "s2-2:1": "40822.46",
-    "s2-2:2": "30726.01"
-   },
-   "end_readings": {
-    "s2-1:1": "33625.46",
-    "s2-1:2": "30668.96",
-    "s2-2:1": "41271.50",
-    "s2-2:2": "30961.49"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1267.80"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "33009.07",
+      "s2-1:2": "30396.39",
+      "s2-2:1": "40822.46",
+      "s2-2:2": "30726.01"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3115.14"
+     "end_readings": {
+      "s2-1:1": "33625.46",
+      "s2-1:2": "30668.96",
+      "s2-2:1": "41271.50",
+      "s2-2:2": "30961.49"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "576.28"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1267.80"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3115.14"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "576.28"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "230.51"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "115.25"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "19181.18",
+      "s2-3:2": "44322.27"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "230.51"
+     "end_readings": {
+      "s2-3:1": "19671.22",
+      "s2-3:2": "44539.86"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "115.25"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-21T06:00",
-   "end": "2026-09-21T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "19181.18",
-    "s2-3:2": "44322.27"
-   },
-   "end_readings": {
-    "s2-3:1": "19671.22",
-    "s2-3:2": "44539.86"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "570.66"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1402.16"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "259.39"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "103.76"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "51.88"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "570.66"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1402.16"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "259.39"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "103.76"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "51.88"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -1925,52 +1909,54 @@
    "station": "s1",
    "start": "2026-09-22T06:00",
    "end": "2026-09-22T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "26016.12",
-    "s1-1:2": "13014.40",
-    "s1-2:1": "9681.28",
-    "s1-2:2": "38356.32",
-    "s1-3:1": "8558.68",
-    "s1-3:2": "36365.44"
-   },
-   "end_readings": {
-    "s1-1:1": "26416.91",
-    "s1-1:2": "13264.41",
-    "s1-2:1": "10166.01",
-    "s1-2:2": "38610.16",
-    "s1-3:1": "9140.99",
-    "s1-3:2": "36609.91"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1787.42"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "26016.12",
+      "s1-1:2": "13014.40",
+      "s1-2:1": "9681.28",
+      "s1-2:2": "38356.32",
+      "s1-3:1": "8558.68",
+      "s1-3:2": "36365.44"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4391.62"
+     "end_readings": {
+      "s1-1:1": "26416.91",
+      "s1-1:2": "13264.41",
+      "s1-2:1": "10166.01",
+      "s1-2:2": "38610.16",
+      "s1-3:1": "9140.99",
+      "s1-3:2": "36609.91"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "812.46"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "324.99"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "162.50"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1787.42"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4391.62"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "812.46"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "324.99"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "162.50"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2001,92 +1987,88 @@
    "station": "s2",
    "start": "2026-09-22T06:00",
    "end": "2026-09-22T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "33625.46",
-    "s2-1:2": "30668.96",
-    "s2-2:1": "41271.50",
-    "s2-2:2": "30961.49"
-   },
-   "end_readings": {
-    "s2-1:1": "34114.45",
-    "s2-1:2": "30914.64",
-    "s2-2:1": "41760.22",
-    "s2-2:2": "31238.76"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1210.43"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "33625.46",
+      "s2-1:2": "30668.96",
+      "s2-2:1": "41271.50",
+      "s2-2:2": "30961.49"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2974.05"
+     "end_readings": {
+      "s2-1:1": "34114.45",
+      "s2-1:2": "30914.64",
+      "s2-2:1": "41760.22",
+      "s2-2:2": "31238.76"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "550.20"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1210.43"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2974.05"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "550.20"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "220.08"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "110.03"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "19671.22",
+      "s2-3:2": "44539.86"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "220.08"
+     "end_readings": {
+      "s2-3:1": "20141.87",
+      "s2-3:2": "44805.93"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "110.03"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-22T06:00",
-   "end": "2026-09-22T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "19671.22",
-    "s2-3:2": "44539.86"
-   },
-   "end_readings": {
-    "s2-3:1": "20141.87",
-    "s2-3:2": "44805.93"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "595.15"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1462.16"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "270.52"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "108.21"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "54.11"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "595.15"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1462.16"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "270.52"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "108.21"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "54.11"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2117,52 +2099,54 @@
    "station": "s1",
    "start": "2026-09-23T06:00",
    "end": "2026-09-23T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "26416.91",
-    "s1-1:2": "13264.41",
-    "s1-2:1": "10166.01",
-    "s1-2:2": "38610.16",
-    "s1-3:1": "9140.99",
-    "s1-3:2": "36609.91"
-   },
-   "end_readings": {
-    "s1-1:1": "26874.96",
-    "s1-1:2": "13525.47",
-    "s1-2:1": "10575.79",
-    "s1-2:2": "38872.57",
-    "s1-3:1": "9644.63",
-    "s1-3:2": "36795.47"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1677.86"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "26416.91",
+      "s1-1:2": "13264.41",
+      "s1-2:1": "10166.01",
+      "s1-2:2": "38610.16",
+      "s1-3:1": "9140.99",
+      "s1-3:2": "36609.91"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4122.43"
+     "end_readings": {
+      "s1-1:1": "26874.96",
+      "s1-1:2": "13525.47",
+      "s1-2:1": "10575.79",
+      "s1-2:2": "38872.57",
+      "s1-3:1": "9644.63",
+      "s1-3:2": "36795.47"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "762.66"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "305.06"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "152.54"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1677.86"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4122.43"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "762.66"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "305.06"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "152.54"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2193,92 +2177,88 @@
    "station": "s2",
    "start": "2026-09-23T06:00",
    "end": "2026-09-23T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "34114.45",
-    "s2-1:2": "30914.64",
-    "s2-2:1": "41760.22",
-    "s2-2:2": "31238.76"
-   },
-   "end_readings": {
-    "s2-1:1": "34553.19",
-    "s2-1:2": "31197.79",
-    "s2-2:1": "42184.72",
-    "s2-2:2": "31556.64"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1184.64"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "34114.45",
+      "s2-1:2": "30914.64",
+      "s2-2:1": "41760.22",
+      "s2-2:2": "31238.76"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2910.54"
+     "end_readings": {
+      "s2-1:1": "34553.19",
+      "s2-1:2": "31197.79",
+      "s2-2:1": "42184.72",
+      "s2-2:2": "31556.64"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "538.47"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1184.64"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2910.54"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "538.47"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "215.39"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "107.70"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "20141.87",
+      "s2-3:2": "44805.93"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "215.39"
+     "end_readings": {
+      "s2-3:1": "20656.72",
+      "s2-3:2": "45063.63"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "107.70"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-23T06:00",
-   "end": "2026-09-23T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "20141.87",
-    "s2-3:2": "44805.93"
-   },
-   "end_readings": {
-    "s2-3:1": "20656.72",
-    "s2-3:2": "45063.63"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "623.26"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1531.35"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "283.30"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "113.32"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "56.66"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "623.26"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1531.35"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "283.30"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "113.32"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "56.66"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2309,52 +2289,54 @@
    "station": "s1",
    "start": "2026-09-24T06:00",
    "end": "2026-09-24T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "26874.96",
-    "s1-1:2": "13525.47",
-    "s1-2:1": "10575.79",
-    "s1-2:2": "38872.57",
-    "s1-3:1": "9644.63",
-    "s1-3:2": "36795.47"
-   },
-   "end_readings": {
-    "s1-1:1": "27477.46",
-    "s1-1:2": "13708.29",
-    "s1-2:1": "11114.36",
-    "s1-2:2": "39114.05",
-    "s1-3:1": "10126.97",
-    "s1-3:2": "37083.39"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1882.44"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "26874.96",
+      "s1-1:2": "13525.47",
+      "s1-2:1": "10575.79",
+      "s1-2:2": "38872.57",
+      "s1-3:1": "9644.63",
+      "s1-3:2": "36795.47"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4625.14"
+     "end_readings": {
+      "s1-1:1": "27477.46",
+      "s1-1:2": "13708.29",
+      "s1-2:1": "11114.36",
+      "s1-2:2": "39114.05",
+      "s1-3:1": "10126.97",
+      "s1-3:2": "37083.39"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "855.66"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "342.26"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "171.13"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1882.44"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4625.14"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "855.66"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "342.26"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "171.13"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2385,92 +2367,88 @@
    "station": "s2",
    "start": "2026-09-24T06:00",
    "end": "2026-09-24T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "34553.19",
-    "s2-1:2": "31197.79",
-    "s2-2:1": "42184.72",
-    "s2-2:2": "31556.64"
-   },
-   "end_readings": {
-    "s2-1:1": "34936.42",
-    "s2-1:2": "31516.45",
-    "s2-2:1": "42649.36",
-    "s2-2:2": "31895.98"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1217.93"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "34553.19",
+      "s2-1:2": "31197.79",
+      "s2-2:1": "42184.72",
+      "s2-2:2": "31556.64"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2992.43"
+     "end_readings": {
+      "s2-1:1": "34936.42",
+      "s2-1:2": "31516.45",
+      "s2-2:1": "42649.36",
+      "s2-2:2": "31895.98"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "553.60"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1217.93"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2992.43"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "553.60"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "221.44"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "110.73"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "20656.72",
+      "s2-3:2": "45063.63"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "221.44"
+     "end_readings": {
+      "s2-3:1": "21053.68",
+      "s2-3:2": "45355.42"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "110.73"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-24T06:00",
-   "end": "2026-09-24T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "20656.72",
-    "s2-3:2": "45063.63"
-   },
-   "end_readings": {
-    "s2-3:1": "21053.68",
-    "s2-3:2": "45355.42"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "557.47"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1369.73"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "253.40"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "101.36"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "50.67"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "557.47"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1369.73"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "253.40"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "101.36"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "50.67"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2501,52 +2479,54 @@
    "station": "s1",
    "start": "2026-09-25T06:00",
    "end": "2026-09-25T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "27477.46",
-    "s1-1:2": "13708.29",
-    "s1-2:1": "11114.36",
-    "s1-2:2": "39114.05",
-    "s1-3:1": "10126.97",
-    "s1-3:2": "37083.39"
-   },
-   "end_readings": {
-    "s1-1:1": "28022.25",
-    "s1-1:2": "13974.17",
-    "s1-2:1": "11570.78",
-    "s1-2:2": "39461.83",
-    "s1-3:1": "10598.26",
-    "s1-3:2": "37424.63"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1960.93"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "27477.46",
+      "s1-1:2": "13708.29",
+      "s1-2:1": "11114.36",
+      "s1-2:2": "39114.05",
+      "s1-3:1": "10126.97",
+      "s1-3:2": "37083.39"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4818.11"
+     "end_readings": {
+      "s1-1:1": "28022.25",
+      "s1-1:2": "13974.17",
+      "s1-2:1": "11570.78",
+      "s1-2:2": "39461.83",
+      "s1-3:1": "10598.26",
+      "s1-3:2": "37424.63"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "891.33"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "356.53"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "178.27"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1960.93"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4818.11"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "891.33"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "356.53"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "178.27"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2577,92 +2557,88 @@
    "station": "s2",
    "start": "2026-09-25T06:00",
    "end": "2026-09-25T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "34936.42",
-    "s2-1:2": "31516.45",
-    "s2-2:1": "42649.36",
-    "s2-2:2": "31895.98"
-   },
-   "end_readings": {
-    "s2-1:1": "35511.25",
-    "s2-1:2": "31816.35",
-    "s2-2:1": "43169.94",
-    "s2-2:2": "32188.99"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1361.79"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "34936.42",
+      "s2-1:2": "31516.45",
+      "s2-2:1": "42649.36",
+      "s2-2:2": "31895.98"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3345.95"
+     "end_readings": {
+      "s2-1:1": "35511.25",
+      "s2-1:2": "31816.35",
+      "s2-2:1": "43169.94",
+      "s2-2:2": "32188.99"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "619.00"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1361.79"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3345.95"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "619.00"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "247.60"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "123.79"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "21053.68",
+      "s2-3:2": "45355.42"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "247.60"
+     "end_readings": {
+      "s2-3:1": "21593.48",
+      "s2-3:2": "45778.13"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "123.79"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-25T06:00",
-   "end": "2026-09-25T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "21053.68",
-    "s2-3:2": "45355.42"
-   },
-   "end_readings": {
-    "s2-3:1": "21593.48",
-    "s2-3:2": "45778.13"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "779.85"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1916.22"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "354.48"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "141.79"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "70.89"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "779.85"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1916.22"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "354.48"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "141.79"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "70.89"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2693,52 +2669,54 @@
    "station": "s1",
    "start": "2026-09-26T06:00",
    "end": "2026-09-26T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "28022.25",
-    "s1-1:2": "13974.17",
-    "s1-2:1": "11570.78",
-    "s1-2:2": "39461.83",
-    "s1-3:1": "10598.26",
-    "s1-3:2": "37424.63"
-   },
-   "end_readings": {
-    "s1-1:1": "28636.28",
-    "s1-1:2": "14314.22",
-    "s1-2:1": "12358.37",
-    "s1-2:2": "39819.88",
-    "s1-3:1": "11308.10",
-    "s1-3:2": "37877.98"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "2634.10"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "28022.25",
+      "s1-1:2": "13974.17",
+      "s1-2:1": "11570.78",
+      "s1-2:2": "39461.83",
+      "s1-3:1": "10598.26",
+      "s1-3:2": "37424.63"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "6471.89"
+     "end_readings": {
+      "s1-1:1": "28636.28",
+      "s1-1:2": "14314.22",
+      "s1-2:1": "12358.37",
+      "s1-2:2": "39819.88",
+      "s1-3:1": "11308.10",
+      "s1-3:2": "37877.98"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "1197.32"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "478.93"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "239.46"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "2634.10"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "6471.89"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "1197.32"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "478.93"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "239.46"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2769,92 +2747,88 @@
    "station": "s2",
    "start": "2026-09-26T06:00",
    "end": "2026-09-26T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "35511.25",
-    "s2-1:2": "31816.35",
-    "s2-2:1": "43169.94",
-    "s2-2:2": "32188.99"
-   },
-   "end_readings": {
-    "s2-1:1": "36319.78",
-    "s2-1:2": "32152.56",
-    "s2-2:1": "43734.81",
-    "s2-2:2": "32601.47"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1712.10"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "35511.25",
+      "s2-1:2": "31816.35",
+      "s2-2:1": "43169.94",
+      "s2-2:2": "32188.99"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4206.76"
+     "end_readings": {
+      "s2-1:1": "36319.78",
+      "s2-1:2": "32152.56",
+      "s2-2:1": "43734.81",
+      "s2-2:2": "32601.47"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "778.23"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1712.10"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4206.76"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "778.23"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "311.29"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "155.64"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "21593.48",
+      "s2-3:2": "45778.13"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "311.29"
+     "end_readings": {
+      "s2-3:1": "22152.20",
+      "s2-3:2": "46077.57"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "155.64"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-26T06:00",
-   "end": "2026-09-26T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "21593.48",
-    "s2-3:2": "45778.13"
-   },
-   "end_readings": {
-    "s2-3:1": "22152.20",
-    "s2-3:2": "46077.57"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "692.27"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1700.81"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "314.67"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "125.87"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "62.93"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "692.27"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1700.81"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "314.67"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "125.87"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "62.93"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2885,52 +2859,54 @@
    "station": "s1",
    "start": "2026-09-27T06:00",
    "end": "2026-09-27T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "28636.28",
-    "s1-1:2": "14314.22",
-    "s1-2:1": "12358.37",
-    "s1-2:2": "39819.88",
-    "s1-3:1": "11308.10",
-    "s1-3:2": "37877.98"
-   },
-   "end_readings": {
-    "s1-1:1": "28955.99",
-    "s1-1:2": "14540.09",
-    "s1-2:1": "12822.57",
-    "s1-2:2": "40021.03",
-    "s1-3:1": "11660.49",
-    "s1-3:2": "38104.04"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1443.83"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "28636.28",
+      "s1-1:2": "14314.22",
+      "s1-2:1": "12358.37",
+      "s1-2:2": "39819.88",
+      "s1-3:1": "11308.10",
+      "s1-3:2": "37877.98"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3547.57"
+     "end_readings": {
+      "s1-1:1": "28955.99",
+      "s1-1:2": "14540.09",
+      "s1-2:1": "12822.57",
+      "s1-2:2": "40021.03",
+      "s1-3:1": "11660.49",
+      "s1-3:2": "38104.04"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "656.29"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "262.52"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "131.25"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1443.83"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3547.57"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "656.29"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "262.52"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "131.25"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -2969,92 +2945,88 @@
    "station": "s2",
    "start": "2026-09-27T06:00",
    "end": "2026-09-27T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "36319.78",
-    "s2-1:2": "32152.56",
-    "s2-2:1": "43734.81",
-    "s2-2:2": "32601.47"
-   },
-   "end_readings": {
-    "s2-1:1": "36601.60",
-    "s2-1:2": "32354.62",
-    "s2-2:1": "44089.72",
-    "s2-2:2": "32748.19"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "795.22"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "36319.78",
+      "s2-1:2": "32152.56",
+      "s2-2:1": "43734.81",
+      "s2-2:2": "32601.47"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1953.78"
+     "end_readings": {
+      "s2-1:1": "36601.60",
+      "s2-1:2": "32354.62",
+      "s2-2:1": "44089.72",
+      "s2-2:2": "32748.19"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "361.46"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "795.22"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1953.78"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "361.46"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "144.58"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "72.30"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "22152.20",
+      "s2-3:2": "46077.57"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "144.58"
+     "end_readings": {
+      "s2-3:1": "22512.59",
+      "s2-3:2": "46312.72"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "72.30"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-27T06:00",
-   "end": "2026-09-27T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "22152.20",
-    "s2-3:2": "46077.57"
-   },
-   "end_readings": {
-    "s2-3:1": "22512.59",
-    "s2-3:2": "46312.72"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "481.41"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1182.70"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "218.82"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "87.53"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "43.77"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "481.41"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1182.70"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "218.82"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "87.53"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "43.77"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -3093,52 +3065,54 @@
    "station": "s1",
    "start": "2026-09-28T06:00",
    "end": "2026-09-28T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "28955.99",
-    "s1-1:2": "14540.09",
-    "s1-2:1": "12822.57",
-    "s1-2:2": "40021.03",
-    "s1-3:1": "11660.49",
-    "s1-3:2": "38104.04"
-   },
-   "end_readings": {
-    "s1-1:1": "29584.83",
-    "s1-1:2": "14749.23",
-    "s1-2:1": "13424.24",
-    "s1-2:2": "40258.28",
-    "s1-3:1": "12134.11",
-    "s1-3:2": "38340.76"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1921.27"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "28955.99",
+      "s1-1:2": "14540.09",
+      "s1-2:1": "12822.57",
+      "s1-2:2": "40021.03",
+      "s1-3:1": "11660.49",
+      "s1-3:2": "38104.04"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4720.54"
+     "end_readings": {
+      "s1-1:1": "29584.83",
+      "s1-1:2": "14749.23",
+      "s1-2:1": "13424.24",
+      "s1-2:2": "40258.28",
+      "s1-3:1": "12134.11",
+      "s1-3:2": "38340.76"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "873.30"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "349.32"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "174.66"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1921.27"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4720.54"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "873.30"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "349.32"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "174.66"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -3177,92 +3151,88 @@
    "station": "s2",
    "start": "2026-09-28T06:00",
    "end": "2026-09-28T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "36601.60",
-    "s2-1:2": "32354.62",
-    "s2-2:1": "44089.72",
-    "s2-2:2": "32748.19"
-   },
-   "end_readings": {
-    "s2-1:1": "36981.92",
-    "s2-1:2": "32600.98",
-    "s2-2:1": "44610.34",
-    "s2-2:2": "33004.59"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1133.05"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "36601.60",
+      "s2-1:2": "32354.62",
+      "s2-2:1": "44089.72",
+      "s2-2:2": "32748.19"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2783.78"
+     "end_readings": {
+      "s2-1:1": "36981.92",
+      "s2-1:2": "32600.98",
+      "s2-2:1": "44610.34",
+      "s2-2:2": "33004.59"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "515.02"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1133.05"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2783.78"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "515.02"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "206.01"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "103.01"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "22512.59",
+      "s2-3:2": "46312.72"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "206.01"
+     "end_readings": {
+      "s2-3:1": "23001.01",
+      "s2-3:2": "46588.33"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "103.01"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-28T06:00",
-   "end": "2026-09-28T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "22512.59",
-    "s2-3:2": "46312.72"
-   },
-   "end_readings": {
-    "s2-3:1": "23001.01",
-    "s2-3:2": "46588.33"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "616.40"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1514.59"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "280.18"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "112.07"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "56.04"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "616.40"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1514.59"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "280.18"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "112.07"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "56.04"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -3301,52 +3271,54 @@
    "station": "s1",
    "start": "2026-09-29T06:00",
    "end": "2026-09-29T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "29584.83",
-    "s1-1:2": "14749.23",
-    "s1-2:1": "13424.24",
-    "s1-2:2": "40258.28",
-    "s1-3:1": "12134.11",
-    "s1-3:2": "38340.76"
-   },
-   "end_readings": {
-    "s1-1:1": "30154.41",
-    "s1-1:2": "14979.05",
-    "s1-2:1": "13942.41",
-    "s1-2:2": "40515.96",
-    "s1-3:1": "12560.33",
-    "s1-3:2": "38529.92"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1766.87"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "29584.83",
+      "s1-1:2": "14749.23",
+      "s1-2:1": "13424.24",
+      "s1-2:2": "40258.28",
+      "s1-3:1": "12134.11",
+      "s1-3:2": "38340.76"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4341.08"
+     "end_readings": {
+      "s1-1:1": "30154.41",
+      "s1-1:2": "14979.05",
+      "s1-2:1": "13942.41",
+      "s1-2:2": "40515.96",
+      "s1-3:1": "12560.33",
+      "s1-3:2": "38529.92"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "803.12"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "321.25"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "160.63"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1766.87"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4341.08"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "803.12"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "321.25"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "160.63"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -3377,92 +3349,88 @@
    "station": "s2",
    "start": "2026-09-29T06:00",
    "end": "2026-09-29T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "36981.92",
-    "s2-1:2": "32600.98",
-    "s2-2:1": "44610.34",
-    "s2-2:2": "33004.59"
-   },
-   "end_readings": {
-    "s2-1:1": "37409.98",
-    "s2-1:2": "32882.16",
-    "s2-2:1": "45199.97",
-    "s2-2:2": "33311.55"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1297.47"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "36981.92",
+      "s2-1:2": "32600.98",
+      "s2-2:1": "44610.34",
+      "s2-2:2": "33004.59"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3187.84"
+     "end_readings": {
+      "s2-1:1": "37409.98",
+      "s2-1:2": "32882.16",
+      "s2-2:1": "45199.97",
+      "s2-2:2": "33311.55"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "589.76"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1297.47"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3187.84"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "589.76"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "235.90"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "117.96"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "23001.01",
+      "s2-3:2": "46588.33"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "235.90"
+     "end_readings": {
+      "s2-3:1": "23558.45",
+      "s2-3:2": "46832.18"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "117.96"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-29T06:00",
-   "end": "2026-09-29T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "23001.01",
-    "s2-3:2": "46588.33"
-   },
-   "end_readings": {
-    "s2-3:1": "23558.45",
-    "s2-3:2": "46832.18"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "645.67"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1586.49"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "293.49"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "117.40"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "58.69"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "645.67"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1586.49"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "293.49"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "117.40"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "58.69"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -3493,52 +3461,54 @@
    "station": "s1",
    "start": "2026-09-30T06:00",
    "end": "2026-09-30T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "30154.41",
-    "s1-1:2": "14979.05",
-    "s1-2:1": "13942.41",
-    "s1-2:2": "40515.96",
-    "s1-3:1": "12560.33",
-    "s1-3:2": "38529.92"
-   },
-   "end_readings": {
-    "s1-1:1": "30640.09",
-    "s1-1:2": "15224.20",
-    "s1-2:1": "14407.10",
-    "s1-2:2": "40801.46",
-    "s1-3:1": "13028.65",
-    "s1-3:2": "38787.23"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1780.22"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "30154.41",
+      "s1-1:2": "14979.05",
+      "s1-2:1": "13942.41",
+      "s1-2:2": "40515.96",
+      "s1-3:1": "12560.33",
+      "s1-3:2": "38529.92"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4374.05"
+     "end_readings": {
+      "s1-1:1": "30640.09",
+      "s1-1:2": "15224.20",
+      "s1-2:1": "14407.10",
+      "s1-2:2": "40801.46",
+      "s1-3:1": "13028.65",
+      "s1-3:2": "38787.23"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "809.19"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "323.68"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "161.84"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1780.22"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4374.05"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "809.19"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "323.68"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "161.84"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -3569,92 +3539,88 @@
    "station": "s2",
    "start": "2026-09-30T06:00",
    "end": "2026-09-30T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "37409.98",
-    "s2-1:2": "32882.16",
-    "s2-2:1": "45199.97",
-    "s2-2:2": "33311.55"
-   },
-   "end_readings": {
-    "s2-1:1": "37880.73",
-    "s2-1:2": "33187.16",
-    "s2-2:1": "45567.71",
-    "s2-2:2": "33520.23"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1093.36"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "37409.98",
+      "s2-1:2": "32882.16",
+      "s2-2:1": "45199.97",
+      "s2-2:2": "33311.55"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2686.49"
+     "end_readings": {
+      "s2-1:1": "37880.73",
+      "s2-1:2": "33187.16",
+      "s2-2:1": "45567.71",
+      "s2-2:2": "33520.23"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "496.98"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1093.36"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2686.49"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "496.98"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "198.79"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "99.39"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "23558.45",
+      "s2-3:2": "46832.18"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "198.79"
+     "end_readings": {
+      "s2-3:1": "23923.82",
+      "s2-3:2": "47072.94"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "99.39"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-09-30T06:00",
-   "end": "2026-09-30T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "23558.45",
-    "s2-3:2": "46832.18"
-   },
-   "end_readings": {
-    "s2-3:1": "23923.82",
-    "s2-3:2": "47072.94"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "490.25"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1204.59"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "222.84"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "89.14"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "44.57"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "490.25"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1204.59"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "222.84"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "89.14"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "44.57"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -3685,52 +3651,54 @@
    "station": "s1",
    "start": "2026-10-01T06:00",
    "end": "2026-10-01T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "30640.09",
-    "s1-1:2": "15224.20",
-    "s1-2:1": "14407.10",
-    "s1-2:2": "40801.46",
-    "s1-3:1": "13028.65",
-    "s1-3:2": "38787.23"
-   },
-   "end_readings": {
-    "s1-1:1": "31023.04",
-    "s1-1:2": "15495.31",
-    "s1-2:1": "14810.17",
-    "s1-2:2": "41104.14",
-    "s1-3:1": "13418.75",
-    "s1-3:2": "39015.01"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1599.09"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "30640.09",
+      "s1-1:2": "15224.20",
+      "s1-2:1": "14407.10",
+      "s1-2:2": "40801.46",
+      "s1-3:1": "13028.65",
+      "s1-3:2": "38787.23"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3928.92"
+     "end_readings": {
+      "s1-1:1": "31023.04",
+      "s1-1:2": "15495.31",
+      "s1-2:1": "14810.17",
+      "s1-2:2": "41104.14",
+      "s1-3:1": "13418.75",
+      "s1-3:2": "39015.01"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "726.86"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "290.74"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "145.38"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1599.09"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3928.92"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "726.86"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "290.74"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "145.38"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -3761,92 +3729,88 @@
    "station": "s2",
    "start": "2026-10-01T06:00",
    "end": "2026-10-01T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "37880.73",
-    "s2-1:2": "33187.16",
-    "s2-2:1": "45567.71",
-    "s2-2:2": "33520.23"
-   },
-   "end_readings": {
-    "s2-1:1": "38290.78",
-    "s2-1:2": "33484.33",
-    "s2-2:1": "45980.57",
-    "s2-2:2": "33801.29"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1132.41"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "37880.73",
+      "s2-1:2": "33187.16",
+      "s2-2:1": "45567.71",
+      "s2-2:2": "33520.23"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2782.43"
+     "end_readings": {
+      "s2-1:1": "38290.78",
+      "s2-1:2": "33484.33",
+      "s2-2:1": "45980.57",
+      "s2-2:2": "33801.29"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "514.73"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1132.41"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2782.43"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "514.73"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "205.89"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "102.94"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "23923.82",
+      "s2-3:2": "47072.94"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "205.89"
+     "end_readings": {
+      "s2-3:1": "24508.80",
+      "s2-3:2": "47356.98"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "102.94"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-01T06:00",
-   "end": "2026-10-01T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "23923.82",
-    "s2-3:2": "47072.94"
-   },
-   "end_readings": {
-    "s2-3:1": "24508.80",
-    "s2-3:2": "47356.98"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "700.36"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1720.81"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "318.35"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "127.34"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "63.67"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "700.36"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1720.81"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "318.35"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "127.34"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "63.67"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -3877,52 +3841,54 @@
    "station": "s1",
    "start": "2026-10-02T06:00",
    "end": "2026-10-02T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "31023.04",
-    "s1-1:2": "15495.31",
-    "s1-2:1": "14810.17",
-    "s1-2:2": "41104.14",
-    "s1-3:1": "13418.75",
-    "s1-3:2": "39015.01"
-   },
-   "end_readings": {
-    "s1-1:1": "31693.00",
-    "s1-1:2": "15819.91",
-    "s1-2:1": "15335.05",
-    "s1-2:2": "41432.44",
-    "s1-3:1": "14002.48",
-    "s1-3:2": "39272.77"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "2170.36"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "31023.04",
+      "s1-1:2": "15495.31",
+      "s1-2:1": "14810.17",
+      "s1-2:2": "41104.14",
+      "s1-3:1": "13418.75",
+      "s1-3:2": "39015.01"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "5332.43"
+     "end_readings": {
+      "s1-1:1": "31693.00",
+      "s1-1:2": "15819.91",
+      "s1-2:1": "15335.05",
+      "s1-2:2": "41432.44",
+      "s1-3:1": "14002.48",
+      "s1-3:2": "39272.77"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "986.52"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "394.61"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "197.31"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "2170.36"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "5332.43"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "986.52"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "394.61"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "197.31"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -3953,92 +3919,88 @@
    "station": "s2",
    "start": "2026-10-02T06:00",
    "end": "2026-10-02T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "38290.78",
-    "s2-1:2": "33484.33",
-    "s2-2:1": "45980.57",
-    "s2-2:2": "33801.29"
-   },
-   "end_readings": {
-    "s2-1:1": "38876.58",
-    "s2-1:2": "33783.58",
-    "s2-2:1": "46429.50",
-    "s2-2:2": "34165.45"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1371.83"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "38290.78",
+      "s2-1:2": "33484.33",
+      "s2-2:1": "45980.57",
+      "s2-2:2": "33801.29"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3370.54"
+     "end_readings": {
+      "s2-1:1": "38876.58",
+      "s2-1:2": "33783.58",
+      "s2-2:1": "46429.50",
+      "s2-2:2": "34165.45"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "623.56"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1371.83"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3370.54"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "623.56"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "249.42"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "124.71"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "24508.80",
+      "s2-3:2": "47356.98"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "249.42"
+     "end_readings": {
+      "s2-3:1": "25200.21",
+      "s2-3:2": "47653.28"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "124.71"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-02T06:00",
-   "end": "2026-10-02T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "24508.80",
-    "s2-3:2": "47356.98"
-   },
-   "end_readings": {
-    "s2-3:1": "25200.21",
-    "s2-3:2": "47653.28"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "796.56"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1957.30"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "362.08"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "144.83"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "72.41"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "796.56"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1957.30"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "362.08"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "144.83"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "72.41"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -4069,52 +4031,54 @@
    "station": "s1",
    "start": "2026-10-03T06:00",
    "end": "2026-10-03T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "31693.00",
-    "s1-1:2": "15819.91",
-    "s1-2:1": "15335.05",
-    "s1-2:2": "41432.44",
-    "s1-3:1": "14002.48",
-    "s1-3:2": "39272.77"
-   },
-   "end_readings": {
-    "s1-1:1": "32378.12",
-    "s1-1:2": "16166.49",
-    "s1-2:1": "16037.48",
-    "s1-2:2": "41716.70",
-    "s1-3:1": "14675.40",
-    "s1-3:2": "39623.17"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "2453.97"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "31693.00",
+      "s1-1:2": "15819.91",
+      "s1-2:1": "15335.05",
+      "s1-2:2": "41432.44",
+      "s1-3:1": "14002.48",
+      "s1-3:2": "39272.77"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "6029.46"
+     "end_readings": {
+      "s1-1:1": "32378.12",
+      "s1-1:2": "16166.49",
+      "s1-2:1": "16037.48",
+      "s1-2:2": "41716.70",
+      "s1-3:1": "14675.40",
+      "s1-3:2": "39623.17"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "1115.44"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "446.18"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "223.09"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "2453.97"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "6029.46"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "1115.44"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "446.18"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "223.09"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -4145,92 +4109,88 @@
    "station": "s2",
    "start": "2026-10-03T06:00",
    "end": "2026-10-03T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "38876.58",
-    "s2-1:2": "33783.58",
-    "s2-2:1": "46429.50",
-    "s2-2:2": "34165.45"
-   },
-   "end_readings": {
-    "s2-1:1": "39555.57",
-    "s2-1:2": "34133.98",
-    "s2-2:1": "47118.03",
-    "s2-2:2": "34494.77"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1650.21"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "38876.58",
+      "s2-1:2": "33783.58",
+      "s2-2:1": "46429.50",
+      "s2-2:2": "34165.45"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4054.59"
+     "end_readings": {
+      "s2-1:1": "39555.57",
+      "s2-1:2": "34133.98",
+      "s2-2:1": "47118.03",
+      "s2-2:2": "34494.77"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "750.10"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1650.21"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4054.59"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "750.10"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "300.04"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "150.01"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "25200.21",
+      "s2-3:2": "47653.28"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "300.04"
+     "end_readings": {
+      "s2-3:1": "25773.84",
+      "s2-3:2": "48092.54"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "150.01"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-03T06:00",
-   "end": "2026-10-03T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "25200.21",
-    "s2-3:2": "47653.28"
-   },
-   "end_readings": {
-    "s2-3:1": "25773.84",
-    "s2-3:2": "48092.54"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "819.70"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2014.05"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "372.59"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "149.04"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "74.51"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "819.70"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2014.05"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "372.59"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "149.04"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "74.51"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -4261,52 +4221,54 @@
    "station": "s1",
    "start": "2026-10-04T06:00",
    "end": "2026-10-04T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "32378.12",
-    "s1-1:2": "16166.49",
-    "s1-2:1": "16037.48",
-    "s1-2:2": "41716.70",
-    "s1-3:1": "14675.40",
-    "s1-3:2": "39623.17"
-   },
-   "end_readings": {
-    "s1-1:1": "32680.77",
-    "s1-1:2": "16433.94",
-    "s1-2:1": "16508.12",
-    "s1-2:2": "41946.80",
-    "s1-3:1": "15049.36",
-    "s1-3:2": "39818.90"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1550.59"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "32378.12",
+      "s1-1:2": "16166.49",
+      "s1-2:1": "16037.48",
+      "s1-2:2": "41716.70",
+      "s1-3:1": "14675.40",
+      "s1-3:2": "39623.17"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3809.73"
+     "end_readings": {
+      "s1-1:1": "32680.77",
+      "s1-1:2": "16433.94",
+      "s1-2:1": "16508.12",
+      "s1-2:2": "41946.80",
+      "s1-3:1": "15049.36",
+      "s1-3:2": "39818.90"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "704.81"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "281.92"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "140.97"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1550.59"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3809.73"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "704.81"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "281.92"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "140.97"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -4337,92 +4299,88 @@
    "station": "s2",
    "start": "2026-10-04T06:00",
    "end": "2026-10-04T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "39555.57",
-    "s2-1:2": "34133.98",
-    "s2-2:1": "47118.03",
-    "s2-2:2": "34494.77"
-   },
-   "end_readings": {
-    "s2-1:1": "39839.87",
-    "s2-1:2": "34356.90",
-    "s2-2:1": "47484.67",
-    "s2-2:2": "34671.42"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "884.73"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "39555.57",
+      "s2-1:2": "34133.98",
+      "s2-2:1": "47118.03",
+      "s2-2:2": "34494.77"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2173.78"
+     "end_readings": {
+      "s2-1:1": "39839.87",
+      "s2-1:2": "34356.90",
+      "s2-2:1": "47484.67",
+      "s2-2:2": "34671.42"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "402.15"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "884.73"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2173.78"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "402.15"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "160.86"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "80.43"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "25773.84",
+      "s2-3:2": "48092.54"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "160.86"
+     "end_readings": {
+      "s2-3:1": "26236.94",
+      "s2-3:2": "48267.74"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "80.43"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-04T06:00",
-   "end": "2026-10-04T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "25773.84",
-    "s2-3:2": "48092.54"
-   },
-   "end_readings": {
-    "s2-3:1": "26236.94",
-    "s2-3:2": "48267.74"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "536.35"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1317.84"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "243.80"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "97.52"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "48.75"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "536.35"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1317.84"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "243.80"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "97.52"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "48.75"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -4453,52 +4411,54 @@
    "station": "s1",
    "start": "2026-10-05T06:00",
    "end": "2026-10-05T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "32680.77",
-    "s1-1:2": "16433.94",
-    "s1-2:1": "16508.12",
-    "s1-2:2": "41946.80",
-    "s1-3:1": "15049.36",
-    "s1-3:2": "39818.90"
-   },
-   "end_readings": {
-    "s1-1:1": "33055.91",
-    "s1-1:2": "16748.42",
-    "s1-2:1": "16841.39",
-    "s1-2:2": "42190.31",
-    "s1-3:1": "15507.25",
-    "s1-3:2": "40104.28"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1693.15"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "32680.77",
+      "s1-1:2": "16433.94",
+      "s1-2:1": "16508.12",
+      "s1-2:2": "41946.80",
+      "s1-3:1": "15049.36",
+      "s1-3:2": "39818.90"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4160.00"
+     "end_readings": {
+      "s1-1:1": "33055.91",
+      "s1-1:2": "16748.42",
+      "s1-2:1": "16841.39",
+      "s1-2:2": "42190.31",
+      "s1-3:1": "15507.25",
+      "s1-3:2": "40104.28"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "769.62"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "307.85"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "153.92"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1693.15"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4160.00"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "769.62"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "307.85"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "153.92"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -4529,92 +4489,88 @@
    "station": "s2",
    "start": "2026-10-05T06:00",
    "end": "2026-10-05T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "39839.87",
-    "s2-1:2": "34356.90",
-    "s2-2:1": "47484.67",
-    "s2-2:2": "34671.42"
-   },
-   "end_readings": {
-    "s2-1:1": "40247.42",
-    "s2-1:2": "34583.41",
-    "s2-2:1": "48051.54",
-    "s2-2:2": "34932.31"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1229.88"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "39839.87",
+      "s2-1:2": "34356.90",
+      "s2-2:1": "47484.67",
+      "s2-2:2": "34671.42"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3021.89"
+     "end_readings": {
+      "s2-1:1": "40247.42",
+      "s2-1:2": "34583.41",
+      "s2-2:1": "48051.54",
+      "s2-2:2": "34932.31"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "559.04"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1229.88"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3021.89"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "559.04"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "223.61"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "111.80"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "26236.94",
+      "s2-3:2": "48267.74"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "223.61"
+     "end_readings": {
+      "s2-3:1": "26655.89",
+      "s2-3:2": "48615.04"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "111.80"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-05T06:00",
-   "end": "2026-10-05T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "26236.94",
-    "s2-3:2": "48267.74"
-   },
-   "end_readings": {
-    "s2-3:1": "26655.89",
-    "s2-3:2": "48615.04"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "645.99"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1587.30"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "293.63"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "117.45"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "58.73"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "645.99"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1587.30"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "293.63"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "117.45"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "58.73"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -4653,52 +4609,54 @@
    "station": "s1",
    "start": "2026-10-06T06:00",
    "end": "2026-10-06T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "33055.91",
-    "s1-1:2": "16748.42",
-    "s1-2:1": "16841.39",
-    "s1-2:2": "42190.31",
-    "s1-3:1": "15507.25",
-    "s1-3:2": "40104.28"
-   },
-   "end_readings": {
-    "s1-1:1": "33571.19",
-    "s1-1:2": "16998.42",
-    "s1-2:1": "17309.68",
-    "s1-2:2": "42468.19",
-    "s1-3:1": "15996.22",
-    "s1-3:2": "40328.03"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1871.44"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "33055.91",
+      "s1-1:2": "16748.42",
+      "s1-2:1": "16841.39",
+      "s1-2:2": "42190.31",
+      "s1-3:1": "15507.25",
+      "s1-3:2": "40104.28"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4598.11"
+     "end_readings": {
+      "s1-1:1": "33571.19",
+      "s1-1:2": "16998.42",
+      "s1-2:1": "17309.68",
+      "s1-2:2": "42468.19",
+      "s1-3:1": "15996.22",
+      "s1-3:2": "40328.03"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "850.65"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "340.26"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "170.13"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1871.44"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4598.11"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "850.65"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "340.26"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "170.13"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -4737,92 +4695,88 @@
    "station": "s2",
    "start": "2026-10-06T06:00",
    "end": "2026-10-06T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "40247.42",
-    "s2-1:2": "34583.41",
-    "s2-2:1": "48051.54",
-    "s2-2:2": "34932.31"
-   },
-   "end_readings": {
-    "s2-1:1": "40865.33",
-    "s2-1:2": "34790.39",
-    "s2-2:1": "48448.71",
-    "s2-2:2": "35208.82"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1261.41"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "40247.42",
+      "s2-1:2": "34583.41",
+      "s2-2:1": "48051.54",
+      "s2-2:2": "34932.31"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3099.19"
+     "end_readings": {
+      "s2-1:1": "40865.33",
+      "s2-1:2": "34790.39",
+      "s2-2:1": "48448.71",
+      "s2-2:2": "35208.82"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "573.37"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1261.41"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3099.19"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "573.37"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "229.35"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "114.68"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "26655.89",
+      "s2-3:2": "48615.04"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "229.35"
+     "end_readings": {
+      "s2-3:1": "27067.51",
+      "s2-3:2": "48901.28"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "114.68"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-06T06:00",
-   "end": "2026-10-06T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "26655.89",
-    "s2-3:2": "48615.04"
-   },
-   "end_readings": {
-    "s2-3:1": "27067.51",
-    "s2-3:2": "48901.28"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "588.54"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1445.95"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "267.52"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "107.01"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "53.51"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "588.54"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1445.95"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "267.52"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "107.01"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "53.51"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -4853,52 +4807,54 @@
    "station": "s1",
    "start": "2026-10-07T06:00",
    "end": "2026-10-07T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "33571.19",
-    "s1-1:2": "16998.42",
-    "s1-2:1": "17309.68",
-    "s1-2:2": "42468.19",
-    "s1-3:1": "15996.22",
-    "s1-3:2": "40328.03"
-   },
-   "end_readings": {
-    "s1-1:1": "34034.86",
-    "s1-1:2": "17256.62",
-    "s1-2:1": "17701.78",
-    "s1-2:2": "42719.49",
-    "s1-3:1": "16455.09",
-    "s1-3:2": "40614.51"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1777.61"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "33571.19",
+      "s1-1:2": "16998.42",
+      "s1-2:1": "17309.68",
+      "s1-2:2": "42468.19",
+      "s1-3:1": "15996.22",
+      "s1-3:2": "40328.03"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4367.57"
+     "end_readings": {
+      "s1-1:1": "34034.86",
+      "s1-1:2": "17256.62",
+      "s1-2:1": "17701.78",
+      "s1-2:2": "42719.49",
+      "s1-3:1": "16455.09",
+      "s1-3:2": "40614.51"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "808.00"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "323.20"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "161.61"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1777.61"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4367.57"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "808.00"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "323.20"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "161.61"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -4929,92 +4885,88 @@
    "station": "s2",
    "start": "2026-10-07T06:00",
    "end": "2026-10-07T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "40865.33",
-    "s2-1:2": "34790.39",
-    "s2-2:1": "48448.71",
-    "s2-2:2": "35208.82"
-   },
-   "end_readings": {
-    "s2-1:1": "41260.73",
-    "s2-1:2": "35112.12",
-    "s2-2:1": "48918.20",
-    "s2-2:2": "35420.84"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1177.72"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "40865.33",
+      "s2-1:2": "34790.39",
+      "s2-2:1": "48448.71",
+      "s2-2:2": "35208.82"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2893.51"
+     "end_readings": {
+      "s2-1:1": "41260.73",
+      "s2-1:2": "35112.12",
+      "s2-2:1": "48918.20",
+      "s2-2:2": "35420.84"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "535.32"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1177.72"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2893.51"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "535.32"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "214.13"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "107.07"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "27067.51",
+      "s2-3:2": "48901.28"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "214.13"
+     "end_readings": {
+      "s2-3:1": "27540.39",
+      "s2-3:2": "49204.23"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "107.07"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-07T06:00",
-   "end": "2026-10-07T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "27067.51",
-    "s2-3:2": "48901.28"
-   },
-   "end_readings": {
-    "s2-3:1": "27540.39",
-    "s2-3:2": "49204.23"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "654.05"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1607.03"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "297.30"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "118.92"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "59.45"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "654.05"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1607.03"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "297.30"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "118.92"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "59.45"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -5045,52 +4997,54 @@
    "station": "s1",
    "start": "2026-10-08T06:00",
    "end": "2026-10-08T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "34034.86",
-    "s1-1:2": "17256.62",
-    "s1-2:1": "17701.78",
-    "s1-2:2": "42719.49",
-    "s1-3:1": "16455.09",
-    "s1-3:2": "40614.51"
-   },
-   "end_readings": {
-    "s1-1:1": "34445.41",
-    "s1-1:2": "17505.58",
-    "s1-2:1": "18100.12",
-    "s1-2:2": "42932.95",
-    "s1-3:1": "16965.18",
-    "s1-3:2": "40811.09"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1663.96"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "34034.86",
+      "s1-1:2": "17256.62",
+      "s1-2:1": "17701.78",
+      "s1-2:2": "42719.49",
+      "s1-3:1": "16455.09",
+      "s1-3:2": "40614.51"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4088.38"
+     "end_readings": {
+      "s1-1:1": "34445.41",
+      "s1-1:2": "17505.58",
+      "s1-2:1": "18100.12",
+      "s1-2:2": "42932.95",
+      "s1-3:1": "16965.18",
+      "s1-3:2": "40811.09"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "756.35"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "302.54"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "151.27"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1663.96"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4088.38"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "756.35"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "302.54"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "151.27"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -5121,92 +5075,88 @@
    "station": "s2",
    "start": "2026-10-08T06:00",
    "end": "2026-10-08T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "41260.73",
-    "s2-1:2": "35112.12",
-    "s2-2:1": "48918.20",
-    "s2-2:2": "35420.84"
-   },
-   "end_readings": {
-    "s2-1:1": "41791.42",
-    "s2-1:2": "35302.58",
-    "s2-2:1": "49376.14",
-    "s2-2:2": "35661.16"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1193.26"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "41260.73",
+      "s2-1:2": "35112.12",
+      "s2-2:1": "48918.20",
+      "s2-2:2": "35420.84"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2931.89"
+     "end_readings": {
+      "s2-1:1": "41791.42",
+      "s2-1:2": "35302.58",
+      "s2-2:1": "49376.14",
+      "s2-2:2": "35661.16"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "542.39"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1193.26"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2931.89"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "542.39"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "216.96"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "108.47"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "27540.39",
+      "s2-3:2": "49204.23"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "216.96"
+     "end_readings": {
+      "s2-3:1": "27973.86",
+      "s2-3:2": "49438.89"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "108.47"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-08T06:00",
-   "end": "2026-10-08T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "27540.39",
-    "s2-3:2": "49204.23"
-   },
-   "end_readings": {
-    "s2-3:1": "27973.86",
-    "s2-3:2": "49438.89"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "562.94"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1383.24"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "255.88"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "102.35"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "51.17"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "562.94"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1383.24"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "255.88"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "102.35"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "51.17"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -5237,52 +5187,54 @@
    "station": "s1",
    "start": "2026-10-09T06:00",
    "end": "2026-10-09T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "34445.41",
-    "s1-1:2": "17505.58",
-    "s1-2:1": "18100.12",
-    "s1-2:2": "42932.95",
-    "s1-3:1": "16965.18",
-    "s1-3:2": "40811.09"
-   },
-   "end_readings": {
-    "s1-1:1": "35214.60",
-    "s1-1:2": "17785.58",
-    "s1-2:1": "18682.14",
-    "s1-2:2": "43227.90",
-    "s1-3:1": "17590.34",
-    "s1-3:2": "41160.35"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "2439.89"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "34445.41",
+      "s1-1:2": "17505.58",
+      "s1-2:1": "18100.12",
+      "s1-2:2": "42932.95",
+      "s1-3:1": "16965.18",
+      "s1-3:2": "40811.09"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "5994.86"
+     "end_readings": {
+      "s1-1:1": "35214.60",
+      "s1-1:2": "17785.58",
+      "s1-2:1": "18682.14",
+      "s1-2:2": "43227.90",
+      "s1-3:1": "17590.34",
+      "s1-3:2": "41160.35"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "1109.04"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "443.62"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "221.80"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "2439.89"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "5994.86"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "1109.04"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "443.62"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "221.80"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -5313,92 +5265,88 @@
    "station": "s2",
    "start": "2026-10-09T06:00",
    "end": "2026-10-09T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "41791.42",
-    "s2-1:2": "35302.58",
-    "s2-2:1": "49376.14",
-    "s2-2:2": "35661.16"
-   },
-   "end_readings": {
-    "s2-1:1": "42387.32",
-    "s2-1:2": "35629.67",
-    "s2-2:1": "49902.13",
-    "s2-2:2": "35960.96"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1473.65"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "41791.42",
+      "s2-1:2": "35302.58",
+      "s2-2:1": "49376.14",
+      "s2-2:2": "35661.16"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3620.81"
+     "end_readings": {
+      "s2-1:1": "42387.32",
+      "s2-1:2": "35629.67",
+      "s2-2:1": "49902.13",
+      "s2-2:2": "35960.96"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "669.84"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1473.65"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3620.81"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "669.84"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "267.94"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "133.96"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "27973.86",
+      "s2-3:2": "49438.89"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "267.94"
+     "end_readings": {
+      "s2-3:1": "28576.91",
+      "s2-3:2": "49792.31"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "133.96"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-09T06:00",
-   "end": "2026-10-09T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "27973.86",
-    "s2-3:2": "49438.89"
-   },
-   "end_readings": {
-    "s2-3:1": "28576.91",
-    "s2-3:2": "49792.31"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "804.96"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1977.84"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "365.89"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "146.36"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "73.17"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "804.96"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1977.84"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "365.89"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "146.36"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "73.17"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -5429,52 +5377,54 @@
    "station": "s1",
    "start": "2026-10-10T06:00",
    "end": "2026-10-10T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "35214.60",
-    "s1-1:2": "17785.58",
-    "s1-2:1": "18682.14",
-    "s1-2:2": "43227.90",
-    "s1-3:1": "17590.34",
-    "s1-3:2": "41160.35"
-   },
-   "end_readings": {
-    "s1-1:1": "35829.79",
-    "s1-1:2": "18176.12",
-    "s1-2:1": "19437.49",
-    "s1-2:2": "43571.47",
-    "s1-3:1": "18161.46",
-    "s1-3:2": "41613.58"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "2633.86"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "35214.60",
+      "s1-1:2": "17785.58",
+      "s1-2:1": "18682.14",
+      "s1-2:2": "43227.90",
+      "s1-3:1": "17590.34",
+      "s1-3:2": "41160.35"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "6471.35"
+     "end_readings": {
+      "s1-1:1": "35829.79",
+      "s1-1:2": "18176.12",
+      "s1-2:1": "19437.49",
+      "s1-2:2": "43571.47",
+      "s1-3:1": "18161.46",
+      "s1-3:2": "41613.58"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "1197.21"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "478.88"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "239.44"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "2633.86"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "6471.35"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "1197.21"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "478.88"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "239.44"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -5505,92 +5455,88 @@
    "station": "s2",
    "start": "2026-10-10T06:00",
    "end": "2026-10-10T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "42387.32",
-    "s2-1:2": "35629.67",
-    "s2-2:1": "49902.13",
-    "s2-2:2": "35960.96"
-   },
-   "end_readings": {
-    "s2-1:1": "42907.61",
-    "s2-1:2": "36072.29",
-    "s2-2:1": "50454.63",
-    "s2-2:2": "36305.57"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1568.44"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "42387.32",
+      "s2-1:2": "35629.67",
+      "s2-2:1": "49902.13",
+      "s2-2:2": "35960.96"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3853.51"
+     "end_readings": {
+      "s2-1:1": "42907.61",
+      "s2-1:2": "36072.29",
+      "s2-2:1": "50454.63",
+      "s2-2:2": "36305.57"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "712.92"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1568.44"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3853.51"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "712.92"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "285.17"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "142.59"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "28576.91",
+      "s2-3:2": "49792.31"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "285.17"
+     "end_readings": {
+      "s2-3:1": "29234.90",
+      "s2-3:2": "50175.92"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "142.59"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-10T06:00",
-   "end": "2026-10-10T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "28576.91",
-    "s2-3:2": "49792.31"
-   },
-   "end_readings": {
-    "s2-3:1": "29234.90",
-    "s2-3:2": "50175.92"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "876.76"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2154.05"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "398.52"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "159.41"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "79.71"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "876.76"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2154.05"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "398.52"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "159.41"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "79.71"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -5621,52 +5567,54 @@
    "station": "s1",
    "start": "2026-10-11T06:00",
    "end": "2026-10-11T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "35829.79",
-    "s1-1:2": "18176.12",
-    "s1-2:1": "19437.49",
-    "s1-2:2": "43571.47",
-    "s1-3:1": "18161.46",
-    "s1-3:2": "41613.58"
-   },
-   "end_readings": {
-    "s1-1:1": "36191.32",
-    "s1-1:2": "18352.05",
-    "s1-2:1": "19782.23",
-    "s1-2:2": "43819.80",
-    "s1-3:1": "18495.89",
-    "s1-3:2": "41795.17"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1385.54"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "35829.79",
+      "s1-1:2": "18176.12",
+      "s1-2:1": "19437.49",
+      "s1-2:2": "43571.47",
+      "s1-3:1": "18161.46",
+      "s1-3:2": "41613.58"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3404.32"
+     "end_readings": {
+      "s1-1:1": "36191.32",
+      "s1-1:2": "18352.05",
+      "s1-2:1": "19782.23",
+      "s1-2:2": "43819.80",
+      "s1-3:1": "18495.89",
+      "s1-3:2": "41795.17"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "629.79"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "251.92"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "125.96"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1385.54"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3404.32"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "629.79"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "251.92"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "125.96"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -5697,92 +5645,88 @@
    "station": "s2",
    "start": "2026-10-11T06:00",
    "end": "2026-10-11T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "42907.61",
-    "s2-1:2": "36072.29",
-    "s2-2:1": "50454.63",
-    "s2-2:2": "36305.57"
-   },
-   "end_readings": {
-    "s2-1:1": "43230.16",
-    "s2-1:2": "36259.10",
-    "s2-2:1": "50872.04",
-    "s2-2:2": "36478.11"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "925.88"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "42907.61",
+      "s2-1:2": "36072.29",
+      "s2-2:1": "50454.63",
+      "s2-2:2": "36305.57"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2274.86"
+     "end_readings": {
+      "s2-1:1": "43230.16",
+      "s2-1:2": "36259.10",
+      "s2-2:1": "50872.04",
+      "s2-2:2": "36478.11"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "420.85"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "925.88"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2274.86"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "420.85"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "168.34"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "84.17"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "29234.90",
+      "s2-3:2": "50175.92"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "168.34"
+     "end_readings": {
+      "s2-3:1": "29641.79",
+      "s2-3:2": "50373.98"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "84.17"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-11T06:00",
-   "end": "2026-10-11T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "29234.90",
-    "s2-3:2": "50175.92"
-   },
-   "end_readings": {
-    "s2-3:1": "29641.79",
-    "s2-3:2": "50373.98"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "509.26"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1251.35"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "231.48"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "92.59"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "46.30"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "509.26"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1251.35"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "231.48"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "92.59"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "46.30"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -5813,52 +5757,54 @@
    "station": "s1",
    "start": "2026-10-12T06:00",
    "end": "2026-10-12T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "36191.32",
-    "s1-1:2": "18352.05",
-    "s1-2:1": "19782.23",
-    "s1-2:2": "43819.80",
-    "s1-3:1": "18495.89",
-    "s1-3:2": "41795.17"
-   },
-   "end_readings": {
-    "s1-1:1": "36812.44",
-    "s1-1:2": "18598.16",
-    "s1-2:1": "20258.37",
-    "s1-2:2": "44083.73",
-    "s1-3:1": "18953.07",
-    "s1-3:2": "42055.16"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1876.35"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "36191.32",
+      "s1-1:2": "18352.05",
+      "s1-2:1": "19782.23",
+      "s1-2:2": "43819.80",
+      "s1-3:1": "18495.89",
+      "s1-3:2": "41795.17"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4610.27"
+     "end_readings": {
+      "s1-1:1": "36812.44",
+      "s1-1:2": "18598.16",
+      "s1-2:1": "20258.37",
+      "s1-2:2": "44083.73",
+      "s1-3:1": "18953.07",
+      "s1-3:2": "42055.16"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "852.89"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "341.16"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "170.57"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1876.35"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4610.27"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "852.89"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "341.16"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "170.57"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -5897,92 +5843,88 @@
    "station": "s2",
    "start": "2026-10-12T06:00",
    "end": "2026-10-12T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "43230.16",
-    "s2-1:2": "36259.10",
-    "s2-2:1": "50872.04",
-    "s2-2:2": "36478.11"
-   },
-   "end_readings": {
-    "s2-1:1": "43636.69",
-    "s2-1:2": "36482.34",
-    "s2-2:1": "51333.71",
-    "s2-2:2": "36711.92"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1116.23"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "43230.16",
+      "s2-1:2": "36259.10",
+      "s2-2:1": "50872.04",
+      "s2-2:2": "36478.11"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "2742.70"
+     "end_readings": {
+      "s2-1:1": "43636.69",
+      "s2-1:2": "36482.34",
+      "s2-2:1": "51333.71",
+      "s2-2:2": "36711.92"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "507.38"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1116.23"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "2742.70"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "507.38"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "202.95"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "101.47"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "29641.79",
+      "s2-3:2": "50373.98"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "202.95"
+     "end_readings": {
+      "s2-3:1": "30127.43",
+      "s2-3:2": "50621.96"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "101.47"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-12T06:00",
-   "end": "2026-10-12T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "29641.79",
-    "s2-3:2": "50373.98"
-   },
-   "end_readings": {
-    "s2-3:1": "30127.43",
-    "s2-3:2": "50621.96"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "617.95"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1518.38"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "280.89"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "112.36"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "56.17"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "617.95"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1518.38"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "280.89"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "112.36"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "56.17"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -6013,52 +5955,54 @@
    "station": "s1",
    "start": "2026-10-13T06:00",
    "end": "2026-10-13T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "36812.44",
-    "s1-1:2": "18598.16",
-    "s1-2:1": "20258.37",
-    "s1-2:2": "44083.73",
-    "s1-3:1": "18953.07",
-    "s1-3:2": "42055.16"
-   },
-   "end_readings": {
-    "s1-1:1": "37242.36",
-    "s1-1:2": "18914.92",
-    "s1-2:1": "20688.58",
-    "s1-2:2": "44304.42",
-    "s1-3:1": "19337.42",
-    "s1-3:2": "42296.23"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1705.60"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "36812.44",
+      "s1-1:2": "18598.16",
+      "s1-2:1": "20258.37",
+      "s1-2:2": "44083.73",
+      "s1-3:1": "18953.07",
+      "s1-3:2": "42055.16"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "4190.81"
+     "end_readings": {
+      "s1-1:1": "37242.36",
+      "s1-1:2": "18914.92",
+      "s1-2:1": "20688.58",
+      "s1-2:2": "44304.42",
+      "s1-3:1": "19337.42",
+      "s1-3:2": "42296.23"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "775.28"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "310.11"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "155.05"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1705.60"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "4190.81"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "775.28"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "310.11"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "155.05"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -6089,92 +6033,88 @@
    "station": "s2",
    "start": "2026-10-13T06:00",
    "end": "2026-10-13T14:00",
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "43636.69",
-    "s2-1:2": "36482.34",
-    "s2-2:1": "51333.71",
-    "s2-2:2": "36711.92"
-   },
-   "end_readings": {
-    "s2-1:1": "44252.09",
-    "s2-1:2": "36821.14",
-    "s2-2:1": "51883.61",
-    "s2-2:2": "36929.53"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "1448.53"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "43636.69",
+      "s2-1:2": "36482.34",
+      "s2-2:1": "51333.71",
+      "s2-2:2": "36711.92"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "3558.92"
+     "end_readings": {
+      "s2-1:1": "44252.09",
+      "s2-1:2": "36821.14",
+      "s2-2:1": "51883.61",
+      "s2-2:2": "36929.53"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "658.42"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "1448.53"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "3558.92"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "658.42"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "263.37"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "131.69"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "30127.43",
+      "s2-3:2": "50621.96"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "263.37"
+     "end_readings": {
+      "s2-3:1": "30607.88",
+      "s2-3:2": "50834.94"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "131.69"
-     }
-    ]
-   }
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": "2026-10-13T06:00",
-   "end": "2026-10-13T14:00",
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "30127.43",
-    "s2-3:2": "50621.96"
-   },
-   "end_readings": {
-    "s2-3:1": "30607.88",
-    "s2-3:2": "50834.94"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "583.34"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1433.24"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "265.16"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "106.06"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "53.03"
-     }
-    ]
-   }
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "583.34"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1433.24"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "265.16"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "106.06"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "53.03"
+      }
+     ]
+    }
+   ]
   },
   {
    "type": "dip",
@@ -6207,94 +6147,88 @@
    "station": "s2",
    "start": null,
    "end": null,
-   "lead": "att1",
-   "start_readings": {
-    "s2-1:1": "44252.09",
-    "s2-1:2": "36821.14",
-    "s2-2:1": "51883.61",
-    "s2-2:2": "36929.53"
-   },
-   "end_readings": {
-    "s2-1:1": "44478.94",
-    "s2-1:2": "36953.64",
-    "s2-2:1": "52097.25",
-    "s2-2:2": "37036.73"
-   },
-   "cash": {
-    "att1": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "572.82"
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s2-1:1": "44252.09",
+      "s2-1:2": "36821.14",
+      "s2-2:1": "51883.61",
+      "s2-2:2": "36929.53"
      },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "1407.57"
+     "end_readings": {
+      "s2-1:1": "44478.94",
+      "s2-1:2": "36953.64",
+      "s2-2:1": "52097.25",
+      "s2-2:2": "37036.73"
      },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "260.38"
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "572.82"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "1407.57"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "260.38"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "104.15"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "52.07"
+      }
+     ]
+    },
+    {
+     "who": "att2",
+     "start_readings": {
+      "s2-3:1": "30607.88",
+      "s2-3:2": "50834.94"
      },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "104.15"
+     "end_readings": {
+      "s2-3:1": "30845.35",
+      "s2-3:2": "50950.21"
      },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "52.07"
-     }
-    ]
-   },
-   "start_minutes_ago": 300,
-   "end_minutes_ago": 60
-  },
-  {
-   "type": "shift",
-   "station": "s2",
-   "start": null,
-   "end": null,
-   "lead": "att2",
-   "start_readings": {
-    "s2-3:1": "30607.88",
-    "s2-3:2": "50834.94"
-   },
-   "end_readings": {
-    "s2-3:1": "30845.35",
-    "s2-3:2": "50950.21"
-   },
-   "cash": {
-    "att2": [
-     {
-      "payment_type": "cash",
-      "currency": "USD",
-      "amount": "296.76"
-     },
-     {
-      "payment_type": "cash",
-      "currency": "ZWG",
-      "amount": "729.19"
-     },
-     {
-      "payment_type": "mobile_money",
-      "currency": "USD",
-      "amount": "134.89"
-     },
-     {
-      "payment_type": "card",
-      "currency": "USD",
-      "amount": "53.96"
-     },
-     {
-      "payment_type": "credit",
-      "currency": "USD",
-      "amount": "26.98"
-     }
-    ]
-   },
+     "cash": [
+      {
+       "payment_type": "cash",
+       "currency": "USD",
+       "amount": "296.76"
+      },
+      {
+       "payment_type": "cash",
+       "currency": "ZWG",
+       "amount": "729.19"
+      },
+      {
+       "payment_type": "mobile_money",
+       "currency": "USD",
+       "amount": "134.89"
+      },
+      {
+       "payment_type": "card",
+       "currency": "USD",
+       "amount": "53.96"
+      },
+      {
+       "payment_type": "credit",
+       "currency": "USD",
+       "amount": "26.98"
+      }
+     ]
+    }
+   ],
    "start_minutes_ago": 300,
    "end_minutes_ago": 60
   },
@@ -6326,15 +6260,19 @@
    "type": "open_shift",
    "station": "s1",
    "start_minutes_ago": 60,
-   "lead": "att1",
-   "start_readings": {
-    "s1-1:1": "37242.36",
-    "s1-1:2": "18914.92",
-    "s1-2:1": "20688.58",
-    "s1-2:2": "44304.42",
-    "s1-3:1": "19337.42",
-    "s1-3:2": "42296.23"
-   }
+   "runs": [
+    {
+     "who": "att1",
+     "start_readings": {
+      "s1-1:1": "37242.36",
+      "s1-1:2": "18914.92",
+      "s1-2:1": "20688.58",
+      "s1-2:2": "44304.42",
+      "s1-3:1": "19337.42",
+      "s1-3:2": "42296.23"
+     }
+    }
+   ]
   }
  ]
 }

@@ -106,7 +106,7 @@ def make_forecourt(tenant, *, price="1.50", currency="USD", price_from=None, noz
             CalibrationPoint.objects.create(tenant_id=tenant.id, tank=tank, dip_mm=dip, litres=litres)
         pump = Pump.objects.create(tenant_id=tenant.id, station=station, name="Pump 1")
         # Test shortcut: both nozzles on the one tank keeps the tank arithmetic simple. The API (and the readiness
-        # checklist) require two nozzles on separate tanks; see second_tank() for a pump built that way.
+        # checklist) require at least two nozzles on at least two separate tanks; see second_tank().
         nz = [Nozzle.objects.create(tenant_id=tenant.id, pump=pump, tank=tank, number=i + 1) for i in range(nozzles)]
         if price:
             set_price(tenant_id=tenant.id, station=station, fuel_type=fuel, currency=currency, price=Decimal(price), effective_from=price_from or timezone.now() - timedelta(days=60))

@@ -150,15 +150,16 @@ def load_demo(tenant, data, *, password=None):
             return [{"nozzle": nozzles[k], "reading": D(v)} for k, v in values.items()]
 
         def run_shift(ev, start_at, end_at):
-            lead = staff[ev["lead"]]  # on assigned pumps: the attendant whose pumps these are
-            shift = ops.start_shift(user=lead, station=stations[ev["station"]], started_at=start_at, readings=readings(ev["start_readings"]),
-                                    attendants=[staff[k] for k in ev.get("attendants", [])])
+            # every attendant on the shift starts on their pumps (the first opens it, the next join it) ...
+            shift = None
+            for run in ev["runs"]:
+                shift = ops.start_shift(user=staff[run["who"]], station=stations[ev["station"]], started_at=start_at, readings=readings(run["start_readings"]))
             if end_at is None:
                 return
-            for who, cash in ev["cash"].items():  # the others hand in first; the lead's 'end' then closes the shift
-                if who != ev["lead"]:
-                    ops.end_shift(user=staff[who], shift=shift, readings=[], cash=cash, ended_at=end_at)
-            ops.end_shift(user=lead, shift=shift, readings=readings(ev["end_readings"]), cash=ev["cash"].get(ev["lead"], []), ended_at=end_at)
+            # ... and ends their own part: their pumps' numbers and their cash. The last one closes the shift.
+            for run in ev["runs"]:
+                shift.refresh_from_db()
+                ops.end_shift(user=staff[run["who"]], shift=shift, readings=readings(run["end_readings"]), cash=run["cash"], ended_at=end_at)
 
         def apply(ev, at=None, start_at=None, end_at=None):
             if ev["type"] == "dip":

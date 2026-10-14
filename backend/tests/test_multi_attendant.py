@@ -1,5 +1,5 @@
 """Several attendants (PLAN.md section 4): joining, leaving, per-person cash, closing, readings that differ,
-assigned pumps (manager-only assignment, one shift per attendant, a mid-shift swap), and two phones syncing offline."""
+assigned pumps (manager-only assignment, each attendant ending their part, handovers, a swap), and two phones offline."""
 import uuid
 from decimal import Decimal
 
@@ -162,7 +162,7 @@ def test_only_managers_and_owners_assign_pumps():
     assert started.status_code == 201 and [p["name"] for p in started.json()["attendants"]] == [att_a.full_name]
 
 
-def test_attendants_see_and_record_only_their_own_pumps_on_their_own_shift():
+def test_attendants_see_only_their_own_pumps_and_share_one_shift():
     a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
     ca, cb = client_for(att_a), client_for(att_b)
     mine = ca.get("/api/shifts/prefill/").json()["stations"][0]
@@ -172,62 +172,95 @@ def test_attendants_see_and_record_only_their_own_pumps_on_their_own_shift():
     assert {(p["name"], p["assigned_to_name"]) for p in every} == {("Pump 1", att_a.full_name), ("Pump 2", "Second Attendant")}
     body = {"station": str(fc.station.pk), "started_at": T0}
     assert ca.post("/api/shifts/start/", {**body, "readings": readings([*fc.nozzles, p2[0]], [0, 0, 0])}, format="json").status_code == 400  # not A's pump
-    assert ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles[:1], [0])}, format="json").status_code == 400  # both nozzles
+    assert ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles[:1], [0])}, format="json").status_code == 400  # every nozzle
     sa = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json")
     sb = cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
-    assert sa.status_code == 201 and sb.status_code == 201 and sa.json()["id"] != sb.json()["id"]  # each their own shift
-    assert cb.post(f"/api/shifts/{sa.json()['id']}/join/", {}, format="json").status_code in (400, 404)
-    assert client_for(att_b).get("/api/shifts/prefill/").json()["stations"][0]["open_shift_id"] == sb.json()["id"]
+    assert sa.status_code == 201 and sb.status_code == 201
+    assert sb.json()["id"] == sa.json()["id"] and sb.json()["merged"] is True  # many attendants, one shift
+    assert {p["name"] for p in sb.json()["attendants"]} == {att_a.full_name, "Second Attendant"}
+    assert cb.get("/api/shifts/prefill/").json()["stations"][0]["open_shift_id"] == sa.json()["id"]
 
 
-def test_a_manager_swaps_a_pump_and_each_attendant_answers_for_their_own_litres_and_cash():
+def test_each_attendant_ends_their_part_and_their_pumps_pass_to_the_incoming_attendant():
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    att_c = make_user(a["tenant"], Role.ATTENDANT, full_name="Third Attendant")
+    ca, cb, cc = client_for(att_a), client_for(att_b), client_for(att_c)
+    body = {"station": str(fc.station.pk), "started_at": T0}
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+    # the manager plans the handover: Pump 1 goes to C next. A keeps it until A ends their part.
+    planned = mgr.post(f"/api/pumps/{fc.pump.pk}/assign/", {"user": str(att_c.pk)}, format="json")
+    assert planned.status_code == 200 and planned.json()["assigned_to_name"] == "Third Attendant"
+    assert [p["name"] for p in ca.get("/api/shifts/prefill/").json()["stations"][0]["pumps"]] == ["Pump 1"]
+    waiting = cc.get("/api/shifts/prefill/").json()["stations"][0]["pumps"]
+    assert [(p["name"], p["in_use_by"]) for p in waiting] == [("Pump 1", att_a.full_name)]
+    early = cc.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": T_SWAP, "readings": readings(fc.nozzles, [50, 0])}, format="json")
+    assert early.status_code == 400 and "still with" in str(early.json())
+    # A ends their part at 10:00: their numbers, their cash. The shift goes on (B is still on it).
+    da = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_SWAP, "readings": readings(fc.nozzles, [50, 0]), "cash": cash("75")}, format="json")
+    assert da.status_code == 200 and da.json()["status"] == "open", da.content
+    # C, the incoming attendant, starts on Pump 1 at those numbers and joins the same shift
+    sc = cc.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": "2026-10-01T10:05:00Z", "readings": readings(fc.nozzles, [50, 0])}, format="json")
+    assert sc.status_code == 201 and sc.json()["id"] == sid
+    assert cb.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings(p2, [20, 0]), "cash": cash("30")}, format="json").json()["status"] == "open"
+    d = cc.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings(fc.nozzles, [100, 0]), "cash": cash("70")}, format="json").json()
+    assert d["status"] == "closed", d  # the last person out closes the shift
+    people = {p["name"]: p for p in d["summary"]["by_attendant"]}
+    assert (people[att_a.full_name]["expected"], people[att_a.full_name]["cash_difference"]) == ("75.00", "0.00")
+    assert (people["Second Attendant"]["expected"], people["Second Attendant"]["cash_difference"]) == ("30.00", "0.00")
+    assert (people["Third Attendant"]["expected"], people["Third Attendant"]["cash_difference"]) == ("75.00", "-5.00")
+    sold = {(r["pump"], r["attendant_name"]): r["litres"] for r in d["summary"]["by_pump"] if Decimal(r["litres"])}
+    assert sold == {("Pump 1", att_a.full_name): "50.000", ("Pump 1", "Third Attendant"): "50.000", ("Pump 2", "Second Attendant"): "20.000"}
+    report = {r["name"]: r for r in mgr.get("/api/reports/attendants/", {"date_from": "2026-10-01", "date_to": "2026-10-01"}).json()["rows"]}
+    assert (report["Third Attendant"]["litres"], report["Third Attendant"]["handed_in"], report["Third Attendant"]["cash_difference"]) == ("50.000", "70.00", "-5.00")
+    assert {(p["pump"], p["litres"]) for p in report[att_a.full_name]["pumps"]} == {("Pump 1", "50.000")}
+    assert ca.get("/api/reports/attendants/").status_code == 403
+    with db_context(tenant_id=a["tenant"].id):
+        assert Shift.objects.filter(station=fc.station).count() == 1
+
+
+def test_a_manager_can_swap_a_pump_at_once_with_the_meter_numbers():
     a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
     ca, cb = client_for(att_a), client_for(att_b)
     body = {"station": str(fc.station.pk), "started_at": T0}
-    sid_a = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
-    sid_b = cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json").json()["id"]
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
     swap = {"user": str(att_b.pk), "at": T_SWAP, "readings": readings(fc.nozzles, [50, 0])}
     assert ca.post(f"/api/pumps/{fc.pump.pk}/assign/", swap, format="json").status_code == 403  # attendants never swap
-    assert cb.post(f"/api/shifts/{sid_b}/reassign/", {**swap, "pump": str(fc.pump.pk)}, format="json").status_code == 403
+    assert cb.post(f"/api/shifts/{sid}/reassign/", {**swap, "pump": str(fc.pump.pk)}, format="json").status_code == 403
     short = mgr.post(f"/api/pumps/{fc.pump.pk}/assign/", {**swap, "readings": readings(fc.nozzles[:1], [50])}, format="json")
-    assert short.status_code == 400 and "both its nozzles" in str(short.json())
+    assert short.status_code == 400 and "every nozzle" in str(short.json())
     assert mgr.post(f"/api/pumps/{fc.pump.pk}/assign/", swap, format="json").status_code == 200
-    # Pump 1 now shows on B's phone and is gone from A's
     assert {p["name"] for p in cb.get("/api/shifts/prefill/").json()["stations"][0]["pumps"]} == {"Pump 1", "Pump 2"}
     assert ca.get("/api/shifts/prefill/").json()["stations"][0]["pumps"] == []
-    # A: 50 L before the swap x 1.50 = 75. B: 50 L on Pump 1 after it + 20 L on Pump 2 = 70 L = 105, hands in 100.
-    da = ca.post(f"/api/shifts/{sid_a}/end/", {"ended_at": T_END, "readings": [], "cash": cash("75")}, format="json").json()
-    db = cb.post(f"/api/shifts/{sid_b}/end/", {"ended_at": T_END, "readings": readings([*fc.nozzles, *p2], [100, 0, 20, 0]), "cash": cash("100")}, format="json").json()
-    assert da["status"] == "closed" and db["status"] == "closed", (da, db)
-    pa, pb = da["summary"]["by_attendant"][0], db["summary"]["by_attendant"][0]
-    assert (pa["name"], pa["expected"], pa["cash_difference"]) == (att_a.full_name, "75.00", "0.00")
-    assert (pb["name"], pb["expected"], pb["cash_difference"]) == ("Second Attendant", "105.00", "-5.00")
-    pumps_b = {(r["pump"], r["attendant_name"]): r["litres"] for r in db["summary"]["by_pump"]}
-    assert pumps_b == {("Pump 1", "Second Attendant"): "50.000", ("Pump 2", "Second Attendant"): "20.000"}
-    assert {(r["pump"], r["litres"]) for r in da["summary"]["by_pump"]} == {("Pump 1", "50.000")}
+    # A: 50 L before the swap x 1.50 = 75. B: 50 L on Pump 1 after it + 20 L on Pump 2 = 105, hands in 100.
+    assert ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": [], "cash": cash("75")}, format="json").json()["status"] == "open"
+    d = cb.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings([*fc.nozzles, *p2], [100, 0, 20, 0]), "cash": cash("100")}, format="json").json()
+    assert d["status"] == "closed", d
+    people = {p["name"]: p for p in d["summary"]["by_attendant"]}
+    assert (people[att_a.full_name]["expected"], people[att_a.full_name]["cash_difference"]) == ("75.00", "0.00")
+    assert (people["Second Attendant"]["expected"], people["Second Attendant"]["cash_difference"]) == ("105.00", "-5.00")
     with db_context(tenant_id=a["tenant"].id):
         assert AuditLog.objects.filter(action="pump_reassigned").count() == 1
-        assert {t.attendant_id for t in Transaction.objects.filter(shift_id=sid_a)} == {att_a.pk}
-    # the period report: litres per pump and cash per attendant, for managers and owners only
-    report = mgr.get("/api/reports/attendants/", {"date_from": "2026-10-01", "date_to": "2026-10-01"}).json()["rows"]
-    rows = {r["name"]: r for r in report}
-    assert (rows[att_a.full_name]["litres"], rows[att_a.full_name]["handed_in"], rows[att_a.full_name]["cash_difference"]) == ("50.000", "75.00", "0.00")
-    assert (rows["Second Attendant"]["sales"], rows["Second Attendant"]["cash_difference"]) == ("105.00", "-5.00")
-    assert {(p["pump"], p["litres"]) for p in rows["Second Attendant"]["pumps"]} == {("Pump 1", "50.000"), ("Pump 2", "20.000")}
-    assert ca.get("/api/reports/attendants/").status_code == 403
+        holders = {(t.nozzle_id, t.started_at.hour): t.attendant_id for t in Transaction.objects.filter(shift_id=sid) if t.litres > 0}
+        assert holders == {(fc.nozzles[0].pk, 6): att_a.pk, (fc.nozzles[0].pk, 10): att_b.pk, (p2[0].pk, 6): att_b.pk}
 
 
 def test_a_phone_that_sends_end_numbers_for_a_pump_swapped_away_is_ignored_and_flagged():
     a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
-    ca = client_for(att_a)
-    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": T0, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    ca, cb = client_for(att_a), client_for(att_b)
+    body = {"station": str(fc.station.pk), "started_at": T0}
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
     mgr.post(f"/api/pumps/{fc.pump.pk}/assign/", {"user": str(att_b.pk), "at": T_SWAP, "readings": readings(fc.nozzles, [50, 0])}, format="json")
     res = ca.post("/api/sync/", {"ops": [op("shift_end", {"shift_id": sid, "ended_at": T_END, "readings": readings(fc.nozzles, [90, 0]), "cash": cash("75")})]}, format="json")
     result = res.json()["results"][0]
-    assert result["status"] == "applied" and result["result"]["status"] == "closed"
+    assert result["status"] == "applied" and result["result"]["status"] == "open"
     assert any(f.startswith("reading_after_swap") for f in result["result"]["flags"])
+    cb.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings([*fc.nozzles, *p2], [100, 0, 20, 0]), "cash": cash("105")}, format="json")
     with db_context(tenant_id=a["tenant"].id):
-        assert sum(t.litres for t in Transaction.objects.filter(shift_id=sid)) == Decimal("50")
+        assert Shift.objects.get(pk=sid).status == "closed"
+        assert sum(t.litres for t in Transaction.objects.filter(shift_id=sid, attendant=att_a)) == Decimal("50")
 
 
 # ---- two phones, offline -----------------------------------------------------------------------------------------

@@ -63,8 +63,8 @@ and only refresh a demo's data, use `docker compose run --rm seed` (or `seed_dem
 
 ## Pump system, pumps and nozzles
 * The platform chooses **shared** or **assigned** pumps on the "New business" form (`pump_system`); it can be changed on the business page (`PATCH /api/platform/tenants/<id>/pump-system/`) when no shift is open. New stations follow it.
-* Assigned pumps: managers and owners give each pump to an attendant on the **Pumps** screen. Attendants see only their pumps and run their own shift on them. A pump in use is swapped with both nozzles' meter numbers.
-* Every pump has **two nozzles, each on its own tank** (Setup, "Add pump"). Pumps set up before this rule show "needs two nozzles on separate tanks" in Setup and the readiness checklist; fix by moving a nozzle to the right tank (`PATCH /api/nozzles/<id>/ {"tank": ...}`).
+* Assigned pumps: managers and owners give each pump to an attendant on the **Pumps** screen. Attendants see only their pumps. Many attendants share one shift; each ends their own part (their numbers, their cash) and their pumps pass to the incoming attendant. For a pump in use, the manager either plans the handover (it passes when the person on it ends) or swaps it now with every nozzle's meter number.
+* Every pump has **at least two nozzles, drawing from at least two separate tanks**; some have more (Setup, "Add pump" and "Add a nozzle to a pump"). A nozzle cannot be removed or moved if that would break the rule. Pumps set up before this rule show "needs nozzles on two separate tanks"; fix by moving a nozzle to the right tank (`PATCH /api/nozzles/<id>/ {"tank": ...}`) or adding one.
 * Reports, "By attendant": litres per pump and fuel, cash handed in and the cash difference per attendant (`GET /api/reports/attendants/`).
 * QR labels are switched off for now; pumps and tanks are labelled physically.
 

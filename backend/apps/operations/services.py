@@ -7,10 +7,12 @@ Several people can work one shift (PLAN.md section 4):
 * each person hands in their own cash; the shift closes once everyone has handed in or been marked as left.
   If the lead asks to close earlier (typical offline: phones sync in any order), the shift closes by itself
   when the last person is done;
-* on assigned-pump stations a manager or owner gives each pump to one attendant (Pump.assigned_to). Each attendant
-  sees only their own pumps and starts and ends their OWN shift on them, so litres and cash are per person by
-  construction. A swap (manager or owner only) closes the pump on one person's shift and opens it on the next
-  person's at the meter numbers taken at the swap.
+* on assigned-pump stations a manager or owner gives each pump to one attendant (Pump.assigned_to); attendants never
+  assign or swap pumps. There is still ONE shift at the station with many attendants on it: each attendant starts on
+  their own pumps (the first opens the shift, the next ones join it) and individually ends their part, with the meter
+  numbers of their pumps and their own cash. Their pumps then pass to the incoming attendant, whose period starts at
+  those numbers. Each pump period (PumpAssignment) is bounded by meter readings, so every litre belongs to exactly one
+  person. The shift closes when the last person on it ends their part. A manager can also swap a pump at once.
 """
 from decimal import Decimal
 
@@ -135,7 +137,8 @@ def dispensed_litres(start, end, meter_max, flags):
 
 
 def last_end_reading(nozzle, exclude_shift=None):
-    qs = PumpMeterReading.objects.filter(nozzle=nozzle, kind=PumpMeterReading.Kind.END)
+    """The nozzle's latest closing number: a shift's end, or a handover inside a shift (assigned pumps)."""
+    qs = PumpMeterReading.objects.filter(nozzle=nozzle, kind__in=[PumpMeterReading.Kind.END, PumpMeterReading.Kind.CHECKPOINT])
     if exclude_shift is not None:
         qs = qs.exclude(shift=exclude_shift)
     return qs.order_by("-reading_at", "created_at").first()
@@ -212,10 +215,8 @@ def my_pumps(station, user):
     return list(Pump.objects.filter(station=station, assigned_to=user).prefetch_related("nozzles").order_by("name"))
 
 
-def open_shift_of(station, user):
-    """This person's open shift at this station, if any."""
-    return (Shift.objects.filter(station=station, status=Shift.Status.OPEN, attendants__user=user, attendants__left_at__isnull=True)
-            .order_by("started_at").first())
+def open_shift_at(station):
+    return Shift.objects.filter(station=station, status=Shift.Status.OPEN).order_by("started_at").first()
 
 
 def open_pump_assignment(pump):
@@ -231,18 +232,26 @@ def _works_at(user, station):
     return not limited.exists() or limited.filter(station=station).exists()
 
 
+def _finished_part(shift, user):
+    """This person already ended their part of this shift (handed in and left)."""
+    row = attendant_row(shift, user)
+    return bool(row and row.left_at is not None and row.cash_submitted_at is not None)
+
+
 def _pump_readings(pump, readings):
     nozzles = {n.pk for n in pump.nozzles.all()}
     if any(item["nozzle"].pk not in nozzles for item in readings) or nozzles - {item["nozzle"].pk for item in readings}:
-        raise ValidationError({"readings": f"{pump.name} is in use. Enter the meter number of both its nozzles now to swap it."})
+        raise ValidationError({"readings": f"To swap {pump.name} now, enter the meter number of every nozzle on it."})
 
 
 def assign_pump(*, user, pump, to_user, readings=(), at=None, strict=True, request=None):
-    """A manager or owner gives a pump to an attendant (to_user=None takes it back).
+    """A manager or owner decides who works a pump (to_user=None: nobody).
 
-    If the pump is in use on someone's open shift, this is a swap: the meter numbers taken now end the pump on that
-    shift and start it on the new person's shift (theirs if they have one open here, otherwise a new one). Litres
-    before the swap count for the first person, litres after it for the second.
+    * Not in use: it is theirs from now on.
+    * In use, no meter numbers: the person working it keeps it until they end their part of the shift; the new person
+      takes it over when they start (a planned handover, for example the afternoon roster).
+    * In use, with the meter number of every nozzle: swap now, on the same shift. Litres before the numbers count for
+      the person who had it, litres after them for the new person.
     """
     if not can(user, "manage_shift"):
         raise PermissionDenied("Only a manager or the owner assigns pumps.")
@@ -257,22 +266,20 @@ def assign_pump(*, user, pump, to_user, readings=(), at=None, strict=True, reque
     current = open_pump_assignment(pump)
     swapped = None
     with db_tx.atomic():
-        if current is not None and (to_user is None or current.user_id != to_user.pk):
+        if current is not None and readings and (to_user is None or current.user_id != to_user.pk):
             _pump_readings(pump, readings)
-            target = open_shift_of(station, to_user) if to_user is not None else None
-            if target is not None and PumpAssignment.objects.filter(shift=target, pump=pump).exists():
-                raise ValidationError({"detail": f"{to_user.full_name} already worked {pump.name} earlier on this shift. They end that shift first."})
-            _record_many(current.shift, PumpMeterReading.Kind.END, readings, at, user)
+            shift = current.shift
+            if to_user is not None and _finished_part(shift, to_user):
+                raise ValidationError({"user": f"{to_user.full_name} already ended their part of this shift."})
+            _record_many(shift, PumpMeterReading.Kind.CHECKPOINT, readings, at, user)
             current.ended_at = at
             current.save(update_fields=["ended_at", "updated_at"])
-            current.shift.save()
             if to_user is not None:
-                if target is None:
-                    target = Shift.objects.create(tenant_id=pump.tenant_id, station=station, started_at=at)
-                    _add_person(target, to_user, at, lead=True)
-                PumpAssignment.objects.create(tenant_id=pump.tenant_id, shift=target, pump=pump, user=to_user, started_at=at, assigned_by=user)
-                _record_many(target, PumpMeterReading.Kind.START, readings, at, user)
-                target.save()
+                _add_person(shift, to_user, at)
+                PumpAssignment.objects.create(tenant_id=pump.tenant_id, shift=shift, pump=pump, user=to_user, started_at=at, assigned_by=user)
+            else:
+                shift.add_flag(f"pump_unassigned:{pump.pk}")
+            shift.save()
             swapped = {"from": current.user.full_name, "to": to_user.full_name if to_user else None, "at": at.isoformat(),
                        "meters": {str(i["nozzle"].pk): str(i["reading"]) for i in readings}}
         before = pump.assigned_to.full_name if pump.assigned_to_id else None
@@ -348,20 +355,21 @@ def start_shift(*, user, station, readings, shift_id=None, started_at=None, atte
 
 
 def _start_on_my_pumps(*, user, station, readings, shift_id, started_at, attendants, strict):
-    """Assigned pumps: an attendant starts their own shift on the pumps a manager gave them (a manager may start it
-    for one attendant). Starting again while their shift is open returns that shift (a second phone, a retry)."""
+    """Assigned pumps: an attendant starts on the pumps a manager gave them (a manager may start for one attendant).
+    The first person opens the station's shift; the next ones join it. A pump still with someone else is handed over
+    at the numbers this person enters (offline phones), or refused until that person ends their part (online)."""
     if user.role == Role.ATTENDANT:
         person = user
     else:
         people = [_check_attendant_user(u, user.tenant_id) for u in (attendants or [])]
         if len(people) != 1:
-            raise ValidationError({"attendants": "On assigned pumps each attendant has their own shift. Choose one attendant."})
+            raise ValidationError({"attendants": "On assigned pumps each attendant starts on their own pumps. Choose one attendant."})
         person = people[0]
     pumps = my_pumps(station, person)
     if not pumps:
         raise ValidationError({"detail": f"No pump is assigned to {person.full_name} at {station.name}. A manager assigns the pumps."})
     with db_tx.atomic():
-        shift = open_shift_of(station, person)
+        shift = open_shift_at(station)
         merged = shift is not None
         if shift is None:
             try:
@@ -370,44 +378,111 @@ def _start_on_my_pumps(*, user, station, readings, shift_id, started_at, attenda
                     _add_person(shift, person, started_at, lead=True)
             except IntegrityError:
                 raise Conflict("Shift id already used.")
-        mine = {a.pump_id: a for a in PumpAssignment.objects.filter(shift=shift, ended_at__isnull=True)}
-        usable = []
+        else:
+            if _finished_part(shift, person):
+                raise ValidationError({"detail": f"{person.full_name} already ended their part of this shift."})
+            _add_person(shift, person, started_at)
+            _ensure_lead(shift)
+        at = max(shift.started_at, started_at)
+        given = {}
+        for r in readings:
+            given.setdefault(r["nozzle"].pump_id, []).append(r)
+        mine = {a.pump_id for a in PumpAssignment.objects.filter(shift=shift, user=person, ended_at__isnull=True)}
+        taking = []
         for p in pumps:
-            if p.pk not in mine:
-                other = open_pump_assignment(p)
-                if other is not None:
-                    if strict:
-                        raise ValidationError({"detail": f"{p.name} is still on {other.user.full_name}'s open shift. A manager swaps it over."})
+            nozzle_ids = {n.pk for n in p.nozzles.all()}
+            got = [r for r in given.get(p.pk, []) if r["nozzle"].pk in nozzle_ids]
+            if p.pk in mine:
+                taking.append((p, got))
+                continue
+            other = open_pump_assignment(p)
+            if other is not None:
+                if strict:
+                    raise ValidationError({"detail": f"{p.name} is still with {other.user.full_name}. They end their part of the shift first, or a manager swaps it now."})
+                if not got:
                     shift.add_flag(f"pump_busy:{p.pk}")
                     continue
-                mine[p.pk] = PumpAssignment.objects.create(tenant_id=shift.tenant_id, shift=shift, pump=p, user=person, started_at=started_at)
-            usable.append(p)
-        allowed = {n.pk: mine[p.pk] for p in usable for n in p.nozzles.all()}
+                other.ended_at = at  # handed over at the numbers this person entered
+                other.save(update_fields=["ended_at", "updated_at"])
+                shift.add_flag(f"handover_before_end:{p.pk}")
+            elif not got and not strict:
+                shift.add_flag(f"pump_not_started:{p.pk}")
+                continue
+            PumpAssignment.objects.create(tenant_id=shift.tenant_id, shift=shift, pump=p, user=person, started_at=at)
+            taking.append((p, got))
+        allowed = {n.pk for p, _ in taking for n in p.nozzles.all()}
         if any(r["nozzle"].pk not in allowed for r in readings):
             if strict:
                 raise ValidationError({"readings": "Enter the meters of your own pumps only."})
             shift.add_flag("reading_not_your_pump")
-        given = [r for r in readings if r["nozzle"].pk in allowed]
-        if strict:
-            done = set(PumpMeterReading.objects.filter(shift=shift, kind=PumpMeterReading.Kind.START).values_list("nozzle_id", flat=True))
-            if set(allowed) - done - {r["nozzle"].pk for r in given}:
-                raise ValidationError({"readings": "Enter the meter number of both nozzles on each of your pumps."})
-        for r in given:
-            at = max(shift.started_at, allowed[r["nozzle"].pk].started_at)
-            _record_reading(shift, r["nozzle"], PumpMeterReading.Kind.START, r["reading"], at, user, r.get("photo"))
+        if strict and allowed - {r["nozzle"].pk for _, got in taking for r in got}:
+            raise ValidationError({"readings": "Enter the meter number of every nozzle on each of your pumps."})
+        for _, got in taking:
+            for r in got:
+                last = PumpMeterReading.objects.filter(shift=shift, nozzle=r["nozzle"]).order_by("-reading_at", "-created_at").first()
+                if last is None:
+                    _record_reading(shift, r["nozzle"], PumpMeterReading.Kind.START, r["reading"], at, user, r.get("photo"))
+                elif last.reading != Decimal(str(r["reading"])).quantize(TWO) or last.reading_at != at:
+                    # taking a pump over inside the shift: this person's period starts at this number
+                    _record_reading(shift, r["nozzle"], PumpMeterReading.Kind.CHECKPOINT, r["reading"], at, user, r.get("photo"))
         shift.save()
     shift.merged_from = (str(shift_id) if shift_id else "") if merged else None
     return shift
 
 
-def join_shift(*, user, shift, who=None, at=None, request=None):
+def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request):
+    """Assigned pumps: one attendant ends their part of the shift. The meter numbers of their pumps close their
+    periods (and pass the pumps on), their cash is theirs, and they leave the shift. The last person closes it."""
+    person = who or (user if attendant_row(shift, user) else None)
+    if person is None:
+        raise ValidationError({"user": "Choose whose part of the shift ends."})
+    if person.pk != user.pk and not can(user, "manage_shift"):
+        raise PermissionDenied("You can only end your own part of the shift.")
+    if _finished_part(shift, person):  # a resend: only the cash can still be corrected
+        submit_cash(user=user, shift=shift, cash=cash, who=person, at=ended_at, request=request)
+        return
+    holding = list(PumpAssignment.objects.filter(shift=shift, user=person, ended_at__isnull=True).select_related("pump"))
+    held = {a.pump_id for a in holding}
+    keep = []
+    for r in readings:
+        if r["nozzle"].pump_id in held:
+            keep.append(r)
+        elif strict:
+            raise ValidationError({"readings": f"{r['nozzle'].pump.name} is not with you any more."})
+        else:
+            shift.add_flag(f"reading_after_swap:{r['nozzle'].pk}")
+    if strict:
+        needed = set(Nozzle.objects.filter(pump_id__in=held).values_list("pk", flat=True))
+        if needed - {r["nozzle"].pk for r in keep}:
+            raise ValidationError({"readings": "Enter the meter number of every nozzle on your pumps."})
+    last = not [a for a in active_attendants(shift) if a.user_id != person.pk and not a.done]
+    _record_many(shift, PumpMeterReading.Kind.END if last else PumpMeterReading.Kind.CHECKPOINT, keep, ended_at, user)
+    for a in holding:
+        a.ended_at = ended_at
+        a.save(update_fields=["ended_at", "updated_at"])
+    shift.save()
+    submit_cash(user=user, shift=shift, cash=cash, who=person, at=ended_at, request=request)
+    row = attendant_row(shift, person)
+    if row.left_at is None:
+        row.left_at = ended_at
+        row.save(update_fields=["left_at", "updated_at"])
+        _ensure_lead(shift)
+    audit.log("shift_part_ended", actor=user, obj=shift, request=request, changes={"who": person.full_name, "pumps": [a.pump.name for a in holding], "last": last})
+    if last:
+        shift.close_requested_at = shift.close_requested_at or ended_at
+        shift.closed_by = user
+        shift.save(update_fields=["close_requested_at", "closed_by", "updated_at"])
+        maybe_close(shift)
+
+
+def join_shift(def join_shift(*, user, shift, who=None, at=None, request=None):
     """Someone arrives mid-shift. On a one-attendant station this is a handover: the current person must leave first."""
     who = who or user
     if who.pk != user.pk:
         require_manage(user, shift)
     _require_open(shift)
     if is_assigned_station(shift.station):
-        raise ValidationError({"detail": "On assigned pumps each attendant starts their own shift on their own pumps."})
+        raise ValidationError({"detail": "On assigned pumps, start your shift on your own pumps: you join the open shift."})
     _check_attendant_user(who, shift.tenant_id)
     at = at or timezone.now()
     if shift.station.attendants_mode != Station.AttendantsMode.MULTIPLE and active_attendants(shift).exclude(user=who).exists():
@@ -483,6 +558,8 @@ def pending_people(shift):
 def missing_end_nozzles(shift):
     started = set(PumpMeterReading.objects.filter(shift=shift, kind=PumpMeterReading.Kind.START).values_list("nozzle_id", flat=True))
     ended = set(PumpMeterReading.objects.filter(shift=shift, kind=PumpMeterReading.Kind.END).values_list("nozzle_id", flat=True))
+    if PumpAssignment.objects.filter(shift=shift).exists():  # assigned pumps: a handover number also closes a nozzle
+        ended |= set(PumpMeterReading.objects.filter(shift=shift, kind=PumpMeterReading.Kind.CHECKPOINT).values_list("nozzle_id", flat=True))
     return started - ended
 
 
@@ -522,8 +599,15 @@ def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close
     """'End of my shift' from a phone: end meter numbers (anyone on the shift), the sender's cash, and, for the lead or a
     manager, a request to close. Re-sending corrects an unreviewed shift."""
     _require_not_reviewed(shift)
-    require_on_shift(user, shift)
     ended_at = ended_at or timezone.now()
+    if is_assigned_station(shift.station) and shift.status == Shift.Status.OPEN:
+        if not (can(user, "manage_shift") or attendant_row(shift, user)):
+            raise PermissionDenied("This is not your shift.")
+        with db_tx.atomic():
+            _end_my_part(user=user, shift=shift, readings=readings, cash=cash, ended_at=ended_at, strict=strict, who=who, request=request)
+        shift.refresh_from_db()
+        return shift
+    require_on_shift(user, shift)
     was_closed = shift.status != Shift.Status.OPEN
     with db_tx.atomic():
         _record_many(shift, PumpMeterReading.Kind.END, _readings_for_end(shift, readings, strict), ended_at, user)
@@ -605,15 +689,19 @@ def compute_transactions(shift):
     for rows in by_nozzle.values():
         if not rows["start"]:
             continue
-        if not rows["end"]:
-            shift.add_flag(f"missing_end:{rows['start'][0].nozzle_id}")
-            continue
         checkpoints, seen = [], set()
         for r in sorted(rows["checkpoint"], key=lambda r: (r.reading_at, r.created_at)):
             if r.reading_at not in seen:  # two people snapshotting the same moment count once
                 seen.add(r.reading_at)
                 checkpoints.append(r)
-        chain = [_first(rows["start"]), *checkpoints, _first(rows["end"])]
+        if rows["end"]:
+            end = _first(rows["end"])
+        elif assigned and checkpoints:
+            end = checkpoints.pop()  # assigned pumps: the nozzle's last handover number closes it for this shift
+        else:
+            shift.add_flag(f"missing_end:{rows['start'][0].nozzle_id}")
+            continue
+        chain = [_first(rows["start"]), *checkpoints, end]
         nozzle = chain[0].nozzle
         fuel_type = nozzle.tank.fuel_type
         for a, b in zip(chain, chain[1:], strict=False):

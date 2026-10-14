@@ -160,8 +160,10 @@ class PrefillView(APIView):
                 pump = {"id": str(p.pk), "name": p.name, "data_source": p.data_source, "nozzles": nozzles}
                 if assigned:
                     pump.update(assigned_to=str(p.assigned_to_id) if p.assigned_to_id else None, assigned_to_name=p.assigned_to.full_name if p.assigned_to_id else None)
-                    if manager:  # who is on it right now: changing a pump in use is a swap (meter numbers needed)
-                        busy = services.open_pump_assignment(p)
+                    # who is on it right now. Managers: changing a pump in use waits for a handover, or is a swap now.
+                    # Attendants: a pump of theirs still with the outgoing attendant passes over when that person ends.
+                    busy = services.open_pump_assignment(p)
+                    if manager or (busy and busy.user_id != user.pk):
                         pump["in_use_by"] = busy.user.full_name if busy else None
                 pumps.append(pump)
             prices = FuelPrice.objects.filter(station=st).exclude(effective_to__lt=horizon).order_by("effective_from")

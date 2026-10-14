@@ -14,7 +14,7 @@ from apps.audit import services as audit
 
 from . import services
 from .access import scope, visible_station_ids
-from .models import CalibrationPoint, ExchangeRate, FuelPrice, FuelType, Nozzle, Pump, Station, StationAssignment, Tank
+from .models import CalibrationPoint, ExchangeRate, FuelPrice, FuelType, Nozzle, Pump, Station, StationAssignment, Tank, pump_nozzle_problem
 from .serializers import (
     CalibrationInputSerializer,
     ExchangeRateSerializer,
@@ -179,12 +179,23 @@ def validate_image(f, max_mb=5):
 
 
 class NozzleViewSet(SetupViewSet):
-    """Nozzles come with their pump (two each, on separate tanks): they can be renamed or moved to another tank,
-    never added or removed on their own."""
+    """A pump's nozzles: more can be added, and one can be removed, as long as the pump keeps at least two nozzles on
+    at least two separate tanks."""
 
     queryset = Nozzle.objects.select_related("pump", "tank__fuel_type").all()
     serializer_class = NozzleSerializer
-    http_method_names = ["get", "patch", "head", "options"]
+
+    def perform_create(self, serializer):
+        station_id = serializer.validated_data["pump"].station_id
+        if (ids := visible_station_ids(self.request.user)) is not None and station_id not in ids:
+            raise PermissionDenied("You are not assigned to this station.")
+        super().perform_create(serializer)
+
+    def perform_destroy(self, instance):
+        rest = [n.tank_id for n in instance.pump.nozzles.exclude(pk=instance.pk)]
+        if problem := pump_nozzle_problem(rest):
+            raise ValidationError({"detail": f"{problem} Add another nozzle before removing this one."})
+        super().perform_destroy(instance)
 
     def get_queryset(self):
         return scope(self.queryset.all(), self.request.user, "pump__station_id")

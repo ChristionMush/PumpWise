@@ -59,7 +59,7 @@ describe("assigned pumps", () => {
     expect(meters).toHaveLength(2); // both nozzles of my pump, one per tank
     await user.clear(meters[1]);
     await user.click(screen.getByRole("button", { name: "Start shift" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("both nozzles");
+    expect(await screen.findByRole("alert")).toHaveTextContent("every nozzle");
     await user.type(meters[1], "500");
     await user.click(screen.getByRole("button", { name: "Start shift" }));
     await waitFor(() => expect(calls.some((c) => c.path === "/api/sync/")).toBe(true));
@@ -76,25 +76,52 @@ describe("assigned pumps", () => {
     expect(screen.queryByRole("button", { name: "Start shift" })).not.toBeInTheDocument();
   });
 
-  it("lets a manager swap a pump in use, with the meter numbers taken now", async () => {
-    const manager = { ...attendant, user: { ...attendant.user, id: "m", role: "manager", full_name: "Manager" } };
-    const station = { ...assigned, staff: [{ id: "a", name: "Tendai" }, { id: "b", name: "Rudo" }], pumps: [{ ...myPump, in_use_by: "Tendai" }] };
+  const manager = { ...attendant, user: { ...attendant.user, id: "m", role: "manager", full_name: "Manager" } };
+  const busyStation = { ...assigned, staff: [{ id: "a", name: "Tendai" }, { id: "b", name: "Rudo" }], pumps: [{ ...myPump, in_use_by: "Tendai" }] };
+
+  it("lets a manager plan a handover: the pump passes when the attendant on it ends their part", async () => {
     const { calls } = mockApi({
-      "GET /api/auth/me/": { body: manager }, "GET /api/shifts/prefill/": { body: { stations: [station] } },
+      "GET /api/auth/me/": { body: manager }, "GET /api/shifts/prefill/": { body: { stations: [busyStation] } },
       "POST /api/pumps/pu1/assign/": { body: { id: "pu1" } },
     });
     renderApp("/pumps");
     const user = userEvent.setup();
     await user.selectOptions(await screen.findByLabelText("Who works Pump 1"), "b");
-    await user.click(screen.getByRole("button", { name: "Swap pump" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("meter number of both nozzles");
+    await user.click(screen.getByRole("button", { name: "Hand over when they end" }));
+    expect(await screen.findByText(/goes to Rudo when Tendai ends their part/)).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/api/pumps/pu1/assign/")!.body).toEqual({ user: "b" }); // no meter numbers: not a swap
+  });
+
+  it("lets a manager swap a pump in use at once, with the meter numbers taken now", async () => {
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: manager }, "GET /api/shifts/prefill/": { body: { stations: [busyStation] } },
+      "POST /api/pumps/pu1/assign/": { body: { id: "pu1" } },
+    });
+    renderApp("/pumps");
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Who works Pump 1"), "b");
+    await user.click(screen.getByLabelText(/Swap now/));
+    await user.click(screen.getByRole("button", { name: "Swap pump now" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("every nozzle");
     await user.type(screen.getByLabelText(/Petrol \(PETROL\): meter number now/), "1500");
     await user.type(screen.getByLabelText(/Diesel \(DIESEL\): meter number now/), "800");
-    await user.click(screen.getByRole("button", { name: "Swap pump" }));
+    await user.click(screen.getByRole("button", { name: "Swap pump now" }));
     await waitFor(() => expect(calls.some((c) => c.path === "/api/pumps/pu1/assign/")).toBe(true));
     const body = calls.find((c) => c.path === "/api/pumps/pu1/assign/")!.body;
     expect(body.user).toBe("b");
     expect(body.readings).toEqual([{ nozzle: "n1", reading: "1500" }, { nozzle: "n2", reading: "800" }]);
+  });
+
+  it("warns an attendant that a pump is still with the outgoing attendant and does not take it over by itself", async () => {
+    const second = { id: "pu2", name: "Pump 2", nozzles: [nozzle("n3"), nozzle("n4", "d", "DIESEL")], in_use_by: "Rudo" };
+    const { calls } = mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [{ ...assigned, pumps: [myPump, second] }] } }, "POST /api/sync/": applyAll });
+    renderApp("/");
+    const user = userEvent.setup();
+    expect(await screen.findByText(/Pump 2 is still with Rudo/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Start shift" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/sync/")).toBe(true));
+    const start = calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops)[0];
+    expect(start.payload.readings.map((r: any) => r.nozzle)).toEqual(["n1", "n2"]); // Pump 2 untouched until handed over
   });
 });
 

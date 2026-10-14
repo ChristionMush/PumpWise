@@ -1,7 +1,7 @@
 """Is this business ready to go live? Computed from real data, so it can never drift from reality."""
 from apps.accounts.models import User
 from apps.operations.models import Shift, TankReading
-from apps.stations.models import NOZZLES_PER_PUMP, FuelPrice, Nozzle, Pump, Station, Tank
+from apps.stations.models import FuelPrice, Nozzle, Pump, Station, Tank, pump_nozzle_problem
 from apps.tenants.services import get_settings
 
 # Steps the technician ticks off by hand. None for now: QR labels are switched off (pumps and tanks are labelled
@@ -17,11 +17,11 @@ def build_checklist(tenant_id):
     nozzles = list(Nozzle.objects.select_related("tank__fuel_type", "pump__station"))
 
     uncalibrated = [t.name for t in tanks if t.calibration.count() < 2]
-    # every pump has two nozzles, each on its own tank
+    # every pump: at least two nozzles, on at least two separate tanks
     tanks_of = {}
     for n in nozzles:
         tanks_of.setdefault(n.pump_id, []).append(n.tank_id)
-    bad_pumps = [p.name for p in pumps if len(tanks_of.get(p.pk, [])) != NOZZLES_PER_PUMP or len(set(tanks_of[p.pk])) != NOZZLES_PER_PUMP]
+    bad_pumps = [p.name for p in pumps if pump_nozzle_problem(tanks_of.get(p.pk, []))]
     unassigned = [p.name for p in pumps if p.station.assignment_mode == "assigned" and not p.assigned_to_id]
     unpriced = sorted({f"{n.pump.station.name}: {n.tank.fuel_type.code}" for n in nozzles
                        if not FuelPrice.objects.filter(station=n.pump.station, fuel_type=n.tank.fuel_type, currency=n.pump.station.pricing_currency, effective_to__isnull=True).exists()})
@@ -31,8 +31,8 @@ def build_checklist(tenant_id):
         ("stations", "Add the station(s)", bool(stations), f"{len(stations)} added", "/setup"),
         ("tanks", "Add every tank (capacity and reserve level)", bool(tanks) and all(any(t.station_id == s.pk for t in tanks) for s in stations), f"{len(tanks)} tanks", "/setup"),
         ("calibration", "Enter each tank's calibration chart (dip height to litres)", bool(tanks) and not uncalibrated, f"Missing: {', '.join(uncalibrated)}" if uncalibrated else "All tanks done", "/setup"),
-        ("pumps", "Add every pump: two nozzles, each on its own tank", bool(pumps) and not bad_pumps,
-         f"Needs two nozzles on separate tanks: {', '.join(bad_pumps)}" if bad_pumps else f"{len(pumps)} pumps", "/setup"),
+        ("pumps", "Add every pump: at least two nozzles, on separate tanks", bool(pumps) and not bad_pumps,
+         f"Needs nozzles on two separate tanks: {', '.join(bad_pumps)}" if bad_pumps else f"{len(pumps)} pumps", "/setup"),
         ("prices", "Set today's price for every fuel", bool(pumps) and not unpriced, f"No price for: {', '.join(unpriced)}" if unpriced else "All fuels priced", "/prices"),
         ("staff", "Create logins for attendants", attendants > 0, f"{attendants} attendants", "/team"),
         *([("assign", "Give every pump to an attendant (assigned pumps)", not unassigned, f"Not assigned: {', '.join(unassigned)}", "/pumps")] if any(
