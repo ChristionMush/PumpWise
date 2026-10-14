@@ -1,4 +1,4 @@
-# PLAN.md: PumpWise
+# PLAN.md: Fuel Station Management SaaS
 
 Built by Tendeka & Elichi. Read this file fully before doing anything. Plan first, then code. Wait for my approval after each phase plan.
 
@@ -13,13 +13,13 @@ We sell visibility and control: "Know your numbers on your phone and stop losing
 **Users**
 - **Platform admin** (Tendeka & Elichi only): creates and suspends tenants, sees billing status.
 - **Owner:** all stations in their tenant, phone-first dashboard, reports, user management.
-- **Manager:** one or more stations, shift review, reconciliation.
-- **Attendant:** minimal-effort entry on a phone or tablet. Must work offline.
+- **Manager:** one or more stations. Records **tank dips and fuel deliveries**, assigns pumps, closes shifts, reviews reconciliation.
+- **Attendant:** minimal-effort entry on a phone or tablet: pump meter readings and their own cash only. Must work offline. **No access to dips, deliveries, tank levels or reconciliation** (not even to view them).
 
 ## 2. Stack (do not change without asking)
 
 - Backend: Django + Django REST Framework
-- Database: PostgreSQL with Row-Level Security (add TimescaleDB later only if volume needs it)
+- Database: PostgreSQL with Row-Level Security. If volume grows, use partitioned tables (pg_partman). TimescaleDB was not found in AWS's RDS extension lists, so only consider Timescale Cloud or a self-managed instance if automatic device data arrives (see HOSTING_STRATEGY.md section 4)
 - Jobs: Celery + Redis (rollups, forecasts, alerts, billing reminders)
 - Frontend: mobile-first PWA (installable, offline-capable with a sync queue)
 - Local dev: Docker Compose
@@ -36,12 +36,29 @@ We sell visibility and control: "Know your numbers on your phone and stop losing
 5. Never hard-delete business data. Use soft delete or status fields. Keep an audit log of who changed what.
 6. Secrets only in environment variables or AWS Secrets Manager. Never commit secrets.
 7. Small commits, tests with every feature, plan before code.
+8. Every write from the PWA carries a client-generated UUID and is idempotent. Sync is one batch call per shift with a per-record result.
+9. Dashboards read rollup tables written when a shift closes, never raw readings. Cache each tenant's dashboard for 30 to 60 seconds and show a "last updated" time.
+10. Optional features (SMS, WhatsApp, photos, reports) must fail soft: the shift still saves.
+11. Roles are enforced on the server, in one place (`app/fuel/permissions.py`), never only by hiding buttons. Dips (`TankDip`) and deliveries (`Delivery`) can be created and read only by managers (for their station) and owners. Attendants get a refusal on every dip, delivery, tank-level and reconciliation endpoint, and the API never includes those fields in an attendant's responses. Add a test for each endpoint. Dips and deliveries carry a client UUID (rule 8) and `recorded_by`.
 
 ## 4. Core data model
 
 Tenant -> Station -> Tank -> Pump -> Nozzle -> Transaction
 
-Plus: User (with role and tenant), FuelType, FuelPrice, TankReading (dip), PumpMeterReading, Delivery (fuel received), Shift, CashSubmission, Alert, AuditLog, Subscription (status, plan, paid_through), TenantExport.
+Plus: User (with role and tenant), FuelType, FuelPrice, TankReading (dip), PumpMeterReading, Delivery (fuel received), Shift, ShiftAttendant, CashSubmission, Alert, AuditLog, Subscription (status, plan, paid_through), TenantExport.
+
+**Multiple attendants per shift (required from day one):**
+- A `Shift` (station, date, type, status) has many attendants through `ShiftAttendant` (tenant_id, shift, user, `is_lead`, `joined_at`, `left_at`, optional pump assignment). Never store a single attendant on `Shift`.
+- **Paid feature grants (platform owner only):** each tenant has two switches, `multi_attendant_enabled` and `pump_assignment_enabled` (assignment requires multiple attendants). The platform owner sets each station's `attendants_mode` (`single` or `multiple`) and `assignment_mode` at setup, and can only choose what the company has been granted. If a grant is removed (for example unpaid), stations fall back to one attendant and shared pumps; no data is deleted. Policy cannot change while a shift is open. Implemented in `app/fuel/services.py` (`set_tenant_features`, `set_station_policy`).
+- Pump assignment is a **per-station setting** (`assignment_mode`: `shared` or `assigned`, default `shared`). `shared`: all attendants on a shift share all pumps and cash is reconciled at shift level. `assigned`: the manager (or lead) assigns pumps to attendants at shift start, so cash is reconciled per attendant. Pre-fill from the previous shift's assignment so starting a shift takes one tap.
+- In `assigned` mode: a pump belongs to exactly one attendant at a time. Reassigning mid-shift (swap, break) is one tap and splits the pump's litres at a meter snapshot, so each person is charged only for their own period. Every change is audit-logged. Unassigned pumps are flagged before the shift can start.
+- The owner dashboard and shift reports show shortages per attendant (with the pump and period) when assignment is on, and per shift when it is off. Reports must use neutral wording such as "cash difference", not accusations.
+- Meter readings stay **per nozzle per shift**, entered once by anyone on the shift (store `recorded_by`). Do not make each attendant re-enter them. If a second person enters a different value for the same nozzle and reading, keep both and raise a "readings differ" flag for the lead or manager. Never silently overwrite.
+- Cash: each attendant submits their own `CashSubmission` (by payment type). With pump assignment, expected cash is per attendant (litres from their pumps x active price). Without it, reconcile the sum of all submissions against the shift total and show each person's submission beside it.
+- Closing a shift is done by the lead or a manager, and is allowed once every attendant on it has submitted or been marked as left.
+- Mid-shift handover: an attendant leaving sets `left_at`. A new attendant joins with `joined_at`. Optional handover meter snapshot (later).
+- Offline: two phones on one shift each queue writes with client UUIDs (rule 8). Sync merges them. Shift totals are computed from the merged data, never from one phone.
+- Migration: move any existing single attendant on `Shift` into `ShiftAttendant` with a data migration, reversible.
 
 **Pump fields (required from day one):**
 - `brand` (text, optional at first)
@@ -57,12 +74,17 @@ Plus: User (with role and tenant), FuelType, FuelPrice, TankReading (dip), PumpM
 ## 5. Two data tiers (design for both, build Tier 1 first)
 
 **Tier 1: Manual, lightweight (MVP, works at any station).**
-Attendant effort must be about 2 minutes per shift:
+**Attendant** effort must be about 2 minutes per shift (meters and cash only):
 - Shift start: tap the pump, enter or photograph the meter number for each nozzle.
 - Shift end: same again, plus enter the amounts handed in by payment type.
 - The app calculates litres x the price active at the time and instantly shows expected vs. handed in.
 - Prefill everything possible. Big buttons, numeric keypad, minimal typing, local-language labels.
 - Optional photo of the meter as evidence. Meter-photo number recognition can be added later.
+
+**Manager** effort (about 3 minutes per dip round, plus a delivery when fuel arrives):
+- Dips: pick the tank, type the dipstick reading (or the dip height, converted with the tank's calibration chart), save. Taken at each shift change by default, or once a day if the station chooses. Optional photo of the dipstick.
+- Deliveries: pick the tank, enter litres, supplier and delivery note number. Optional photo of the delivery note. A delivery is recorded by the manager (or owner) who received it, never by an attendant.
+- If the manager is away, the owner can record dips and deliveries. There is no attendant fallback by design: the person who sells fuel does not also measure what is left in the tank.
 
 **Tier 2: Automatic (later premium upgrade, per-station hardware).**
 Pump and tank data arrives with no attendant input (pulse readers, forecourt controllers, automatic tank gauges). Do NOT build this now. Instead:
@@ -79,11 +101,11 @@ Pump and tank data arrives with no attendant input (pulse readers, forecourt con
 
 **Phase 2: Platform admin screen.** Only Tendeka & Elichi can access it. Create a tenant, its owner login, and its stations. Show each tenant's subscription status.
 
-**Phase 3: Station setup and manual entry.** Stations, tanks, pumps (with the pump fields in section 4), nozzles, fuel prices with history, and the lightweight shift start/end flow from section 5. Offline entry with sync. The `DataSourceAdapter` interface with the manual implementation.
+**Phase 3: Station setup and manual entry.** Stations, tanks, pumps (with the pump fields in section 4), nozzles, fuel prices with history, and the lightweight attendant shift start/end flow from section 5 (meters and cash only). Manager screens for tank dips and deliveries (rule 11), with tests that attendants are refused. Offline entry with sync. The `DataSourceAdapter` interface with the manual implementation. Shifts support several attendants at once (see section 4), including joining and leaving mid-shift, with tests for two phones syncing the same shift offline.
 
 **Phase 4: Daily sales.** Sales per day, per pump, per fuel type, per currency, using the price active at the time. Average litres used per day and per weekday.
 
-**Phase 5: Reconciliation.** Compare litres dispensed (pump meters) against tank level drops plus deliveries. Flag unexplained loss above a configurable threshold. Cash check: expected vs. submitted per shift, broken down by payment type.
+**Phase 5: Reconciliation.** Compare litres dispensed (pump meters, from attendants) against tank level drops plus deliveries (dips and deliveries, from managers). Because they come from different people, a mismatch is a stronger signal. Flag unexplained loss above a configurable threshold. Cash check: expected vs. submitted per shift, broken down by payment type. With several attendants, also show submitted per attendant, and per-attendant expected cash when pumps are assigned.
 
 **Phase 6: Owner dashboard (phone-first).** Today's sales, tank levels, next refill date, unexplained loss, shift status, across all the owner's stations. Fast on slow connections. One-tap price update (new price applies from a chosen time).
 
@@ -99,9 +121,18 @@ Pump and tank data arrives with no attendant input (pulse readers, forecourt con
 
 **Phase 9: Data safety and export.** Per-tenant "Export my data" button (CSV and JSON written to S3, delivered by a time-limited link). Retention and deletion policy documented.
 
-**Phase 10: AWS deployment.** See section 8. Staging first, then production. Seed demo data. Security review checklist before real tenants.
+**Phase 10: AWS deployment.** Follow HOSTING_STRATEGY.md (stages, load tests, alarms, backup drills, go-live checklist) and section 8. Staging first, then production. Seed demo data. Security review checklist before real tenants.
 
 **Phase 11: Pilot readiness.** Onboarding checklist screen for the setup technician, a short in-app tutorial for attendants, and a demo tenant with sample data for sales presentations.
+
+**Phase 12: Demo environment and trial tenants.**
+- Add `is_demo` to Tenant. Demo tenants never send real SMS, WhatsApp, or email, and use the billing provider's sandbox.
+- Write a `seed_demo` management command that loads `mock_data/seed_demo.json` (made by `generate_mock_data.py`) through the ORM so RLS applies. It must be idempotent and only ever wipe and reload tenants where `is_demo = true`.
+- Nightly Celery job: regenerate the mock data with `--end` set to yesterday and reload the demo tenants, so the demo always looks live. Add a test proving this job can never touch a non-demo tenant.
+- Platform admin action "Create trial tenant": takes a prospect name, creates a demo tenant from the template with an owner login (random password) and a 14-day expiry. Expired trials are suspended, and deleted after 30 days if not converted.
+- Show a visible "Demo data" banner in the UI on demo tenants.
+- Add a health check endpoint, a Docker Compose file for a single-server demo, and an AWS budget alarm.
+- See DEMO_HOSTING_PLAN.md for the hosting design.
 
 ## 7. Zimbabwe and usability requirements
 
@@ -110,7 +141,7 @@ Pump and tank data arrives with no attendant input (pulse readers, forecourt con
 - Multi-currency (e.g. USD and ZiG): price and record sales per currency, with an owner-set exchange rate where needed for totals.
 - Mobile money (e.g. EcoCash) as a first-class payment type.
 - Large buttons, minimal typing, plain language, local-language label support (English first, structure for Shona and Ndebele).
-- Optional photo upload of a meter or dip stick reading as evidence.
+- Optional photo upload of a meter (attendant) or a dipstick reading and delivery note (manager) as evidence.
 - QR codes on pumps and tanks so attendants open the right entry screen in one scan.
 
 ## 8. AWS deployment (Phase 10)
