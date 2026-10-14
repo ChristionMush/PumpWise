@@ -50,6 +50,17 @@ build, migrate on the owner role, check every table exists, restart, smoke test.
 21:30-22:30); the server refuses then unless `-Force`. Roll back code with `-Rollback <commit>`; undo a migration by restoring
 the backup taken at the start of the deploy (`deploy/restore.sh`).
 
+## Delete a test or demo business (start afresh)
+On the server, in `/opt/pumpwise/deploy`:
+```
+./backup.sh
+docker compose run --rm -T migrate python manage.py purge_tenant                       # list: slug, demo/trial/REAL, status, name
+docker compose run --rm -T migrate python manage.py purge_tenant <slug>                # dry run
+docker compose run --rm -T migrate python manage.py purge_tenant <slug> --confirm <slug>   # add --real-business if not a demo
+```
+Logins, stations, shifts, everything of that business goes; the name and logins can be reused. To keep the business
+and only refresh a demo's data, use `docker compose run --rm seed` (or `seed_demo --name ...`) instead.
+
 ## Paid features and station policy
 Platform screen, business page: "Paid features" switches and each station's attendants / pumps setting (API: `PATCH /api/platform/tenants/<id>/features/`, `PATCH /api/platform/tenants/<id>/stations/<station>/policy/`). Not possible while a shift is open at the station. Removing a feature moves the stations back to one attendant and shared pumps; history is kept.
 

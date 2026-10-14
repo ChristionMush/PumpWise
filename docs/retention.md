@@ -16,3 +16,8 @@ Principles: business data is never hard-deleted by the application; customers ca
 
 Right to a copy: Settings, "Export my data" (CSV and JSON).
 Right to deletion: handled as a manual, audited process (see above) because a mistaken permanent deletion cannot be undone; it is never automatic.
+
+The process is `python manage.py purge_tenant <slug>` (a dry run listing every row it would delete), then the same with
+`--confirm <slug>` after a backup. A business not marked demo also needs `--real-business`. It deletes the business and
+all its rows in one transaction, checks nothing is left (or rolls back), and records a `tenant_purged` entry in the
+platform audit log. Runbook: `docs/runbook.md`, "Delete a test or demo business".
