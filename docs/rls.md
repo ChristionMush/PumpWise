@@ -102,3 +102,17 @@ operations: `shift`, `pumpmeterreading`, `tankreading`, `delivery`, `cashsubmiss
 `tenants_tenantsettings`, `insights_alert`, `insights_outboundmessage`, `exports_tenantexport`.
 Tenants read but cannot write: `tenants_subscription`, `billing_payment`, `billing_billingreminder`. Platform-only: `billing_reseller`, `billing_paymentevent`. The price list `billing_pricingplan` is readable by everyone signed in, writable by the platform.
 `tests/test_isolation_everything.py` seeds two full demo businesses and checks EVERY table that has a `tenant_id`.
+
+## Added with the current PLAN.md (rules 8-11, several attendants, Phase 12)
+* `operations_shiftattendant`, `operations_pumpassignment` (people on a shift, pump holders) and the rollups
+  `operations_dailysalesrollup`, `operations_tankstatus`, `operations_shiftsummary`: strict `tenant_isolation`.
+* Paid feature grants live on `tenants_tenant` (`multi_attendant_enabled`, `pump_assignment_enabled`), which tenants can read
+  but only the platform can update. The station policy columns (`attendants_mode`, `assignment_mode`) are guarded by the
+  `station_policy_guard` trigger: outside the platform context they cannot change, and nobody can pick a mode the tenant has
+  not been granted (tests/test_feature_grants.py tries it with raw SQL).
+* Demo wipes (`apps/onboarding/demo.py: wipe_demo_data`) are the one place rows are deleted. They run on the owner
+  connection, check `is_demo` in the database first, and set that tenant's context so FORCE RLS confines the delete to it.
+  On the single-server kit the owner role is the container's superuser, which bypasses RLS; there the `is_demo` check and the
+  `WHERE tenant_id = ...` are what protect other businesses (tests/test_demo_and_trials.py).
+* Role rules (who may see dips, deliveries, tank levels, reconciliation) are not RLS: they live in one module,
+  `apps/accounts/permissions.py`, and tests/test_rule11_tank_side.py checks every endpoint.

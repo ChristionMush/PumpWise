@@ -9,6 +9,7 @@ Built by Tendeka & Elichi.
 |---|---|
 | `LAUNCH_GUIDE.md` | The step-by-step launch on AWS, with file locations and structure |
 | `docker-compose.yml` | The stack: Caddy, web, worker, beat, migrate, db, redis |
+| `docker-compose.demo.yml`, `Caddyfile.demo` | Opt-in demo server: adds the phone app (PWA) and a `seed` task. Turn on with `COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml` and `DEMO_PASSWORD=...` in `.env` |
 | `Caddyfile` | HTTPS and routing |
 | `.env.example` | Template for the settings file (real `.env` is made on the server by `init-env.sh`) |
 | `init-env.sh`, `bootstrap.sh` | Create `.env` with random secrets, and one-time server setup |

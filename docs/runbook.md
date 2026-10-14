@@ -43,3 +43,16 @@ Edit the secret in Secrets Manager (`fuelstation-$ENV/app`), then force a new de
 ## Alarms (SNS email)
 Downtime (no healthy API task), 5xx spike, DB CPU, DB low disk, scheduler (beat) not running, Redis CPU, RDS backup/failure/low-storage events.
 If the scheduler is down, reminders, suspensions, summaries and alerts stop. Restart the beat service (exactly one must run).
+
+## Single-server box (deploy/ kit): update to a new version
+`cd /opt/pumpwise/deploy && ./update.sh` (backup, pull, build, migrate on the owner role, restart, smoke test). Avoid shift changes (05:30-06:30, 13:30-14:30, 21:30-22:30). Check that every migration is applied with
+`docker compose run --rm migrate python manage.py showmigrations --database=owner | grep -v "\[X\]"` (only app names should print).
+
+## Paid features and station policy
+Platform screen, business page: "Paid features" switches and each station's attendants / pumps setting (API: `PATCH /api/platform/tenants/<id>/features/`, `PATCH /api/platform/tenants/<id>/stations/<station>/policy/`). Not possible while a shift is open at the station. Removing a feature moves the stations back to one attendant and shared pumps; history is kept.
+
+## Demo and trial businesses
+* Load or reload the demo: `docker compose run --rm seed` (demo compose file) or `python manage.py seed_demo --password ...`. It only ever wipes businesses marked `is_demo`.
+* Nightly at 02:15 the Celery job `refresh_demo_tenants` regenerates the data up to yesterday and reloads every active demo business (logins stay the same).
+* "Create trial" on the platform screen: a demo copy for a prospect, 14 days, owner password shown once. Daily at 06:30 expired trials are suspended, and removed 30 days later unless converted ("Convert to customer" drops the demo data and keeps the business).
+* Demo businesses never send real SMS/WhatsApp/email (messages are logged as skipped) and checkout goes to `BILLING_SANDBOX_CHECKOUT_URL`.
