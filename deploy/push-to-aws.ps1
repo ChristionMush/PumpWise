@@ -55,7 +55,8 @@ foreach ($tool in "git", "ssh", "scp") {
 }
 
 function Remote($command) {
-  & ssh @sshArgs $config.Server $command
+  # Out-Host: show the server's output. Without it PowerShell captures it as the function's return value.
+  & ssh @sshArgs $config.Server $command | Out-Host
   return $LASTEXITCODE
 }
 

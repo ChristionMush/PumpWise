@@ -54,6 +54,10 @@ fi
 #    so .env, logs and anything else you keep on the server stay.
 if [ "$REL" != "$ROOT" ]; then
   say "3/6 Install release $SHA into $ROOT"
+  # Keep a copy of the deploy folder as it was (hand edits on the server included), in case something there mattered.
+  SAVED="$ROOT/releases/deploy-before-$SHA-$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$SAVED" && chmod 700 "$SAVED" && cp -a "$DEPLOY/." "$SAVED/"
+  echo "Previous deploy folder saved in $SAVED"
   rsync -a --exclude '/releases/' --exclude '/deploy/.env' "$REL/" "$ROOT/"
   for d in backend frontend; do
     [ -d "$REL/$d" ] && rsync -a --delete "$REL/$d/" "$ROOT/$d/"
@@ -91,7 +95,8 @@ docker compose exec -T db psql -q -U "$(envval POSTGRES_USER)" -d "$(envval POST
 
 # 6. Restart and check it answers.
 say "6/6 Restart and smoke test"
-docker compose up -d --remove-orphans
+# No --remove-orphans: a container started by hand on the server must never be removed by a deploy.
+docker compose up -d
 ok=0
 for _ in $(seq 1 12); do
   sleep 10
@@ -105,7 +110,8 @@ if [ "$ok" = "1" ]; then
   echo "$(date -u +%FT%TZ) $SHA ok" >> "$ROOT/releases/history.log"
   echo "$SHA" > "$ROOT/releases/CURRENT"
   # Keep the five newest releases for rollback.
-  ls -1dt "$ROOT"/releases/*/ 2> /dev/null | grep -v "/$SHA/\$" | tail -n +5 | xargs -r rm -rf
+  ls -1dt "$ROOT"/releases/*/ 2> /dev/null | grep -v -e "/$SHA/\$" -e "/deploy-before-" | tail -n +5 | xargs -r rm -rf
+  ls -1dt "$ROOT"/releases/deploy-before-*/ 2> /dev/null | tail -n +6 | xargs -r rm -rf
   say "Deployed $SHA. https://$(envval DOMAIN)/health now reports version $SHA."
 else
   echo "$(date -u +%FT%TZ) $SHA FAILED" >> "$ROOT/releases/history.log"
