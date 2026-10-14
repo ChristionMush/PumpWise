@@ -107,7 +107,7 @@ describe("login", () => {
     localStorage.setItem("fs_tutorial_done", "1");
     mockApi({ "GET /api/auth/me/": { body: { user: attendant, tenant: { id: "t1", name: "Msasa Fuel", slug: "m", status: "suspended" } } }, "GET /api/shifts/prefill/": { body: { stations: [] } } });
     renderApp("/");
-    expect(await screen.findByText(/No stations yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/No station is set up for you yet/)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Account suspended" })).not.toBeInTheDocument();
   });
 

@@ -125,6 +125,28 @@ describe("assigned pumps", () => {
   });
 });
 
+describe("the attendant's saved copy", () => {
+  it("drops a shift remembered from a station that is gone, and shows the stations", async () => {
+    const { kvSet } = await import("../offline");
+    await kvSet("phoneUser", "a");
+    await kvSet("activeShift", { id: "old", station_id: "deleted-station", started_at: "2026-10-01T06:00:00Z", starts: {} });
+    mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [base] } } });
+    renderApp("/");
+    expect(await screen.findByRole("heading", { name: "Start shift" })).toBeInTheDocument();
+    expect(screen.getAllByPlaceholderText("Meter number")).toHaveLength(1);
+  });
+
+  it("forgets another person's saved stations when someone else signs in on the phone", async () => {
+    const { kvSet } = await import("../offline");
+    await kvSet("phoneUser", "someone-else");
+    await kvSet("prefill", [{ ...base, id: "theirs", name: "Their Station" }]);
+    mockApi({ "GET /api/auth/me/": { body: attendant } }); // prefill fails: no signal
+    renderApp("/");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load your stations");
+    expect(screen.queryByText(/Their Station/)).not.toBeInTheDocument();
+  });
+});
+
 describe("sync batches", () => {
   it("sends one batch per shift, in queue order", () => {
     const op = (id: string, shift?: string): QueuedOp => ({ op_id: id, kind: "shift_end", payload: shift ? { shift_id: shift } : {}, queued_at: 0 });

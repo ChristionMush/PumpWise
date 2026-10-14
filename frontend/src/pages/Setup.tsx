@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, errorMessage } from "../api";
+import { useAuth } from "../auth";
 import { ErrorNote } from "../components";
 
 /** A pump has at least two nozzles, drawing from at least two separate tanks (some pumps have more nozzles). */
@@ -11,6 +12,7 @@ function nozzleProblem(tanks: string[]) {
 const pumpProblem = (p: any) => (nozzleProblem(p.nozzles.map((n: any) => n.tank)) ? "needs nozzles on two separate tanks" : null);
 
 export default function Setup() {
+  const { user } = useAuth();
   const [stations, setStations] = useState<any[]>([]);
   const [fuels, setFuels] = useState<any[]>([]);
   const [tanks, setTanks] = useState<any[]>([]);
@@ -55,7 +57,9 @@ export default function Setup() {
           ))}
         </section>
       ))}
-      <form className="card form" onSubmit={post("/api/stations/", { name: f.sname })}><h2>Add station</h2><label>Name<input required value={f.sname ?? ""} onChange={set("sname")} /></label><button className="btn">Add station</button></form>
+      {user?.role === "owner" && ( /* only the owner adds stations; each station has one manager (Settings, Team) */
+        <form className="card form" onSubmit={post("/api/stations/", { name: f.sname })}><h2>Add station</h2><label>Name<input required value={f.sname ?? ""} onChange={set("sname")} /></label><button className="btn">Add station</button></form>
+      )}
       <form className="card form" onSubmit={post("/api/tanks/", { station: f.tstation, name: f.tname, fuel_type: f.tfuel, capacity_litres: f.tcap, reserve_litres: f.tres || "0" })}><h2>Add tank</h2>
         <label>Station<select required value={f.tstation ?? ""} onChange={set("tstation")}><option value="" />{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
         <label>Name<input required value={f.tname ?? ""} onChange={set("tname")} /></label>

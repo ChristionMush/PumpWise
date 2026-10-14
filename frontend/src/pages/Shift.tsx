@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, errorMessage } from "../api";
+import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
 import { enqueue, expectedVsHanded, kvGet, kvSet, uuid, type PriceRow } from "../offline";
 
@@ -22,14 +23,30 @@ export interface StationInfo {
 export interface Active { id: string; station_id: string; started_at: string; starts: Record<string, number>; member?: boolean }
 
 /** Loads the phone's working data; falls back to the saved copy when there is no signal. */
-export async function loadPrefill(): Promise<StationInfo[]> {
+export async function loadStations(): Promise<{ stations: StationInfo[]; error: string | null }> {
   try {
     const res = await api<{ stations: StationInfo[] }>("/api/shifts/prefill/");
     await kvSet("prefill", res.stations);
-    return res.stations;
-  } catch {
-    return (await kvGet<StationInfo[]>("prefill")) ?? [];
+    return { stations: res.stations, error: null };
+  } catch (e) {
+    const saved = await kvGet<StationInfo[]>("prefill");
+    return { stations: saved ?? [], error: saved ? null : errorMessage(e) };
   }
+}
+
+export async function loadPrefill(): Promise<StationInfo[]> {
+  return (await loadStations()).stations;
+}
+
+/** The phone keeps one person's working copy. When someone else signs in on it, the previous person's saved
+ *  stations and open shift are dropped (their queued entries still sync). */
+async function forgetOtherUser(userId: string) {
+  const owner = await kvGet<string>("phoneUser");
+  if (owner && owner !== userId) {
+    await kvSet("prefill", null);
+    await kvSet("activeShift", null);
+  }
+  await kvSet("phoneUser", userId);
 }
 
 const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["card", "Card / swipe"], ["credit", "Credit / coupon"]] as const;
@@ -44,19 +61,28 @@ export default function Shift() {
   const [other, setOther] = useState({ currency: "ZWG", amount: "", rate: "" });
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!user) return;
     void (async () => {
-      const st = await loadPrefill();
-      setStations(st);
-      const a = await kvGet<Active>("activeShift");
+      await forgetOtherUser(user.id);
+      const { stations: st, error: problem } = await loadStations();
+      setStations(st); setLoadError(problem); setLoaded(true);
+      let a = await kvGet<Active>("activeShift");
+      if (a && !st.some((s) => s.id === a!.station_id)) { // a shift remembered from a station this person no longer has
+        await kvSet("activeShift", null);
+        a = undefined;
+      }
       setActive(a ?? null);
       setStationId(a?.station_id ?? st[0]?.id ?? "");
       // prefill with the last numbers; never for a pump still with someone else (entering its numbers takes it over)
       if (!a && st[0]) setNums(Object.fromEntries(st[0].pumps.filter((p) => !p.in_use_by).flatMap((p) => p.nozzles.map((n) => [n.id, n.last_reading ?? ""]))));
     })();
-  }, []);
+  }, [user]);
 
   const station = stations.find((s) => s.id === stationId);
   // On assigned pumps the server sends an attendant only the pumps a manager gave them.
@@ -133,7 +159,14 @@ export default function Shift() {
     <section className="card"><h1>Shift saved</h1><p>{saved}</p>
       <button className="btn primary" onClick={() => { setSaved(null); navigate(0); }}>Done</button></section>
   );
-  if (!station) return <p className="muted center">No stations yet. Ask the owner to set up a station.</p>;
+  if (!station) {
+    if (!loaded) return <p className="muted center">Loading…</p>;
+    if (loadError) return (
+      <section className="card" role="alert"><p>Could not load your stations: {loadError}</p>
+        <button className="btn" onClick={() => navigate(0)}>Try again</button></section>
+    );
+    return <p className="muted center">No station is set up for you yet. Ask the owner to add your station (and on assigned pumps, your manager to give you your pumps).</p>;
+  }
 
   const title = active ? (active.member ? "Hand in my cash" : assigned ? "End my part of the shift" : "End shift") : "Start shift";
   const noPumps = !active && assigned && station.pumps.length === 0;

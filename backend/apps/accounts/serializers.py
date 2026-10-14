@@ -17,10 +17,18 @@ class RefreshSerializer(serializers.Serializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    station_ids = serializers.SerializerMethodField()  # the stations this person works at (empty: all)
+
     class Meta:
         model = User
-        fields = ["id", "tenant_id", "role", "full_name", "email", "phone", "preferred_language", "is_active", "must_change_password", "last_login", "created_at"]
+        fields = ["id", "tenant_id", "role", "full_name", "email", "phone", "preferred_language", "is_active", "must_change_password", "last_login", "created_at",
+                  "station_ids"]
         read_only_fields = fields
+
+    def get_station_ids(self, obj):
+        from apps.stations.models import StationAssignment
+
+        return [str(i) for i in StationAssignment.objects.filter(user_id=obj.pk).values_list("station_id", flat=True)]
 
 
 class _ContactMixin:

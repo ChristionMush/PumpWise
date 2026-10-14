@@ -243,7 +243,9 @@ class ExchangeRateViewSet(SetupViewSet):
 
 
 class StationAssignmentView(APIView):
-    """Owner sets which stations a manager/attendant works at. Empty list = all stations."""
+    """Owner sets which stations a manager/attendant works at. Empty list = all stations.
+
+    One manager per station: a manager runs one station, and a station has at most one manager."""
 
     permission_classes = [IsOwnerOrManager]
 
@@ -265,6 +267,14 @@ class StationAssignmentView(APIView):
         stations = list(Station.objects.filter(pk__in=ids))
         if len(stations) != len(set(map(str, ids))):
             raise ValidationError({"station_ids": "Unknown station."})
+        if user.role == Role.MANAGER:
+            if len(stations) > 1:
+                raise ValidationError({"station_ids": "A manager runs one station."})
+            for s in stations:
+                taken = (StationAssignment.objects.filter(station=s, user__role=Role.MANAGER, user__is_active=True)
+                         .exclude(user=user).select_related("user").first())
+                if taken:
+                    raise ValidationError({"station_ids": f"{taken.user.full_name} already manages {s.name}. A station has one manager."})
         with transaction.atomic():
             StationAssignment.objects.filter(user=user).update(deleted_at=timezone.now())
             for s in stations:

@@ -11,7 +11,7 @@ from apps.core.db import db_context
 from apps.stations.models import Nozzle, Pump
 from apps.stations.services import price_at
 
-from .helpers import at, client_for, make_forecourt, second_tank, two_tenants
+from .helpers import at, client_for, make_forecourt, make_user, second_tank, two_tenants
 
 
 def test_owner_builds_a_forecourt_through_the_api():
@@ -208,3 +208,23 @@ def test_qr_codes_are_switched_off():
     assert owner.get(f"/api/qr-image/pumps/{fc.pump.pk}/").status_code == 404
     assert "qr_token" not in owner.get(f"/api/pumps/{fc.pump.pk}/").json()
     assert "qr_token" not in owner.get(f"/api/tanks/{fc.tank.pk}/").json()
+
+
+def test_one_manager_per_station_and_only_the_owner_adds_stations():
+    a, _ = two_tenants()
+    north, south = make_forecourt(a["tenant"], name="North"), make_forecourt(a["tenant"], name="South", code="DIESEL")
+    second = make_user(a["tenant"], Role.MANAGER, full_name="Second Manager")
+    owner, mgr = client_for(a[Role.OWNER]), client_for(a[Role.MANAGER])
+    assert mgr.post("/api/stations/", {"name": "Mine"}, format="json").status_code == 403  # stations are added by the owner
+    url = f"/api/users/{a[Role.MANAGER].id}/stations/"
+    both = owner.put(url, {"station_ids": [str(north.station.pk), str(south.station.pk)]}, format="json")
+    assert both.status_code == 400 and "one station" in str(both.json())
+    assert owner.put(url, {"station_ids": [str(north.station.pk)]}, format="json").status_code == 200
+    taken = owner.put(f"/api/users/{second.id}/stations/", {"station_ids": [str(north.station.pk)]}, format="json")
+    assert taken.status_code == 400 and "already manages North" in str(taken.json())
+    assert owner.put(f"/api/users/{second.id}/stations/", {"station_ids": [str(south.station.pk)]}, format="json").status_code == 200
+    # attendants may still work at several stations
+    att = f"/api/users/{a[Role.ATTENDANT].id}/stations/"
+    assert owner.put(att, {"station_ids": [str(north.station.pk), str(south.station.pk)]}, format="json").status_code == 200
+    team = {u["full_name"]: u["station_ids"] for u in owner.get("/api/users/").json()["results"]}
+    assert team["Second Manager"] == [str(south.station.pk)]
