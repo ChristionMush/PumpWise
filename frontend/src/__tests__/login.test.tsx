@@ -13,11 +13,11 @@ async function fillAndSubmit(identifier: string, password: string) {
 const DASH = { totals: { today_litres: "0", today_amount_by_currency: {}, open_alerts: 0, unexplained_loss_7d: "0", flagged_cash_shifts_7d: 0, open_shifts: 0 }, next_refill: null, stations: [], alerts: [] };
 
 describe("login", () => {
-  it("shows the sign-in form with the Tendeka & Elichi branding when signed out", async () => {
+  it("shows the sign-in form with the ELICHIE branding when signed out", async () => {
     mockApi({});
     renderApp("/");
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
-    expect(screen.getByText("Built by Tendeka & Elichi")).toBeInTheDocument();
+    expect(screen.getByText("Powered by ELICHIE")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "PumpWise" })).toBeInTheDocument();
     expect(screen.getByAltText("PumpWise logo")).toHaveAttribute("src", "/icon.svg");
   });

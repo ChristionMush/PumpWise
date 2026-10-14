@@ -4,7 +4,7 @@ export type Locale = "en" | "sn" | "nd";
 
 const en = {
   appName: "PumpWise",
-  builtBy: "Built by Tendeka & Elichi",
+  builtBy: "Powered by ELICHIE",
   tagline: "Know your numbers on your phone.",
   "login.title": "Sign in",
   "login.identifier": "Phone number or email",
