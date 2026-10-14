@@ -14,9 +14,36 @@ Built by Tendeka & Elichi.
 | `.env.example` | Template for the settings file (real `.env` is made on the server by `init-env.sh`) |
 | `init-env.sh`, `bootstrap.sh` | Create `.env` with random secrets, and one-time server setup |
 | `backup.sh`, `restore.sh` | Nightly backup to S3, and the restore drill |
-| `update.sh`, `smoke.sh` | Safe deploy, and the "is it alive" check |
+| `push-to-aws.ps1` | **Deploy from your Windows PC** (see below) |
+| `release.sh` | Runs on the server for each deploy: backup, install, build, migrate, table check, restart, smoke test |
+| `update.sh`, `smoke.sh` | Deploy by `git pull` (only if the server is a git clone), and the "is it alive" check |
 | `db/01-roles.sh` | Creates the limited database role the app runs as (Row-Level Security applies to it) |
 | `aws/` | JSON to paste into the AWS console: backup policy and bucket lifecycle |
+
+## Deploying an update (from your Windows PC)
+The server does not need Git or a GitHub key. In PowerShell, from the repo folder:
+
+```powershell
+# first time only: the server and your SSH key (remembered in %USERPROFILE%\.pumpwise-deploy.json)
+.\deploy\push-to-aws.ps1 -Server ubuntu@YOUR_ELASTIC_IP -Key C:\keys\pumpwise.pem
+
+# every time after: git push, wait for CI to go green, then
+.\deploy\push-to-aws.ps1
+```
+
+It deploys what is on GitHub (`origin/main`), only if CI passed on that commit. On the server, `release.sh`:
+refuses during shift changes (05:30-06:30, 13:30-14:30, 21:30-22:30 Zimbabwe time; `-Force` overrides), backs up the
+database, installs the release into `/opt/pumpwise` (keeping `deploy/.env`), builds, migrates as the owner role,
+checks that every table really exists, restarts, waits for `https://DOMAIN/health` and records the version.
+
+| Need | Command |
+|---|---|
+| What is live, deploy history | `.\deploy\push-to-aws.ps1 -ListReleases` |
+| Go back to an earlier release | `.\deploy\push-to-aws.ps1 -Rollback 2d1a3b7` (code only; undo a migration by restoring the backup) |
+| Deploy one specific commit | `.\deploy\push-to-aws.ps1 -Ref 2d1a3b7` |
+
+If PowerShell refuses to run scripts: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+If SSH says the key is "unprotected": `icacls C:\keys\pumpwise.pem /inheritance:r /grant:r "$($env:USERNAME):R"`.
 
 ## Scaling path (what changes, what stays the same)
 The app reads its settings only from environment variables, keeps no files on its own disk (uploads go to S3), logs to the console, and exposes `/health`. That makes each step below a configuration move, not a rewrite.

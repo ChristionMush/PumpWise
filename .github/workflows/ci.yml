@@ -40,6 +40,7 @@ jobs:
     defaults: {run: {working-directory: deploy}}
     steps:
       - uses: actions/checkout@v4
+      - run: for f in *.sh db/*.sh; do bash -n "$f"; done
       - run: cp .env.example .env
       - run: docker compose config -q
       - run: docker compose -f docker-compose.yml -f docker-compose.demo.yml config -q

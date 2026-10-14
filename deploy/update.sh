@@ -6,6 +6,11 @@ cd "$(dirname "$0")"
 APP_DIR=$(grep -E '^APP_SRC=' .env 2>/dev/null | cut -d= -f2- || true)
 APP_DIR="${APP_DIR:-../backend}"
 
+if ! git -C "$APP_DIR" rev-parse --git-dir > /dev/null 2>&1; then
+  echo "$APP_DIR is not a Git checkout, so there is nothing to pull. Deploy from your PC with deploy/push-to-aws.ps1 instead."
+  exit 1
+fi
+
 echo "1/5 Backup"; ./backup.sh
 echo "2/5 Pull latest code"; git -C "$APP_DIR" pull --ff-only
 echo "3/5 Build"; docker compose build

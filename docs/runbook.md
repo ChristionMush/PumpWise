@@ -45,8 +45,10 @@ Downtime (no healthy API task), 5xx spike, DB CPU, DB low disk, scheduler (beat)
 If the scheduler is down, reminders, suspensions, summaries and alerts stop. Restart the beat service (exactly one must run).
 
 ## Single-server box (deploy/ kit): update to a new version
-`cd /opt/pumpwise/deploy && ./update.sh` (backup, pull, build, migrate on the owner role, restart, smoke test). Avoid shift changes (05:30-06:30, 13:30-14:30, 21:30-22:30). Check that every migration is applied with
-`docker compose run --rm migrate python manage.py showmigrations --database=owner | grep -v "\[X\]"` (only app names should print).
+From the Windows PC: `.\deploy\push-to-aws.ps1` (see `deploy/README.md`). It deploys `origin/main` once CI is green: backup, install,
+build, migrate on the owner role, check every table exists, restart, smoke test. Avoid shift changes (05:30-06:30, 13:30-14:30,
+21:30-22:30); the server refuses then unless `-Force`. Roll back code with `-Rollback <commit>`; undo a migration by restoring
+the backup taken at the start of the deploy (`deploy/restore.sh`).
 
 ## Paid features and station policy
 Platform screen, business page: "Paid features" switches and each station's attendants / pumps setting (API: `PATCH /api/platform/tenants/<id>/features/`, `PATCH /api/platform/tenants/<id>/stations/<station>/policy/`). Not possible while a shift is open at the station. Removing a feature moves the stations back to one attendant and shared pumps; history is kept.
