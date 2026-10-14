@@ -20,9 +20,18 @@ class Tenant(UUIDModel, SoftDeleteModel):
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=80, unique=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    # Paid feature grants, set only by the platform owner (apps/tenants/features.py). Removing one falls the
+    # stations back to one attendant and shared pumps; no data is deleted.
+    multi_attendant_enabled = models.BooleanField(default=False)
+    pump_assignment_enabled = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(pump_assignment_enabled=False) | models.Q(multi_attendant_enabled=True), name="tenant_assignment_needs_multi"
+            ),
+        ]
 
     def __str__(self):
         return self.name

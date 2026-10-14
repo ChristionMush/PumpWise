@@ -92,3 +92,13 @@ class TenantSettingsSerializer(serializers.ModelSerializer):
         if phone is None:
             raise serializers.ValidationError("Enter a valid phone number.")
         return phone
+
+
+class FeaturesSerializer(serializers.Serializer):
+    multi_attendant_enabled = serializers.BooleanField(required=False)
+    pump_assignment_enabled = serializers.BooleanField(required=False)
+
+
+class StationPolicySerializer(serializers.Serializer):
+    attendants_mode = serializers.ChoiceField(choices=["single", "multiple"], required=False)
+    assignment_mode = serializers.ChoiceField(choices=["shared", "assigned"], required=False)

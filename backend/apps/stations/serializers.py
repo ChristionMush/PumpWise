@@ -13,8 +13,9 @@ def file_url(obj, field):
 class StationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Station
-        fields = ["id", "name", "address", "status", "pricing_currency", "created_at"]
-        read_only_fields = ["id", "created_at"]
+        fields = ["id", "name", "address", "status", "pricing_currency", "attendants_mode", "assignment_mode", "created_at"]
+        # The attendant policy is set by the platform only (apps/tenants/features.py), never through this API.
+        read_only_fields = ["id", "attendants_mode", "assignment_mode", "created_at"]
 
 
 class StationInputSerializer(serializers.Serializer):

@@ -4,6 +4,7 @@ Platform staff never get a blanket bypass. To touch tenant-owned data (the owner
 stations) these views narrow the database context to exactly ONE tenant with `tenant_scope`,
 and every such action is written to the audit log as `via_platform`.
 """
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
@@ -19,8 +20,11 @@ from apps.core.db import tenant_scope
 from apps.stations.models import Station
 from apps.stations.serializers import StationInputSerializer, StationSerializer
 
+from .features import set_station_policy, set_tenant_features
 from .models import Subscription, Tenant
 from .serializers import (
+    FeaturesSerializer,
+    StationPolicySerializer,
     SubscriptionSerializer,
     SubscriptionUpdateSerializer,
     TenantCreateSerializer,
@@ -68,6 +72,7 @@ def summarize(tenant, *, with_stations=False):
         "subscription": SubscriptionSerializer(sub).data if sub else None,
         "station_count": len(stations),
         "owner": _owner_dict(owner),
+        "features": {"multi_attendant_enabled": tenant.multi_attendant_enabled, "pump_assignment_enabled": tenant.pump_assignment_enabled},
     }
     if with_stations:
         data["stations"] = StationSerializer(stations, many=True).data
@@ -142,16 +147,59 @@ class PlatformStationView(APIView):
             return Response(StationSerializer(Station.objects.all(), many=True).data)
 
     def post(self, request, pk):
+        """Add a station; the attendant policy may be chosen at setup (within the tenant's grants)."""
         tenant = _get_tenant(pk)
         data = StationInputSerializer(data=request.data)
         data.is_valid(raise_exception=True)
+        policy = StationPolicySerializer(data=request.data)
+        policy.is_valid(raise_exception=True)
         try:
-            with transaction.atomic(), tenant_scope(tenant.id):
-                station = Station.objects.create(tenant_id=tenant.id, **data.validated_data)
-                audit.log("station_created", actor=request.user, tenant_id=tenant.id, obj=station, changes={"name": station.name}, request=request)
+            with transaction.atomic():
+                with tenant_scope(tenant.id):
+                    station = Station.objects.create(tenant_id=tenant.id, **data.validated_data)
+                    audit.log("station_created", actor=request.user, tenant_id=tenant.id, obj=station, changes={"name": station.name}, request=request)
+                if policy.validated_data:
+                    set_station_policy(station=station, actor=request.user, request=request, **policy.validated_data)
         except IntegrityError:
             raise ValidationError({"name": "A station with this name already exists."})
         return Response(StationSerializer(station).data, status=status.HTTP_201_CREATED)
+
+
+class PlatformFeaturesView(APIView):
+    """Grant or remove a tenant's paid features. Removing one moves its stations back to the basic policy."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def patch(self, request, pk):
+        tenant = _get_tenant(pk)
+        data = FeaturesSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        d = data.validated_data
+        reset = set_tenant_features(
+            tenant=tenant, multi_attendant=d.get("multi_attendant_enabled"), pump_assignment=d.get("pump_assignment_enabled"),
+            actor=request.user, request=request,
+        )
+        return Response({**summarize(_get_tenant(pk), with_stations=True), "stations_reset": [s.name for s in reset]})
+
+
+class PlatformStationPolicyView(APIView):
+    """Set one station's attendant policy (single/multiple attendants, shared/assigned pumps)."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def patch(self, request, pk, station_id):
+        tenant = _get_tenant(pk)
+        data = StationPolicySerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        with tenant_scope(tenant.id):
+            try:
+                station = Station.objects.filter(pk=station_id).first()
+            except DjangoValidationError:
+                station = None
+        if station is None:
+            raise NotFound("Station not found.")
+        station = set_station_policy(station=station, actor=request.user, request=request, **data.validated_data)
+        return Response(StationSerializer(station).data)
 
 
 class PlatformSubscriptionView(APIView):

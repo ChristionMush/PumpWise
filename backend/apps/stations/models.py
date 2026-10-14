@@ -33,16 +33,29 @@ class Station(TenantOwnedModel):
         ACTIVE = "active", "Active"
         INACTIVE = "inactive", "Inactive"
 
+    class AttendantsMode(models.TextChoices):
+        SINGLE = "single", "One attendant per shift"
+        MULTIPLE = "multiple", "Several attendants per shift"
+
+    class AssignmentMode(models.TextChoices):
+        SHARED = "shared", "Everyone shares the pumps"
+        ASSIGNED = "assigned", "Each pump is assigned to one attendant"
+
     name = models.CharField(max_length=120)
     address = models.CharField(max_length=255, blank=True, default="")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     # Sales are priced and totalled in this currency; other currencies are converted with the owner's exchange rate.
     pricing_currency = models.CharField(max_length=3, default="USD", validators=[validate_currency])
+    # Set by the platform owner at setup, within what the tenant has been granted. A database trigger refuses any
+    # other change (see migration 0005), so the tenant cannot switch itself to a paid mode.
+    attendants_mode = models.CharField(max_length=10, choices=AttendantsMode.choices, default=AttendantsMode.SINGLE)
+    assignment_mode = models.CharField(max_length=10, choices=AssignmentMode.choices, default=AssignmentMode.SHARED)
 
     class Meta:
         ordering = ["name"]
         constraints = [
             models.UniqueConstraint(F("tenant"), Lower("name"), condition=Q(deleted_at__isnull=True), name="station_name_unique_per_tenant"),
+            models.CheckConstraint(condition=Q(assignment_mode="shared") | Q(attendants_mode="multiple"), name="station_assigned_needs_multiple"),
         ]
 
     def __str__(self):
