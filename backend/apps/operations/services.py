@@ -475,7 +475,7 @@ def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request)
         maybe_close(shift)
 
 
-def join_shift(def join_shift(*, user, shift, who=None, at=None, request=None):
+def join_shift(*, user, shift, who=None, at=None, request=None):
     """Someone arrives mid-shift. On a one-attendant station this is a handover: the current person must leave first."""
     who = who or user
     if who.pk != user.pk:
