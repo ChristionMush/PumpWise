@@ -62,7 +62,8 @@ export default function Pumps() {
                     {(station.staff ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </label>
-                {pump.in_use_by && (changed || to !== "") && (
+                {/* swapping only makes sense when the pump is to go to someone other than the person on it now */}
+                {pump.in_use_by && (changed || pump.assigned_to_name !== pump.in_use_by) && (
                   <label className="row gap"><input type="checkbox" checked={now} onChange={(e) => setSwapNow({ ...swapNow, [pump.id]: e.target.checked })} />
                     Swap now (instead of when {pump.in_use_by} ends their part)</label>
                 )}

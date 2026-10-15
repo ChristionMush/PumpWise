@@ -11,12 +11,14 @@ export default function Reports() {
   const [tab, setTab] = useState<"sales" | "tank" | "cash" | "people">("sales");
   const [from, setFrom] = useState(daysAgo(13));
   const [to, setTo] = useState(today());
-  const [data, setData] = useState<any>(null);
+  // Data is kept with the tab it belongs to: right after a tab switch the old tab's data must not be drawn as the new one.
+  const [loaded, setLoaded] = useState<{ tab: string; data: any } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const data = loaded?.tab === tab ? loaded.data : null;
   useEffect(() => {
-    setData(null); setError(null);
+    setLoaded(null); setError(null);
     const path = { sales: "/api/reports/daily-sales/", tank: "/api/reconciliation/tanks/", cash: "/api/reconciliation/cash/", people: "/api/reports/attendants/" }[tab];
-    api(`${path}?date_from=${from}&date_to=${to}`).then(setData).catch((e) => setError(errorMessage(e)));
+    api(`${path}?date_from=${from}&date_to=${to}`).then((d) => setLoaded({ tab, data: d })).catch((e) => setError(errorMessage(e)));
   }, [tab, from, to]);
   return (
     <>
