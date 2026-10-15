@@ -59,3 +59,7 @@ ul.plain{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;g
 .weekdays{display:flex;gap:8px;align-items:flex-end;height:90px}.weekdays>div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;font-size:.75rem}.wbar{width:100%;background:var(--green-2);border-radius:4px 4px 0 0}
 details.card summary{cursor:pointer}
 .login-logo{align-self:center;border-radius:16px}.center-col h1,.center-col .muted{text-align:center}
+
+.pw{position:relative;display:block}.pw input{padding-right:52px}
+.pw-toggle{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
+.pw-toggle:hover,.pw-toggle[aria-pressed="true"]{color:var(--green-2)}.pw-toggle:focus-visible{outline:3px solid #86efac}

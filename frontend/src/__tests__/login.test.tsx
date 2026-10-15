@@ -22,6 +22,23 @@ describe("login", () => {
     expect(screen.getByAltText("PumpWise logo")).toHaveAttribute("src", "/icon.svg");
   });
 
+  it("lets people show the password they typed, and hide it again, before signing in", async () => {
+    mockApi({});
+    renderApp("/");
+    const user = userEvent.setup();
+    const box = await screen.findByLabelText("Password");
+    await user.type(box, "Secret-77");
+    expect(box).toHaveAttribute("type", "password");
+    const eye = screen.getByRole("button", { name: "Show password" });
+    await user.click(eye);
+    expect(box).toHaveAttribute("type", "text");
+    expect(box).toHaveValue("Secret-77");
+    expect(screen.getByRole("button", { name: "Hide password" })).toHaveAttribute("aria-pressed", "true");
+    screen.getByRole("button", { name: "Hide password" }).focus();
+    await user.keyboard("{Enter}"); // works from the keyboard too
+    expect(box).toHaveAttribute("type", "password");
+  });
+
   it("signs a platform admin in and lands on the businesses list", async () => {
     const { calls } = mockApi({
       "POST /api/auth/login/": { body: { access: "a", refresh: "r", user: platformUser } },

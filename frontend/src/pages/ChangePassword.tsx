@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, errorMessage, tokens } from "../api";
 import { useAuth } from "../auth";
-import { ErrorNote } from "../components";
+import { ErrorNote, PasswordInput } from "../components";
 import { t } from "../i18n";
 
 export default function ChangePassword() {
@@ -37,10 +37,10 @@ export default function ChangePassword() {
       <h1>{t("pw.title")}</h1>
       {user?.must_change_password && <p>{t("pw.intro")}</p>}
       <label>{t("pw.current")}
-        <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
+        <PasswordInput value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
       </label>
       <label>{t("pw.new")}
-        <input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" minLength={8} required />
+        <PasswordInput value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" minLength={8} required />
       </label>
       <ErrorNote message={error} />
       <button className="btn primary" disabled={busy}>{t("pw.submit")}</button>

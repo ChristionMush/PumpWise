@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api";
-import { ErrorNote } from "../components";
+import { ErrorNote, PasswordInput } from "../components";
 
 export default function Settings() {
   const [s, setS] = useState<any>(null);
@@ -52,7 +52,7 @@ export default function Settings() {
         <label>Name<input value={nu.full_name} onChange={(e) => setNu({ ...nu, full_name: e.target.value })} /></label>
         <label>Phone<input inputMode="tel" value={nu.phone} onChange={(e) => setNu({ ...nu, phone: e.target.value })} /></label>
         <label>Role<select value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })}><option value="attendant">Attendant</option><option value="manager">Manager</option></select></label>
-        <label>Password<input type="password" value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} /></label>
+        <label>Password<PasswordInput value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} autoComplete="new-password" /></label>
         <label>Station<select value={nu.station} onChange={(e) => setNu({ ...nu, station: e.target.value })}>
           <option value="">{nu.role === "manager" ? "Choose later" : "All stations"}</option>
           {stations.map((st) => <option key={st.id} value={st.id} disabled={nu.role === "manager" && Boolean(managerOf(st.id))}>{st.name}{nu.role === "manager" && managerOf(st.id) ? ` (managed by ${managerOf(st.id).full_name})` : ""}</option>)}

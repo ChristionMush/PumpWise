@@ -22,6 +22,8 @@ const en = {
   "pw.current": "Temporary password",
   "pw.new": "New password",
   "pw.submit": "Save new password",
+  "pw.show": "Show password",
+  "pw.hide": "Hide password",
   "platform.title": "Businesses",
   "platform.new": "+ New business",
   "platform.search": "Search by name",

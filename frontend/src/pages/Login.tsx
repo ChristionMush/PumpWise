@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
 import { ApiError, errorMessage } from "../api";
 import { useAuth } from "../auth";
-import { ErrorNote, Footer } from "../components";
+import { ErrorNote, Footer, PasswordInput } from "../components";
 import { t } from "../i18n";
 
 export default function Login() {
@@ -37,7 +37,7 @@ export default function Login() {
             <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} autoComplete="username" inputMode="email" required />
           </label>
           <label>{t("login.password")}
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+            <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
           </label>
           <ErrorNote message={error} />
           <button className="btn primary" disabled={busy}>{t("login.submit")}</button>
