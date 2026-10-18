@@ -362,3 +362,35 @@ def test_the_single_attendant_migration_moves_data_both_ways():
             assert str(cur.fetchone()[0]) == str(att_a.pk)
     finally:
         _migrate(latest)
+
+
+# ---- the stage a phone should show --------------------------------------------------------------------------------
+
+def stage_of(client):
+    return client.get("/api/shifts/prefill/").json()["stations"][0]["my_stage"]
+
+
+def test_the_server_tells_any_phone_which_stage_an_attendant_is_at():
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca, cb = client_for(att_a), client_for(att_b)
+    assert stage_of(ca) == {"stage": "start"}
+    body = {"station": str(fc.station.pk), "started_at": T0}
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [120, 40])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+    # signed out and in again, or on another phone: still on shift, with the numbers it started from
+    on = stage_of(ca)
+    assert on["stage"] == "on_shift" and on["shift"]["id"] == sid and on["shift"]["member"] is False
+    assert on["shift"]["starts"] == {str(fc.nozzles[0].pk): "120.00", str(fc.nozzles[1].pk): "40.00"}
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_SWAP, "readings": readings(fc.nozzles, [150, 40]), "cash": cash("45")}, format="json")
+    done = stage_of(ca)
+    assert done["stage"] == "done" and done["shift_id"] == sid  # their part is over while the shift goes on for B
+    assert stage_of(cb)["stage"] == "on_shift"
+
+
+def test_on_a_one_attendant_station_the_stage_goes_back_to_start_after_the_shift():
+    a, fc, att_a, _ = setup("single")
+    ca = client_for(att_a)
+    sid = start(ca, fc, [10, 20], started_at=T0).json()["id"]
+    assert stage_of(ca)["shift"]["starts"] == {str(fc.nozzles[0].pk): "10.00", str(fc.nozzles[1].pk): "20.00"}
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings(fc.nozzles, [30, 20]), "cash": cash("30")}, format="json")
+    assert stage_of(ca) == {"stage": "start"}

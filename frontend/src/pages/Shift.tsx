@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
-import { enqueue, expectedVsHanded, kvGet, kvSet, uuid, type PriceRow } from "../offline";
+import { allOps, enqueue, expectedVsHanded, kvGet, kvSet, uuid, type PriceRow } from "../offline";
 
 /** Each nozzle draws from its own tank, so the fuel (and its price) is per nozzle. */
 export interface Nozzle { id: string; number: number; label: string; meter_max: string; last_reading: string | null; fuel_type: string; fuel_code: string }
@@ -18,7 +18,13 @@ export interface StationInfo {
   attendants_mode?: "single" | "multiple"; assignment_mode?: "shared" | "assigned";
   joinable_shift?: { id: string; started_at: string; people: string[] } | null;
   staff?: { id: string; name: string }[];
+  my_stage?: Stage; // where this person is in the shift cycle, from the server
 }
+/** start: no shift yet · on_shift: started, the end screen is next · done: their part of an open shift is over. */
+export type Stage =
+  | { stage: "start" }
+  | { stage: "on_shift"; shift: { id: string; started_at: string; member: boolean; starts: Record<string, string> } }
+  | { stage: "done"; shift_id: string; ended_at: string };
 /** The shift this phone is working. `member`: joined someone else's shift (hands in cash only; the lead enters meters). */
 export interface Active { id: string; station_id: string; started_at: string; starts: Record<string, number>; member?: boolean }
 
@@ -27,9 +33,11 @@ export async function loadStations(): Promise<{ stations: StationInfo[]; error: 
   try {
     const res = await api<{ stations: StationInfo[] }>("/api/shifts/prefill/");
     await kvSet("prefill", res.stations);
+    await kvSet("prefillFromCache", false);
     return { stations: res.stations, error: null };
   } catch (e) {
     const saved = await kvGet<StationInfo[]>("prefill");
+    await kvSet("prefillFromCache", true);
     return { stations: saved ?? [], error: saved ? null : errorMessage(e) };
   }
 }
@@ -49,6 +57,43 @@ async function forgetOtherUser(userId: string) {
   await kvSet("phoneUser", userId);
 }
 
+/** The screen this phone should show. The server knows where the person is (even after signing out and in, or on
+ *  another phone); only entries this phone has not sent yet can be newer than what the server knows. */
+async function settle(local: Active | undefined, st: StationInfo[], fresh: boolean): Promise<{ active: Active | null; waiting: boolean }> {
+  const pending = await allOps();
+  if (local && !st.some((s) => s.id === local!.station_id)) local = undefined; // a station this person no longer has
+  if (local) {
+    const unsent = pending.some((o) => o.payload?.shift_id === local!.id);
+    const server = st.find((s) => s.id === local!.station_id)?.my_stage;
+    if (unsent || !fresh || !server) return { active: local, waiting: false };
+    if (server.stage === "on_shift") { // keep what the phone knows, take the server's id and any numbers it lacks
+      const starts = { ...Object.fromEntries(Object.entries(server.shift.starts).map(([k, v]) => [k, Number(v)])), ...local.starts };
+      return { active: { ...local, id: server.shift.id, starts, member: server.shift.member }, waiting: false };
+    }
+    return { active: null, waiting: false }; // ended or closed elsewhere (another phone, a manager)
+  }
+  const ended = await kvGet<{ station_id: string; at: string }>("lastEnded");
+  for (const s of st) {
+    const server = s.my_stage;
+    if (server?.stage !== "on_shift") continue;
+    // this phone already ended it and the end has not been sent yet: do not bring the shift back
+    if (ended?.station_id === s.id && ended.at >= server.shift.started_at && pending.length) return { active: null, waiting: true };
+    const starts = Object.fromEntries(Object.entries(server.shift.starts).map(([k, v]) => [k, Number(v)]));
+    return { active: { id: server.shift.id, station_id: s.id, started_at: server.shift.started_at, starts, member: server.shift.member }, waiting: false };
+  }
+  return { active: null, waiting: false };
+}
+
+/** Start shift, then on shift, then ended: where this person is, at a glance. */
+function Stages({ current }: { current: 0 | 1 | 2 }) {
+  const names = ["Start shift", "On shift: end it when you finish", "Shift ended"];
+  return (
+    <ol className="stages" aria-label="Shift stage">
+      {names.map((n, i) => <li key={n} className={i === current ? "now" : i < current ? "past" : ""} aria-current={i === current ? "step" : undefined}>{n}</li>)}
+    </ol>
+  );
+}
+
 const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["card", "Card / swipe"], ["credit", "Credit / coupon"]] as const;
 const money = (n: number) => n.toFixed(2);
 
@@ -63,6 +108,7 @@ export default function Shift() {
   const [saved, setSaved] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [waiting, setWaiting] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -72,12 +118,11 @@ export default function Shift() {
       await forgetOtherUser(user.id);
       const { stations: st, error: problem } = await loadStations();
       setStations(st); setLoadError(problem); setLoaded(true);
-      let a = await kvGet<Active>("activeShift");
-      if (a && !st.some((s) => s.id === a!.station_id)) { // a shift remembered from a station this person no longer has
-        await kvSet("activeShift", null);
-        a = undefined;
-      }
-      setActive(a ?? null);
+      const fresh = !problem && !(await kvGet<boolean>("prefillFromCache"));
+      const settled = await settle((await kvGet<Active>("activeShift")) ?? undefined, st, fresh);
+      const a = settled.active;
+      await kvSet("activeShift", a);
+      setActive(a); setWaiting(settled.waiting);
       setStationId(a?.station_id ?? st[0]?.id ?? "");
       // prefill with the last numbers; never for a pump still with someone else (entering its numbers takes it over)
       if (!a && st[0]) setNums(Object.fromEntries(st[0].pumps.filter((p) => !p.in_use_by).flatMap((p) => p.nozzles.map((n) => [n.id, n.last_reading ?? ""]))));
@@ -119,6 +164,7 @@ export default function Shift() {
   };
 
   const finish = async (message: string) => {
+    if (active) await kvSet("lastEnded", { station_id: active.station_id, at: new Date().toISOString() });
     await kvSet("activeShift", null);
     setActive(null); setSaved(message); setNums({}); setCash({}); setError(null);
   };
@@ -156,7 +202,7 @@ export default function Shift() {
   };
 
   if (saved) return (
-    <section className="card"><h1>Shift saved</h1><p>{saved}</p>
+    <section className="card"><Stages current={2} /><h1>Shift saved</h1><p>{saved}</p>
       <button className="btn primary" onClick={() => { setSaved(null); navigate(0); }}>Done</button></section>
   );
   if (!station) {
@@ -168,11 +214,24 @@ export default function Shift() {
     return <p className="muted center">No station is set up for you yet. Ask the owner to add your station (and on assigned pumps, your manager to give you your pumps).</p>;
   }
 
+  const stage = station.my_stage;
+  if (!active && waiting) return (
+    <section className="card"><Stages current={2} /><h1>Shift ended</h1>
+      <p>Your end of shift is saved on this phone and will be sent when there is signal.</p></section>
+  );
+  if (!active && stage?.stage === "done") return (
+    <section className="card"><Stages current={2} /><h1>Your part of the shift is done</h1>
+      <p>You ended your part at {new Date(stage.ended_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Your pumps have passed to the next attendant.</p>
+      <p className="muted">You can start again when the next shift opens.</p></section>
+  );
+
   const title = active ? (active.member ? "Hand in my cash" : assigned ? "End my part of the shift" : "End shift") : "Start shift";
   const noPumps = !active && assigned && station.pumps.length === 0;
   return (
     <>
+      <Stages current={active ? 1 : 0} />
       <div className="row between"><h1>{title}</h1>{active && <Badge kind="active">open</Badge>}</div>
+      {active && <p className="muted">Started {new Date(active.started_at).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}. Enter the numbers now and what you hand in, then end the shift.</p>}
       {!active && stations.length > 1 && (
         <label>Station<select value={stationId} onChange={(e) => setStationId(e.target.value)}>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
       )}

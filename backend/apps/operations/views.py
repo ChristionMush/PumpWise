@@ -175,6 +175,7 @@ class PrefillView(APIView):
                 "attendants_mode": st.attendants_mode, "assignment_mode": st.assignment_mode,
                 "prices": [{"fuel_type": str(x.fuel_type_id), "currency": x.currency, "price": str(x.price_per_litre), "from": x.effective_from, "to": x.effective_to} for x in prices],
                 "open_shift_id": str(mine.pk) if mine else None,
+                "my_stage": services.phone_stage(user, st),  # the screen this person should be on right now
                 "joinable_shift": {"id": str(joinable.pk), "started_at": joinable.started_at, "people": [a.user.full_name for a in services.active_attendants(joinable)]} if joinable else None,
             }
             if st.attendants_mode == Station.AttendantsMode.MULTIPLE:

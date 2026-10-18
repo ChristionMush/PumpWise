@@ -726,6 +726,39 @@ def compute_transactions(shift):
     return created
 
 
+# ---- what the phone should show -------------------------------------------------------------------------------
+
+def phone_stage(user, station):
+    """Where this person is in the shift cycle at this station, so any phone (after signing out and in, or a new
+    phone) shows the right screen: {"stage": "start"} | {"stage": "on_shift", "shift": {...}} | {"stage": "done", ...}.
+
+    On shift: the shift id, when it started, whether they only hand in cash (joined someone else's shared-pump shift),
+    and the meter numbers their part started from, per nozzle (so the end screen can show and check them)."""
+    shift = (Shift.objects.filter(station=station, status=Shift.Status.OPEN, attendants__user=user).order_by("started_at").first())
+    if shift is None:
+        return {"stage": "start"}
+    row = attendant_row(shift, user)
+    if row.left_at is not None:
+        if row.cash_submitted_at is not None:  # assigned pumps: their part is over; the shift goes on for the others
+            return {"stage": "done", "shift_id": str(shift.pk), "ended_at": row.left_at.isoformat()}
+        return {"stage": "start"}
+    readings = list(PumpMeterReading.objects.filter(shift=shift).exclude(kind=PumpMeterReading.Kind.END).order_by("reading_at", "created_at"))
+    starts = {}
+    if is_assigned_station(station):
+        for a in PumpAssignment.objects.filter(shift=shift, user=user, ended_at__isnull=True).prefetch_related("pump__nozzles"):
+            for n in a.pump.nozzles.all():
+                mine = [r for r in readings if r.nozzle_id == n.pk and r.reading_at >= a.started_at]
+                if mine:
+                    starts[str(n.pk)] = str(mine[0].reading)
+        member = False
+    else:
+        for r in readings:
+            if r.kind == PumpMeterReading.Kind.START and str(r.nozzle_id) not in starts:
+                starts[str(r.nozzle_id)] = str(r.reading)
+        member = station.attendants_mode == Station.AttendantsMode.MULTIPLE and not row.is_lead
+    return {"stage": "on_shift", "shift": {"id": str(shift.pk), "started_at": shift.started_at.isoformat(), "member": member, "starts": starts}}
+
+
 # ---- tank side (managers and owners only; enforced in the views and sync) ----------------------------------------
 
 def record_tank_dip(*, user, tank, litres=None, dip_mm=None, at=None, shift=None, photo=None, client_id=None):

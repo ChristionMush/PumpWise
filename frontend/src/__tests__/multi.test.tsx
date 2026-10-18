@@ -136,6 +136,24 @@ describe("the attendant's saved copy", () => {
     expect(screen.getAllByPlaceholderText("Meter number")).toHaveLength(1);
   });
 
+  it("comes back on the End shift screen after signing out and in (the server knows the shift is open)", async () => {
+    const onShift = { ...base, my_stage: { stage: "on_shift", shift: { id: "sh9", started_at: "2026-10-18T06:00:00Z", member: false, starts: { n1: "1000.00" } } } };
+    mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [onShift] } } });
+    renderApp("/");
+    expect(await screen.findByRole("heading", { name: "End shift" })).toBeInTheDocument();
+    expect(screen.getByText(/started at 1000/)).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { current: "step" })).toHaveTextContent("On shift");
+    expect(screen.queryByRole("button", { name: "Start shift" })).not.toBeInTheDocument();
+  });
+
+  it("shows an attendant whose part of the shift is over that they are done, with no Start button", async () => {
+    const done = { ...base, assignment_mode: "assigned", my_stage: { stage: "done", shift_id: "sh9", ended_at: "2026-10-18T12:00:00Z" } };
+    mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [done] } } });
+    renderApp("/");
+    expect(await screen.findByRole("heading", { name: "Your part of the shift is done" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start shift" })).not.toBeInTheDocument();
+  });
+
   it("forgets another person's saved stations when someone else signs in on the phone", async () => {
     const { kvSet } = await import("../offline");
     await kvSet("phoneUser", "someone-else");

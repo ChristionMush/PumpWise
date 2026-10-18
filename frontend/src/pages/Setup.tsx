@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, errorMessage } from "../api";
 import { useAuth } from "../auth";
 import { ErrorNote } from "../components";
+import { CalibrationEditor } from "./Calibration";
 
 /** A pump has at least two nozzles, drawing from at least two separate tanks (some pumps have more nozzles). */
 function nozzleProblem(tanks: string[]) {
@@ -21,6 +22,8 @@ export default function Setup() {
   const [error, setError] = useState<string | null>(null);
   const [f, setF] = useState<Record<string, string>>({});
   const [ptanks, setPtanks] = useState<string[]>(["", ""]); // one tank per nozzle of the new pump
+  const [calibTank, setCalibTank] = useState<string | null>(null); // the tank whose chart is being loaded
+  const [note, setNote] = useState<string | null>(null);
   const load = async () => {
     const [s, fu, t, p, c] = await Promise.all([api("/api/stations/"), api("/api/fuel-types/"), api("/api/tanks/"), api("/api/pumps/"), api("/api/onboarding/checklist/")]);
     setStations(s.results); setFuels(fu.results); setTanks(t.results); setPumps(p.results); setCheck(c);
@@ -45,10 +48,27 @@ export default function Setup() {
           <ul className="plain">{check.items.map((i: any) => <li key={i.key}>{i.done ? "✅" : "⬜"} {i.title}{!i.done && <span className="muted"> · {i.detail}</span>}</li>)}</ul></section>
       )}
       {check?.ready && <p className="ok-note">✅ Everything is set up. You are ready to go live.</p>}
+      {note && <p role="status" className="ok-note">{note}</p>}
+      {tanks.length > 0 && (
+        <section className="card form" id="calibration"><h2>Tank calibration charts (dip charts)</h2>
+          <p className="muted">A tank's chart turns a dip height in millimetres into litres. Load it once per tank, from the chart the tank supplier gave you.</p>
+          {tanks.map((t) => (
+            <div key={t.id} className="calib-row">
+              <div className="row between gap">
+                <span><strong>{t.name}</strong> <span className="muted">· {stations.find((s) => s.id === t.station)?.name} · {t.fuel_code}</span></span>
+                {t.has_calibration ? <span className="badge badge-active">Chart loaded</span> : <span className="badge badge-suspended">Missing</span>}
+              </div>
+              {calibTank === t.id
+                ? <CalibrationEditor tank={t} onClose={() => setCalibTank(null)} onSaved={() => { setCalibTank(null); setNote(`Chart saved for ${t.name}. Dips can now be taken in millimetres.`); void load(); }} />
+                : <button type="button" className="btn" onClick={() => { setCalibTank(t.id); setNote(null); }}>{t.has_calibration ? "Replace chart" : "Upload chart"}</button>}
+            </div>
+          ))}
+        </section>
+      )}
       {stations.map((s) => (
         <section key={s.id} className="card"><h2>{s.name}</h2>
           {s.assignment_mode === "assigned" && <p className="muted">Assigned pumps: each attendant works the pumps a manager gives them (Pumps screen).</p>}
-          {tanks.filter((t) => t.station === s.id).map((t) => <p key={t.id}>🛢 {t.name} · {t.fuel_code} · {Number(t.capacity_litres).toLocaleString()} L {!t.has_calibration && <span className="warn">needs calibration chart</span>}</p>)}
+          {tanks.filter((t) => t.station === s.id).map((t) => <p key={t.id}>🛢 {t.name} · {t.fuel_code} · {Number(t.capacity_litres).toLocaleString()} L {!t.has_calibration && <a className="warn" href="#calibration" onClick={() => setCalibTank(t.id)}>needs calibration chart: upload it</a>}</p>)}
           {pumps.filter((p) => p.station === s.id).map((p) => (
             <p key={p.id}>⛽ {p.name} · {p.nozzles.map((n: any) => `${n.label || `Nozzle ${n.number}`}: ${tankName(n.tank)?.name ?? n.tank_name} (${n.fuel_code})`).join(" · ")}
               {p.assigned_to_name && <span className="muted"> · {p.assigned_to_name}</span>}
