@@ -68,9 +68,16 @@ def evaluate_tenant(tenant_id, now=None):
                 existing.message, existing.severity, existing.data = kw["message"], kw["severity"], kw["data"]
                 existing.save(update_fields=["message", "severity", "data", "updated_at"])
             continue
-        # the same problem back within 24 hours of being closed: reopen that alert (its story continues) instead of a new one
-        recent = (Alert.objects.filter(dedupe_key=key, status__in=["resolved", AUTO], resolved_at__gte=now - REOPEN_WITHIN)
-                  .order_by("-resolved_at").first())
+        last = Alert.objects.filter(dedupe_key=key, status__in=["resolved", AUTO]).order_by("-resolved_at", "-created_at").first()
+        if last is not None and last.resolved_by_id is not None:
+            # A person resolved it, and their answer stands. A loss or cash difference belongs to one day or one shift and
+            # is still in the numbers after it is explained, so it never comes back by itself. A standing condition (low
+            # stock, a missing dip) that a person resolved comes back only if it is still there 24 hours later.
+            if last.kind not in AUTO_RESOLVE or (last.resolved_at and last.resolved_at >= now - REOPEN_WITHIN):
+                continue
+        recent = last if last is not None and (last.resolved_by_id is not None or (last.resolved_at and last.resolved_at >= now - REOPEN_WITHIN)) else None
+        # the same problem back (closed by itself less than 24 hours ago, or still there a day after a person resolved it):
+        # reopen that alert so its story continues, instead of starting a new one
         if recent is not None:
             recent.status, recent.resolved_at, recent.reviewed_at, recent.reviewed_by = OPEN, None, None, None
             recent.reminded_at = recent.escalated_at = None

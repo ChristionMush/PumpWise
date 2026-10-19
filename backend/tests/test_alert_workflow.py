@@ -140,3 +140,21 @@ def test_repeats_point_at_the_cause_and_the_daily_message_says_what_managers_did
     with db_context(tenant_id=tid):
         text = build_daily_summary(tid)
     assert "Managers resolved 1 alert: 1 Dip was misread: re-dipped" in text
+
+
+def test_a_standing_condition_a_person_resolved_stays_quiet_for_a_day_then_comes_back_if_still_there():
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"])
+    tid = a["tenant"].id
+    with db_context(tenant_id=tid):
+        evaluate_tenant(tid)  # never dipped
+        alert = Alert.objects.get(kind="missed_reading", tank=fc.tank)
+    client_for(a[Role.MANAGER]).post(f"/api/alerts/{alert.pk}/resolve/", {"reason": "other", "note": "Dip stick broken, new one Friday"}, format="json")
+    with db_context(tenant_id=tid):
+        evaluate_tenant(tid)  # still no dip, but the manager answered less than a day ago
+        assert Alert.objects.get(pk=alert.pk).status == "resolved"
+        assert Alert.objects.filter(kind="missed_reading", tank=fc.tank).count() == 1
+        Alert.objects.filter(pk=alert.pk).update(resolved_at=timezone.now() - timedelta(hours=25))
+        evaluate_tenant(tid)  # a day later and still not dipped: the same alert opens again
+        again = Alert.objects.get(pk=alert.pk)
+        assert again.status == "open" and again.reopened_count == 1

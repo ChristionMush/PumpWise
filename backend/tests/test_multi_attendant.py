@@ -394,3 +394,24 @@ def test_on_a_one_attendant_station_the_stage_goes_back_to_start_after_the_shift
     assert stage_of(ca)["shift"]["starts"] == {str(fc.nozzles[0].pk): "10.00", str(fc.nozzles[1].pk): "20.00"}
     ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings(fc.nozzles, [30, 20]), "cash": cash("30")}, format="json")
     assert stage_of(ca) == {"stage": "start"}
+
+
+
+# ---- one attendant per shift: never two open shifts on the same pumps --------------------------------------------
+
+def test_a_one_attendant_station_never_has_two_open_shifts():
+    a, fc, att_a, att_b = setup("single")
+    ca, cb = client_for(att_a), client_for(att_b)
+    sid = start(ca, fc, [0, 0], started_at=T0).json()["id"]
+    assert start(ca, fc, [0, 0], started_at=T0).json()["id"] == sid  # the same person on a second phone gets their shift back
+    refused = start(cb, fc, [0, 0], started_at=T_SWAP)
+    assert refused.status_code == 400 and att_a.full_name in str(refused.json())
+    offline = cb.post("/api/sync/", {"ops": [op("shift_start", {"shift_id": str(uuid.uuid4()), "station": str(fc.station.pk), "started_at": T_SWAP, "readings": readings(fc.nozzles, [0, 0])})]}, format="json")
+    assert offline.json()["results"][0]["status"] == "rejected"  # kept for a manager, never a second shift
+    assert cb.get("/api/shifts/prefill/").json()["stations"][0]["busy_shift"] == {"people": [att_a.full_name]}
+    # A leaves (handover): B starting now continues the same shift
+    ca.post(f"/api/shifts/{sid}/leave/", {"at": T_SWAP}, format="json")
+    handed = start(cb, fc, [40, 0], started_at=T_SWAP)
+    assert handed.status_code == 201 and handed.json()["id"] == sid
+    with db_context(tenant_id=a["tenant"].id):
+        assert Shift.objects.filter(station=fc.station, status="open").count() == 1

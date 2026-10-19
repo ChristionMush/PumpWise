@@ -176,6 +176,10 @@ class PrefillView(APIView):
                 "prices": [{"fuel_type": str(x.fuel_type_id), "currency": x.currency, "price": str(x.price_per_litre), "from": x.effective_from, "to": x.effective_to} for x in prices],
                 "open_shift_id": str(mine.pk) if mine else None,
                 "my_stage": services.phone_stage(user, st),  # the screen this person should be on right now
+                # one-attendant station with someone else's shift still being worked: nobody else can start
+                "busy_shift": ({"people": [a.user.full_name for a in services.active_attendants(open_shifts[0])]}
+                               if (st.attendants_mode == Station.AttendantsMode.SINGLE and open_shifts and mine is None
+                                   and services.active_attendants(open_shifts[0]).exists()) else None),
                 "joinable_shift": {"id": str(joinable.pk), "started_at": joinable.started_at, "people": [a.user.full_name for a in services.active_attendants(joinable)]} if joinable else None,
             }
             if st.attendants_mode == Station.AttendantsMode.MULTIPLE:

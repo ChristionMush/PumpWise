@@ -135,6 +135,10 @@ def test_loss_and_cash_alerts_persist_until_a_person_resolves_them():
     assert mgr.post(f"/api/alerts/{loss['id']}/resolve/", {"reason": "meter_typo", "note": "Pump 1 end was 100, not 1000"}, format="json").json()["status"] == "resolved"
     assert "loss" not in [r["kind"] for r in mgr.get("/api/alerts/").json()["results"]]
     assert "loss" in [r["kind"] for r in mgr.get("/api/alerts/?status=resolved").json()["results"]]
+    evaluate(a)  # the loss is still in that day's numbers: the manager's answer stands, no new or reopened alert
+    assert "loss" not in [k for k, _ in open_alerts(a)]
+    with db_context(tenant_id=a["tenant"].id):
+        assert Alert.objects.filter(kind="loss").count() == 1 and Alert.objects.get(kind="loss").reopened_count == 0
 
 
 def test_alert_api_scoping_and_roles():

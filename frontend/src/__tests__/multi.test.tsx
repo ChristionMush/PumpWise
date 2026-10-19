@@ -154,6 +154,13 @@ describe("the attendant's saved copy", () => {
     expect(screen.queryByRole("button", { name: "Start shift" })).not.toBeInTheDocument();
   });
 
+  it("does not offer Start shift on a one-attendant station while someone else's shift is being worked", async () => {
+    mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [{ ...base, busy_shift: { people: ["Rudo"] } }] } } });
+    renderApp("/");
+    expect(await screen.findByText(/A shift is open here \(Rudo\)/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start shift" })).not.toBeInTheDocument();
+  });
+
   it("forgets another person's saved stations when someone else signs in on the phone", async () => {
     const { kvSet } = await import("../offline");
     await kvSet("phoneUser", "someone-else");

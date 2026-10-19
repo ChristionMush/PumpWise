@@ -339,6 +339,30 @@ def start_shift(*, user, station, readings, shift_id=None, started_at=None, atte
             open_shift.merged_from = str(shift_id) if shift_id else ""  # not None: this start joined an open shift
             return open_shift
 
+    if not multiple:
+        # One attendant per shift: never a second open shift on the same pumps (its litres would be counted twice).
+        open_shift = Shift.objects.filter(station=station, status=Shift.Status.OPEN).order_by("started_at").first()
+        if open_shift:
+            person = people[0]
+            on_it = list(active_attendants(open_shift))
+            if any(a.user_id == person.pk for a in on_it):  # the same person again (a second phone, a retry)
+                open_shift.merged_from = str(shift_id) if shift_id else ""
+                return open_shift
+            if on_it:
+                names = ", ".join(a.user.full_name for a in on_it)
+                message = f"A shift is already open here ({names}). It is ended, or handed over, before a new one starts."
+                if strict:
+                    raise ValidationError({"detail": message})
+                raise Conflict(message)
+            with db_tx.atomic():  # the previous person left: this is the handover, on the same shift
+                _add_person(open_shift, person, started_at)
+                _ensure_lead(open_shift)
+                _record_many(open_shift, PumpMeterReading.Kind.CHECKPOINT, readings, started_at, user)
+                open_shift.save()
+            audit.log("shift_joined", actor=user, obj=open_shift, changes={"who": person.full_name, "handover": True})
+            open_shift.merged_from = str(shift_id) if shift_id else ""
+            return open_shift
+
     try:
         with db_tx.atomic():
             kwargs = {"pk": shift_id} if shift_id else {}

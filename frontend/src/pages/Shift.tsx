@@ -19,6 +19,7 @@ export interface StationInfo {
   joinable_shift?: { id: string; started_at: string; people: string[] } | null;
   staff?: { id: string; name: string }[];
   my_stage?: Stage; // where this person is in the shift cycle, from the server
+  busy_shift?: { people: string[] } | null; // one-attendant station: someone else's shift is still being worked
 }
 /** start: no shift yet · on_shift: started, the end screen is next · done: their part of an open shift is over. */
 export type Stage =
@@ -66,9 +67,9 @@ async function settle(local: Active | undefined, st: StationInfo[], fresh: boole
     const unsent = pending.some((o) => o.payload?.shift_id === local!.id);
     const server = st.find((s) => s.id === local!.station_id)?.my_stage;
     if (unsent || !fresh || !server) return { active: local, waiting: false };
-    if (server.stage === "on_shift") { // keep what the phone knows, take the server's id and any numbers it lacks
-      const starts = { ...Object.fromEntries(Object.entries(server.shift.starts).map(([k, v]) => [k, Number(v)])), ...local.starts };
-      return { active: { ...local, id: server.shift.id, starts, member: server.shift.member }, waiting: false };
+    if (server.stage === "on_shift") { // the server's shift and its numbers win (this phone's may be merged or stale)
+      const starts = { ...local.starts, ...Object.fromEntries(Object.entries(server.shift.starts).map(([k, v]) => [k, Number(v)])) };
+      return { active: { ...local, id: server.shift.id, started_at: server.shift.started_at, starts, member: server.shift.member }, waiting: false };
     }
     return { active: null, waiting: false }; // ended or closed elsewhere (another phone, a manager)
   }
@@ -227,6 +228,7 @@ export default function Shift() {
 
   const title = active ? (active.member ? "Hand in my cash" : assigned ? "End my part of the shift" : "End shift") : "Start shift";
   const noPumps = !active && assigned && station.pumps.length === 0;
+  const busy = !active && station.busy_shift ? station.busy_shift.people : null;
   return (
     <>
       <Stages current={active ? 1 : 0} />
@@ -239,6 +241,7 @@ export default function Shift() {
       {!active && assigned && station.pumps.filter((p) => p.in_use_by).map((p) => (
         <p key={p.id} className="warn" role="status">{p.name} is still with {p.in_use_by}. Enter its numbers only when they hand it over to you.</p>
       ))}
+      {busy && <section className="card" role="status"><p>A shift is open here ({busy.join(", ")}). It must be ended, or handed over to you, before you can start.</p></section>}
       {noPumps && <section className="card" role="status"><p>No pump is assigned to you at {station.name}. Ask your manager to assign your pumps.</p></section>}
       {!active && station.joinable_shift && (
         <section className="card">
@@ -270,7 +273,7 @@ export default function Shift() {
         </section>
       )}
       <ErrorNote message={error} />
-      {!noPumps && <button className="btn primary big" onClick={() => void (active ? end() : start())}>{active ? (active.member ? "Hand in my cash" : "End shift") : "Start shift"}</button>}
+      {!noPumps && !busy && <button className="btn primary big" onClick={() => void (active ? end() : start())}>{active ? (active.member ? "Hand in my cash" : "End shift") : "Start shift"}</button>}
       {active && assigned && <p className="muted">Ending hands your pumps to the next attendant. The shift goes on for the others.</p>}
       {active && station.attendants_mode === "multiple" && !assigned && <button className="btn" onClick={() => void leave()}>Leave the shift</button>}
     </>
