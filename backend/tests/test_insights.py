@@ -131,7 +131,8 @@ def test_loss_and_cash_alerts_persist_until_a_person_resolves_them():
     mgr = client_for(a[Role.MANAGER])
     rows = mgr.get("/api/alerts/").json()["results"]
     loss = [r for r in rows if r["kind"] == "loss"][0]
-    assert mgr.post(f"/api/alerts/{loss['id']}/resolve/").json()["status"] == "resolved"
+    assert mgr.post(f"/api/alerts/{loss['id']}/resolve/").status_code == 400  # how it was resolved is required
+    assert mgr.post(f"/api/alerts/{loss['id']}/resolve/", {"reason": "meter_typo", "note": "Pump 1 end was 100, not 1000"}, format="json").json()["status"] == "resolved"
     assert "loss" not in [r["kind"] for r in mgr.get("/api/alerts/").json()["results"]]
     assert "loss" in [r["kind"] for r in mgr.get("/api/alerts/?status=resolved").json()["results"]]
 

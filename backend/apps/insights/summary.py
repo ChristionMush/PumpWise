@@ -41,4 +41,7 @@ def build_daily_summary(tenant_id, day: date | None = None):
         problems.append(a.message)
     lines.append("All good." if not problems else "Needs attention:")
     lines.extend(problems[:6])
+    from .alert_actions import summary_lines
+
+    lines.extend(summary_lines(day))  # what managers resolved today and how, and what is still open
     return "\n".join(lines)

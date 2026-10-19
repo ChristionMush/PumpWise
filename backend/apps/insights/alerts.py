@@ -11,6 +11,7 @@ from apps.reports.reconciliation import cash_summary, tank_range
 from apps.stations.models import Tank
 from apps.tenants.services import get_settings
 
+from .alert_actions import AUTO, AWAITING, OPEN, REOPEN_WITHIN, apply_patterns, log_event
 from .forecast import forecast_tank
 from .models import Alert
 
@@ -54,10 +55,12 @@ def evaluate_tenant(tenant_id, now=None):
     for s in Shift.objects.filter(status__in=["closed", "reviewed"], ended_at__gte=now - timedelta(days=LOOKBACK_DAYS)).select_related("station"):
         c = cash_summary(s)
         if c["flagged"]:
-            want(f"cash:{s.pk}", kind="cash", severity="warning", station=s.station, message=f"{s.station.name}, {', '.join(people_names(s))}: cash difference of {c['variance']} {c['currency']}.", data=c)
+            who = [p["name"] for p in c["by_attendant"] if p.get("flagged")] or people_names(s)  # the people it concerns
+            want(f"cash:{s.pk}", kind="cash", severity="warning", station=s.station, message=f"{s.station.name}, {', '.join(people_names(s))}: cash difference of {c['variance']} {c['currency']}.",
+                 data={**c, "people": who})
 
-    open_alerts = {a.dedupe_key: a for a in Alert.objects.filter(status="open")}
-    created = resolved = 0
+    open_alerts = {a.dedupe_key: a for a in Alert.objects.filter(status__in=[OPEN, AWAITING])}
+    created = resolved = reopened = 0
     for key, kw in wanted.items():
         if key in open_alerts:
             existing = open_alerts[key]
@@ -65,11 +68,26 @@ def evaluate_tenant(tenant_id, now=None):
                 existing.message, existing.severity, existing.data = kw["message"], kw["severity"], kw["data"]
                 existing.save(update_fields=["message", "severity", "data", "updated_at"])
             continue
-        Alert.objects.create(tenant_id=tenant_id, dedupe_key=key, **kw)
+        # the same problem back within 24 hours of being closed: reopen that alert (its story continues) instead of a new one
+        recent = (Alert.objects.filter(dedupe_key=key, status__in=["resolved", AUTO], resolved_at__gte=now - REOPEN_WITHIN)
+                  .order_by("-resolved_at").first())
+        if recent is not None:
+            recent.status, recent.resolved_at, recent.reviewed_at, recent.reviewed_by = OPEN, None, None, None
+            recent.reminded_at = recent.escalated_at = None
+            recent.reopened_count += 1
+            recent.message, recent.severity, recent.data = kw["message"], kw["severity"], kw["data"]
+            recent.save()
+            log_event(recent, "reopened", note="The problem came back within 24 hours of being closed.")
+            reopened += 1
+            continue
+        alert = Alert.objects.create(tenant_id=tenant_id, dedupe_key=key, **kw)
+        log_event(alert, "opened", note=alert.message)
         created += 1
     for key, a in open_alerts.items():
-        if key not in wanted and a.kind in AUTO_RESOLVE:
-            a.status, a.resolved_at = "resolved", now
+        if key not in wanted and a.kind in AUTO_RESOLVE and a.status == OPEN:
+            a.status, a.resolved_at = AUTO, now
             a.save(update_fields=["status", "resolved_at", "updated_at"])
+            log_event(a, "auto_resolved", note="The cause went away (for example a delivery or a dip was recorded).")
             resolved += 1
-    return {"created": created, "resolved": resolved, "open": Alert.objects.filter(status="open").count()}
+    apply_patterns(now)
+    return {"created": created, "resolved": resolved, "reopened": reopened, "open": Alert.objects.filter(status=OPEN).count()}

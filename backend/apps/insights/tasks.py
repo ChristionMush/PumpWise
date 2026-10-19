@@ -10,7 +10,10 @@ from .summary import build_daily_summary
 
 @shared_task
 def run_alerts():
-    return for_each_tenant(lambda tid: evaluate_tenant(tid))
+    """Hourly: check every rule, then remind managers of alerts open 12 hours and tell owners about those open 24."""
+    from .alert_actions import escalate
+
+    return for_each_tenant(lambda tid: {**evaluate_tenant(tid), **escalate(tid)})
 
 
 @shared_task

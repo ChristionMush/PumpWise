@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { api } from "./api";
 import { useAuth } from "./auth";
 import { Footer } from "./components";
 import { SyncBadge, Tutorial } from "./components2";
@@ -31,12 +32,25 @@ const NAV: Record<string, [string, string][]> = {
   attendant: [["/", "Shift"]],
 };
 
+/** Alerts needing attention (and, for the owner, resolutions to review), refreshed when the page changes. */
+function useAlertCount(enabled: boolean) {
+  const [count, setCount] = useState(0);
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (!enabled) return;
+    api<{ open: number; awaiting_approval: number; to_review: number }>("/api/alerts/summary/")
+      .then((s) => setCount(s.open + s.awaiting_approval + s.to_review)).catch(() => undefined);
+  }, [enabled, pathname]);
+  return count;
+}
+
 function Shell({ children }: { children: ReactNode }) {
   const { user, tenant, branding, billing, logout } = useAuth();
   const [tutorial, setTutorial] = useState(() => user?.role === "attendant" && !localStorage.getItem("fs_tutorial_done"));
   useEffect(() => (user && user.role !== "platform_admin" ? startAutoSync() : undefined), [user]);
   const name = branding?.display_name || tenant?.name || t("appName");
   const nav = user ? NAV[user.role] : undefined;
+  const alertCount = useAlertCount(user?.role === "owner" || user?.role === "manager");
   return (
     <div className="app">
       <header className="header">
@@ -48,7 +62,7 @@ function Shell({ children }: { children: ReactNode }) {
       </header>
       {tenant?.is_demo && <div className="banner demo" role="status">Demo data{tenant.trial_expires_at ? ` · trial until ${tenant.trial_expires_at}` : ""}. Nothing here is a real business.</div>}
       {billing && billing.level !== "info" && <div className={`banner ${billing.level}`} role="status">{billing.message}</div>}
-      {nav && <nav className="nav" aria-label="Main">{nav.map(([to, label]) => <NavLink key={to} to={to} end={to === "/"}>{label}</NavLink>)}</nav>}
+      {nav && <nav className="nav" aria-label="Main">{nav.map(([to, label]) => <NavLink key={to} to={to} end={to === "/"}>{label}{to === "/alerts" && alertCount ? <span className="count" aria-label={`${alertCount} to look at`}>{alertCount}</span> : null}</NavLink>)}</nav>}
       <main className="main">{children}</main>
       <Footer />
       {tutorial && <Tutorial onDone={() => { localStorage.setItem("fs_tutorial_done", "1"); setTutorial(false); }} />}
