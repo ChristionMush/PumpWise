@@ -5,11 +5,12 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsOwnerOrManager
+from apps.accounts.permissions import IsOwnerOrManager, TankRecords
 from apps.operations.models import Shift
 from apps.stations.access import visible_station_ids
 
 from . import reconciliation, sales
+from .tank_history import tank_history
 
 
 def _dates(request, default_days=30):
@@ -88,3 +89,13 @@ class CashReconciliationView(APIView):
         if request.query_params.get("flagged") == "1":
             rows = [r for r in rows if r["flagged"]]
         return Response({"rows": rows})
+
+
+class TankHistoryView(APIView):
+    """Dip history: when each tank was dipped and by whom, deliveries, and days without a dip (managers, owners)."""
+
+    permission_classes = [TankRecords]
+
+    def get(self, request):
+        frm, to = _dates(request, default_days=14)
+        return Response(tank_history(station_ids=_stations(request), date_from=frm, date_to=to))

@@ -70,3 +70,5 @@ details.card summary{cursor:pointer}
 .calib{display:grid;gap:10px}.calib textarea{font:inherit;font-family:ui-monospace,Consolas,monospace;min-height:120px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;width:100%}
 .calib .sample{margin:0;padding:8px 12px;background:var(--bg);border-radius:8px;font-size:.85rem;overflow-x:auto}
 .table-scroll{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px}.table caption{caption-side:top;text-align:left;padding:6px}
+.hist-tank{padding:8px 0;border-bottom:1px solid var(--line)}.hist-tank:last-child{border-bottom:0}
+.hist li{display:flex;gap:10px;padding:4px 0}.hist-time{font-variant-numeric:tabular-nums;color:var(--muted);min-width:3.2em}.hist li.delivery strong{color:var(--green-2)}

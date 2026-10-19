@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { ErrorNote } from "../components";
 import { enqueue, uuid } from "../offline";
 import { loadPrefill, type StationInfo } from "./Shift";
@@ -33,7 +34,7 @@ export default function Dip() {
 
   return (
     <>
-      <h1>Tank dip and deliveries</h1>
+      <div className="row between"><h1>Tank dip and deliveries</h1><Link to="/dip-history">See dip history</Link></div>
       <label>Tank<select value={tankId} onChange={(e) => setTankId(e.target.value)}>{tanks.map((t) => <option key={t.id} value={t.id}>{t.station} · {t.name} ({t.fuel_code})</option>)}</select></label>
       <form onSubmit={saveDip} className="card form"><h2>Dip reading</h2>
         <label>Dip height (mm)<input inputMode="decimal" value={dipMm} onChange={(e) => setDipMm(e.target.value)} /></label>
