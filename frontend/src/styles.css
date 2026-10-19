@@ -71,7 +71,7 @@ details.card summary{cursor:pointer}
 .calib .sample{margin:0;padding:8px 12px;background:var(--bg);border-radius:8px;font-size:.85rem;overflow-x:auto}
 .table-scroll{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px}.table caption{caption-side:top;text-align:left;padding:6px}
 .hist-tank{padding:8px 0;border-bottom:1px solid var(--line)}.hist-tank:last-child{border-bottom:0}
-.hist li{display:flex;gap:10px;padding:4px 0}.hist-time{font-variant-numeric:tabular-nums;color:var(--muted);min-width:3.2em}.hist li.delivery strong{color:var(--green-2)}
+.hist li{display:flex;gap:10px;padding:4px 0}.hist-time{font-variant-numeric:tabular-nums;color:var(--muted);min-width:4.6em;white-space:nowrap}.hist li.delivery strong{color:var(--green-2)}
 .nav .count{display:inline-block;margin-left:6px;min-width:20px;padding:0 6px;border-radius:999px;background:var(--red);color:#fff;font-size:.75rem;font-weight:700;text-align:center;line-height:20px}
 .alert .resolution{background:var(--bg);border-radius:8px;padding:8px 10px}
 .story{margin:6px 0 0;padding-left:1.2em;display:grid;gap:4px;font-size:.92rem}

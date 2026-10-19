@@ -53,7 +53,7 @@ export default function DipHistory() {
           </section>
           {data.days.map((d: any) => (
             <section key={d.date} className={`card ${d.missing.length ? "bad" : ""}`}>
-              <div className="row between"><h2>{dayName(d.date)}</h2><span className="muted">{d.entries.filter((e: any) => e.type === "dip").length} dips</span></div>
+              <div className="row between"><h2>{dayName(d.date)}</h2><span className="muted">{(() => { const n = d.entries.filter((e: any) => e.type === "dip").length; return `${n} dip${n === 1 ? "" : "s"}`; })()}</span></div>
               {d.entries.length === 0 && <p className="muted">Nothing recorded.</p>}
               <ul className="plain hist">
                 {d.entries.map((e: any, i: number) => (
