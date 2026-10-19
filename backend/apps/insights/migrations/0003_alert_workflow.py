@@ -51,7 +51,7 @@ class Migration(migrations.Migration):
         migrations.RunSQL(sql=RELABEL, reverse_sql=UNLABEL),
         migrations.AddConstraint(
             model_name='alert',
-            constraint=models.UniqueConstraint(models.F('tenant'), models.F('dedupe_key'), condition=models.Q(('status__in', ['open', 'awaiting_approval']), ('deleted_at__isnull', True)), name='alert_one_open_per_key'),
+            constraint=models.UniqueConstraint(models.F('tenant'), models.F('dedupe_key'), condition=models.Q(('deleted_at__isnull', True), ('status__in', ['open', 'awaiting_approval'])), name='alert_one_open_per_key'),
         ),
         migrations.CreateModel(
             name='AlertEvent',
