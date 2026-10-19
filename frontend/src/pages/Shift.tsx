@@ -130,6 +130,26 @@ export default function Shift() {
     })();
   }, [user]);
 
+  // While on shift, keep in step with the server: a pump handed to me mid-shift (the outgoing attendant ended their
+  // part, or a manager swapped it) appears on my end screen. Checked when the phone comes back to the app, and every minute.
+  useEffect(() => {
+    if (!active) return;
+    const check = async () => {
+      if (document.visibilityState === "hidden") return;
+      const { stations: st, error: problem } = await loadStations();
+      if (problem) return;
+      const settled = await settle((await kvGet<Active>("activeShift")) ?? undefined, st, !(await kvGet<boolean>("prefillFromCache")));
+      setStations(st);
+      if (settled.active && JSON.stringify(settled.active) !== JSON.stringify(active)) {
+        await kvSet("activeShift", settled.active);
+        setActive(settled.active);
+      }
+    };
+    const timer = setInterval(() => void check(), 60000);
+    document.addEventListener("visibilitychange", check);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", check); };
+  }, [active]);
+
   const station = stations.find((s) => s.id === stationId);
   // On assigned pumps the server sends an attendant only the pumps a manager gave them.
   const nozzles = useMemo(() => station?.pumps.flatMap((p) => p.nozzles.map((n) => ({ ...n, pump: p }))) ?? [], [station]);

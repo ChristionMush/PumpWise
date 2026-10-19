@@ -415,3 +415,21 @@ def test_a_one_attendant_station_never_has_two_open_shifts():
     assert handed.status_code == 201 and handed.json()["id"] == sid
     with db_context(tenant_id=a["tenant"].id):
         assert Shift.objects.filter(station=fc.station, status="open").count() == 1
+
+
+
+def test_a_planned_pump_passes_straight_to_an_attendant_already_on_the_shift():
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca, cb = client_for(att_a), client_for(att_b)
+    body = {"station": str(fc.station.pk), "started_at": T0}
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+    mgr.post(f"/api/pumps/{fc.pump.pk}/assign/", {"user": str(att_b.pk)}, format="json")  # planned: A keeps it until A ends
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_SWAP, "readings": readings(fc.nozzles, [50, 0]), "cash": cash("75")}, format="json")
+    # B's phone now shows Pump 1, starting from A's end numbers
+    starts = cb.get("/api/shifts/prefill/").json()["stations"][0]["my_stage"]["shift"]["starts"]
+    assert starts[str(fc.nozzles[0].pk)] == "50.00" and str(p2[0].pk) in starts
+    d = cb.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings([*fc.nozzles, *p2], [100, 0, 20, 0]), "cash": cash("105")}, format="json").json()
+    assert d["status"] == "closed"
+    people = {p["name"]: p for p in d["summary"]["by_attendant"]}
+    assert people[att_a.full_name]["expected"] == "75.00" and people["Second Attendant"]["expected"] == "105.00"  # (50 + 20) x 1.50

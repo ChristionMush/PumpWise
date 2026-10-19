@@ -465,7 +465,7 @@ def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request)
     if _finished_part(shift, person):  # a resend: only the cash can still be corrected
         submit_cash(user=user, shift=shift, cash=cash, who=person, at=ended_at, request=request)
         return
-    holding = list(PumpAssignment.objects.filter(shift=shift, user=person, ended_at__isnull=True).select_related("pump"))
+    holding = list(PumpAssignment.objects.filter(shift=shift, user=person, ended_at__isnull=True).select_related("pump__assigned_to"))
     held = {a.pump_id for a in holding}
     keep = []
     for r in readings:
@@ -481,9 +481,16 @@ def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request)
             raise ValidationError({"readings": "Enter the meter number of every nozzle on your pumps."})
     last = not [a for a in active_attendants(shift) if a.user_id != person.pk and not a.done]
     _record_many(shift, PumpMeterReading.Kind.END if last else PumpMeterReading.Kind.CHECKPOINT, keep, ended_at, user)
+    passed = []
     for a in holding:
         a.ended_at = ended_at
         a.save(update_fields=["ended_at", "updated_at"])
+        # The pump goes to the person a manager planned it for. Already on this shift: their period starts now, at the
+        # numbers just taken, so their phone shows it straight away. Not here yet: they take it when they start.
+        incoming = a.pump.assigned_to
+        if incoming is not None and incoming.pk != person.pk and is_on_shift(incoming, shift):
+            PumpAssignment.objects.create(tenant_id=shift.tenant_id, shift=shift, pump=a.pump, user=incoming, started_at=ended_at)
+            passed.append(f"{a.pump.name} to {incoming.full_name}")
     shift.save()
     submit_cash(user=user, shift=shift, cash=cash, who=person, at=ended_at, request=request)
     row = attendant_row(shift, person)
@@ -491,7 +498,8 @@ def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request)
         row.left_at = ended_at
         row.save(update_fields=["left_at", "updated_at"])
         _ensure_lead(shift)
-    audit.log("shift_part_ended", actor=user, obj=shift, request=request, changes={"who": person.full_name, "pumps": [a.pump.name for a in holding], "last": last})
+    audit.log("shift_part_ended", actor=user, obj=shift, request=request,
+              changes={"who": person.full_name, "pumps": [a.pump.name for a in holding], "last": last, **({"passed_on": passed} if passed else {})})
     if last:
         shift.close_requested_at = shift.close_requested_at or ended_at
         shift.closed_by = user
