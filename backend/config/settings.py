@@ -209,6 +209,10 @@ CELERY_BEAT_SCHEDULE = {
     "demo-nightly": {"task": "apps.onboarding.tasks.refresh_demo_tenants", "schedule": crontab(hour=2, minute=15)},
     "trials-daily": {"task": "apps.onboarding.tasks.run_trial_lifecycle", "schedule": crontab(hour=6, minute=30)},
 }
+# The nightly demo reload wipes and reloads every active demo business. A server where demo businesses are being used
+# for real testing turns it off with DEMO_NIGHTLY_RELOAD=0.
+if not env_bool("DEMO_NIGHTLY_RELOAD", True):
+    del CELERY_BEAT_SCHEDULE["demo-nightly"]
 
 # ---- outbound messages (SMS / WhatsApp) behind one interface ----
 MESSAGE_PROVIDER = env("MESSAGE_PROVIDER", "apps.insights.messaging.ConsoleProvider")
