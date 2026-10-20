@@ -226,6 +226,8 @@ def fix_end(*, user, row, cash=(), readings=(), request=None):
         if shift.status != Shift.Status.OPEN:
             services.compute_transactions(shift)
             on_shift_closed(shift)
+        elif changes:
+            services.update_sales_so_far(shift)
         audit.log("shift_end_fixed", actor=user, obj=shift, request=request, changes={
             "who": row.user.full_name, "meters": {str(p[0].pk): [str(p[2][0].reading), str(v)] for p, v in changes}})
     row.refresh_from_db()

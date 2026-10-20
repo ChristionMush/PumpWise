@@ -1,10 +1,12 @@
 """Several attendants (PLAN.md section 4): joining, leaving, per-person cash, closing, readings that differ,
 assigned pumps (manager-only assignment, each attendant ending their part, handovers, a swap), and two phones offline."""
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import connections, transaction
 from django.db.migrations.executor import MigrationExecutor
+from django.utils import timezone
 
 from apps.accounts.models import Role
 from apps.audit.models import AuditLog
@@ -222,6 +224,26 @@ def test_each_attendant_ends_their_part_and_their_pumps_pass_to_the_incoming_att
     assert ca.get("/api/reports/attendants/").status_code == 403
     with db_context(tenant_id=a["tenant"].id):
         assert Shift.objects.filter(station=fc.station).count() == 1
+
+
+def test_the_dashboard_shows_a_part_that_ended_while_the_shift_goes_on():
+    """An assigned-pump shift stays open all day; each part's sales show as soon as that part ends."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca, cb = client_for(att_a), client_for(att_b)
+    now = timezone.now()
+    body = {"station": str(fc.station.pk), "started_at": (now - timedelta(minutes=10)).isoformat()}
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+    assert mgr.get("/api/dashboard/").json()["totals"]["today_litres"] == "0"
+    ended = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": (now - timedelta(minutes=1)).isoformat(), "readings": readings(fc.nozzles, [50, 0]), "cash": cash("75")}, format="json")
+    assert ended.status_code == 200 and ended.json()["status"] == "open", ended.content
+    t = mgr.get("/api/dashboard/").json()["totals"]
+    assert (t["today_litres"], t["today_amount_by_currency"], t["open_shifts"]) == ("50.000", {"USD": "75.00"}, 1)
+    with db_context(tenant_id=a["tenant"].id):
+        assert not [f for f in Shift.objects.get(pk=sid).flags if f.startswith("missing_end")]  # Pump 2 is simply still in use
+    # the last person out closes the shift; the day then counts both parts once
+    cb.post(f"/api/shifts/{sid}/end/", {"ended_at": now.isoformat(), "readings": readings(p2, [20, 0]), "cash": cash("30")}, format="json")
+    assert mgr.get("/api/dashboard/").json()["totals"]["today_litres"] == "70.000"
 
 
 def test_a_manager_can_swap_a_pump_at_once_with_the_meter_numbers():

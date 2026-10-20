@@ -85,6 +85,34 @@ def on_shift_closed(shift):
         refresh_tank(t)
 
 
+def on_shift_progress(shift):
+    """Assigned pumps: the shift stays open all day while people come and go, and each handover number closes a stretch
+    of pumping. Rebuild the sales so far and refresh those days and the station's tanks now, not when the whole shift
+    closes. The shift's cash summary waits for the close: a cash check of a running shift would flag people still on it."""
+    from apps.stations.models import Tank
+
+    from .services import compute_transactions  # services imports this module
+
+    compute_transactions(shift)
+    days = _days_of(shift)
+    tanks = list(Tank.objects.filter(station_id=shift.station_id).select_related("fuel_type"))
+    pending = getattr(_state, "pending", None)
+    if pending is not None:
+        pending["days"] |= {(shift.station_id, d) for d in days}
+        pending["tanks"] |= {t.pk for t in tanks}
+        return
+    for d in days:
+        refresh_daily(shift.station, d)
+    for t in tanks:
+        refresh_tank(t)
+
+
+def refresh_open_shifts(tenant_id=None):
+    """Hourly backstop: sales so far for every open assigned-pump shift, whatever path recorded its handovers."""
+    for shift in Shift.objects.filter(status=Shift.Status.OPEN, station__assignment_mode="assigned").select_related("station"):
+        on_shift_progress(shift)
+
+
 def on_tank_changed(tank):
     pending = getattr(_state, "pending", None)
     if pending is not None:

@@ -274,6 +274,14 @@ def is_assigned_station(station):
     return station.assignment_mode == Station.AssignmentMode.ASSIGNED
 
 
+def update_sales_so_far(shift):
+    """Assigned pumps: the dashboard shows each stretch of pumping as soon as a handover number closes it."""
+    if shift.status == Shift.Status.OPEN and is_assigned_station(shift.station):
+        from .rollups import on_shift_progress  # rollups import this module, so import here
+
+        on_shift_progress(shift)
+
+
 def my_pumps(station, user):
     """The pumps a manager gave this attendant at this station."""
     return list(Pump.objects.filter(station=station, assigned_to=user).prefetch_related("nozzles").order_by("name"))
@@ -344,6 +352,7 @@ def assign_pump(*, user, pump, to_user, readings=(), at=None, strict=True, reque
             else:
                 shift.add_flag(f"pump_unassigned:{pump.pk}")
             shift.save()
+            update_sales_so_far(shift)
             swapped = {"from": current.user.full_name, "to": to_user.full_name if to_user else None, "at": at.isoformat(),
                        "meters": {str(i["nozzle"].pk): str(i["reading"]) for i in readings}}
         before = pump.assigned_to.full_name if pump.assigned_to_id else None
@@ -514,6 +523,7 @@ def _start_on_my_pumps(*, user, station, readings, shift_id, started_at, attenda
                     # taking a pump over inside the shift: this person's period starts at this number
                     _record_reading(shift, r["nozzle"], PumpMeterReading.Kind.CHECKPOINT, r["reading"], at, user, r.get("photo"))
         shift.save()
+        update_sales_so_far(shift)
     shift.merged_from = (str(shift_id) if shift_id else "") if merged else None
     return shift
 
@@ -569,6 +579,7 @@ def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request)
         shift.closed_by = user
         shift.save(update_fields=["close_requested_at", "closed_by", "updated_at"])
         maybe_close(shift)
+    update_sales_so_far(shift)  # still open: the sales of the part that just ended show now
 
 
 def join_shift(*, user, shift, who=None, at=None, request=None):
@@ -811,7 +822,8 @@ def compute_transactions(shift):
         elif assigned and checkpoints:
             end = checkpoints.pop()  # assigned pumps: the nozzle's last handover number closes it for this shift
         else:
-            shift.add_flag(f"missing_end:{rows['start'][0].nozzle_id}")
+            if shift.status != Shift.Status.OPEN:  # on an open shift the pump is simply still in use
+                shift.add_flag(f"missing_end:{rows['start'][0].nozzle_id}")
             continue
         chain = [_first(rows["start"]), *checkpoints, end]
         nozzle = chain[0].nozzle
