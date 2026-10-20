@@ -55,9 +55,12 @@ class TankReconciliationView(APIView):
         return Response({"rows": rows})
 
 
-def _closed_shifts(request):
+def _closed_shifts(request, with_open=False):
+    """Shifts started in the chosen dates (and stations). with_open: also shifts still running, for their finished parts."""
     frm, to = _dates(request, default_days=14)
-    qs = Shift.objects.select_related("station").prefetch_related("attendants__user").filter(started_at__date__gte=frm, started_at__date__lte=to).exclude(status="open")
+    qs = Shift.objects.select_related("station").prefetch_related("attendants__user").filter(started_at__date__gte=frm, started_at__date__lte=to)
+    if not with_open:
+        qs = qs.exclude(status="open")
     ids = _stations(request)
     if ids is not None:
         qs = qs.filter(station_id__in=ids)
@@ -70,7 +73,7 @@ class AttendantReportView(APIView):
     permission_classes = [IsOwnerOrManager]
 
     def get(self, request):
-        return Response({"rows": reconciliation.attendant_report(_closed_shifts(request).order_by("started_at")[:2000])})
+        return Response({"rows": reconciliation.attendant_report(_closed_shifts(request, with_open=True).order_by("started_at")[:2000])})
 
 
 class CashReconciliationView(APIView):

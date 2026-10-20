@@ -12,7 +12,7 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 
 from apps.operations.models import Delivery, TankReading, Transaction
 from apps.stations.models import Tank
@@ -179,10 +179,45 @@ def tanks_for(user_scope_ids, station=None):
     return list(qs)
 
 
+def finished_parts(shift):
+    """A shift still running (assigned pumps stay open all day): what each person's finished parts add up to. Ending a
+    part closes every stretch on its pumps, so their sales up to their last end are complete, and their cash is what
+    they handed in for those parts. Parts still running wait for their end. Same shape as cash_summary for the report."""
+    cfg = get_settings(shift.tenant_id)
+    currency = shift.station.pricing_currency
+    done = {}
+    for a in shift.attendants.select_related("user").filter(left_at__isnull=False):
+        p = done.setdefault(a.user_id, SimpleNamespace(user=a.user, until=a.left_at, parts=set()))
+        p.until = max(p.until, a.left_at)
+        p.parts.add(a.pk)
+    assigned = shift.assignments.exists()
+    people, by_pump = [], []
+    for uid, p in done.items():
+        mine = shift.transactions.filter(attendant_id=uid, occurred_at__lte=p.until) if assigned else shift.transactions.none()
+        expected = mine.aggregate(s=Sum("amount"))["s"] or Decimal(0)
+        submitted, missing = Decimal(0), []
+        for c in shift.cash.filter(attendant_id=uid).filter(Q(part_id__in=p.parts) | Q(part__isnull=True)):
+            rate = rate_at(c.currency, currency, c.created_at)
+            if rate is None:
+                missing.append(c.currency)
+            else:
+                submitted += (c.amount * rate).quantize(Q2)
+        difference = submitted - expected
+        status = _status(True, missing, difference, max(cfg.cash_variance_amount, expected * cfg.cash_variance_pct / 100))
+        people.append({"user": str(uid), "name": p.user.full_name, "submitted": str(submitted.quantize(Q2)), "expected": str(expected.quantize(Q2)),
+                       "flagged": assigned and status != "ok"})
+        rows = mine.values("nozzle__pump_id", "nozzle__pump__name", "fuel_type__code").annotate(litres=Sum("litres"), amount=Sum("amount")).order_by()
+        by_pump += [{"pump_id": str(r["nozzle__pump_id"]), "pump": r["nozzle__pump__name"], "fuel_code": r["fuel_type__code"], "attendant": str(uid),
+                     "attendant_name": p.user.full_name, "litres": str((r["litres"] or Decimal(0)).quantize(Q3)),
+                     "amount": str((r["amount"] or Decimal(0)).quantize(Q2))} for r in rows]
+    return {"by_attendant": people, "by_pump": by_pump, "per_attendant_expected": assigned}
+
+
 def attendant_report(shifts):
     """Per attendant over a period: litres and sales per pump and fuel, what they handed in, what was expected of
-    them and the cash difference. Built from closed shifts, so an attendant's mistakes can be followed one by one.
-    Shifts where several people shared the pumps count their hand-in, but no expected cash per person."""
+    them and the cash difference. Built from closed shifts, so an attendant's mistakes can be followed one by one, and
+    from the finished parts of shifts still running. Shifts where several people shared the pumps count their hand-in,
+    but no expected cash per person."""
     people = {}
 
     def person(uid, name):
@@ -190,7 +225,7 @@ def attendant_report(shifts):
                                        "handed_in": Decimal(0), "expected": Decimal(0), "shared_shifts": 0, "flagged_shifts": 0})
 
     for shift in shifts:
-        s = cash_summary(shift)
+        s = cash_summary(shift) if shift.status != "open" else finished_parts(shift)
         for p in s["by_attendant"]:
             row = person(p["user"], p["name"])
             row["shifts"] += 1

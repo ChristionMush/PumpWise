@@ -241,6 +241,12 @@ def test_the_dashboard_shows_a_part_that_ended_while_the_shift_goes_on():
     assert (t["today_litres"], t["today_amount_by_currency"], t["open_shifts"]) == ("50.000", {"USD": "75.00"}, 1)
     with db_context(tenant_id=a["tenant"].id):
         assert not [f for f in Shift.objects.get(pk=sid).flags if f.startswith("missing_end")]  # Pump 2 is simply still in use
+    # the report by attendant shows the finished part now; B, still on, shows once their part ends
+    rows = {r["name"]: r for r in mgr.get("/api/reports/attendants/").json()["rows"]}
+    assert set(rows) == {att_a.full_name}
+    mine = rows[att_a.full_name]
+    assert (mine["litres"], mine["sales"], mine["handed_in"], mine["expected"], mine["cash_difference"]) == ("50.000", "75.00", "75.00", "75.00", "0.00")
+    assert [(p["pump"], p["litres"]) for p in mine["pumps"]] == [("Pump 1", "50.000")]
     # the last person out closes the shift; the day then counts both parts once
     cb.post(f"/api/shifts/{sid}/end/", {"ended_at": now.isoformat(), "readings": readings(p2, [20, 0]), "cash": cash("30")}, format="json")
     assert mgr.get("/api/dashboard/").json()["totals"]["today_litres"] == "70.000"
