@@ -410,10 +410,11 @@ def test_after_an_approved_end_an_attendant_works_a_second_part_on_new_pumps():
     assert stage_of(ca) == {"stage": "start"}
     assert "Pump 3" in [p["name"] for p in ca.get("/api/shifts/prefill/").json()["stations"][0]["pumps"]]
 
-    second = ca.post("/api/shifts/start/", {**later, "readings": readings(p3, [500, 0])}, format="json")
+    # Pump 1 is still theirs too: the phone asks for every pump they now have
+    second = ca.post("/api/shifts/start/", {**later, "readings": readings([*fc.nozzles, *p3], [150, 0, 500, 0])}, format="json")
     assert second.status_code == 201, second.content
     assert second.json()["id"] == sid  # the same station shift, a second part
-    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T13:00:00Z", "readings": readings(p3, [520, 0]), "cash": cash("30")}, format="json")
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T13:00:00Z", "readings": readings([*fc.nozzles, *p3], [150, 0, 520, 0]), "cash": cash("30")}, format="json")
     held = stage_of(ca)
     assert held["status"] == "pending" and held["cash"] == [{"payment_type": "cash", "currency": "USD", "amount": "30.00"}]  # this part only
     assert mgr.post(f"/api/shift-ends/{held['end_id']}/approve/").status_code == 200
