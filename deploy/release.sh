@@ -18,9 +18,9 @@ DEPLOY="$ROOT/deploy"
 say() { printf '\n== %s\n' "$*"; }
 envval() { grep -E "^$1=" "$DEPLOY/.env" | head -1 | cut -d= -f2-; }
 
-# 1. Shift changes: 05:30-06:30, 13:30-14:30, 21:30-22:30 Zimbabwe time.
+# 1. Shift changes: 06:30-07:30 and 17:30-18:30 Zimbabwe time (day shift 07:00-18:00, night shift 18:00-07:00).
 now=$(TZ=Africa/Harare date +%H%M)
-for w in "0530 0630" "1330 1430" "2130 2230"; do
+for w in "0630 0730" "1730 1830"; do
   set -- $w
   if [ "$now" -ge "$1" ] && [ "$now" -le "$2" ]; then
     if [ "${FORCE:-0}" != "1" ]; then

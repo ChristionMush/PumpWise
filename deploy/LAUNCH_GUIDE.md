@@ -428,7 +428,7 @@ Run these on the server, in order.
 **Why**
 1. `CLAUDE.md` makes every session follow the same deployment rules, so the app keeps running on this server.
 2. `update.sh` backs up **before** every deploy.
-3. Small, frequent deploys are easier to roll back than one big one. Avoid shift-change times (05:30 to 06:30, 13:30 to 14:30 and 21:30 to 22:30 Zimbabwe time).
+3. Small, frequent deploys are easier to roll back than one big one. Avoid shift-change times (06:30 to 07:30 and 17:30 to 18:30 Zimbabwe time; shifts run 07:00-18:00 and 18:00-07:00).
 
 **Contract your real app must keep:** `/health` public, settings only from environment variables, WSGI module `config.wsgi`, Celery app `config`, the app connecting as the limited database role, and no important files written to the container's disk.
 

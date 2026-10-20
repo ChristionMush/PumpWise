@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Safe deploy: backup, pull, build, migrate, restart, smoke test.
-# Do not run during shift changes (05:30-06:30, 13:30-14:30, 21:30-22:30 Zimbabwe time).
+# Do not run during shift changes (06:30-07:30 and 17:30-18:30 Zimbabwe time).
 set -euo pipefail
 cd "$(dirname "$0")"
 APP_DIR=$(grep -E '^APP_SRC=' .env 2>/dev/null | cut -d= -f2- || true)

@@ -46,8 +46,8 @@ If the scheduler is down, reminders, suspensions, summaries and alerts stop. Res
 
 ## Single-server box (deploy/ kit): update to a new version
 From the Windows PC: `.\deploy\push-to-aws.ps1` (see `deploy/README.md`). It deploys `origin/main` once CI is green: backup, install,
-build, migrate on the owner role, check every table exists, restart, smoke test. Avoid shift changes (05:30-06:30, 13:30-14:30,
-21:30-22:30); the server refuses then unless `-Force`. Roll back code with `-Rollback <commit>`; undo a migration by restoring
+build, migrate on the owner role, check every table exists, restart, smoke test. Avoid shift changes (06:30-07:30 and 17:30-18:30
+Zimbabwe time); the server refuses then unless `-Force`. Roll back code with `-Rollback <commit>`; undo a migration by restoring
 the backup taken at the start of the deploy (`deploy/restore.sh`).
 
 ## Delete a test or demo business (start afresh)

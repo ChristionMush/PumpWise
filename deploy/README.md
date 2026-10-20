@@ -32,7 +32,7 @@ The server does not need Git or a GitHub key. In PowerShell, from the repo folde
 ```
 
 It deploys what is on GitHub (`origin/main`), only if CI passed on that commit. On the server, `release.sh`:
-refuses during shift changes (05:30-06:30, 13:30-14:30, 21:30-22:30 Zimbabwe time; `-Force` overrides), backs up the
+refuses during shift changes (06:30-07:30 and 17:30-18:30 Zimbabwe time; `-Force` overrides), backs up the
 database, installs the release into `/opt/pumpwise` (keeping `deploy/.env`), builds, migrates as the owner role,
 checks that every table really exists, restarts, waits for `https://DOMAIN/health` and records the version.
 
