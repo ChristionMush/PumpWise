@@ -6,9 +6,9 @@ from apps.audit.models import AuditLog
 from apps.core.db import db_context
 from apps.insights.models import OutboundMessage
 from apps.operations.models import PumpAssignment, ShiftAttendant, Transaction, UndoRequest
-from apps.stations.models import Pump, Station
+from apps.stations.models import Pump
 
-from .helpers import at, client_for, make_forecourt, make_user, run_shift, two_tenants
+from .helpers import at, client_for, make_forecourt, make_user, platform_client, run_shift, two_tenants
 
 
 def body(fc, readings):
@@ -155,8 +155,10 @@ def test_assigned_pumps_pass_on_at_once_while_the_end_waits():
     a, _ = two_tenants()
     fc = make_forecourt(a["tenant"], price="1.50")
     first, second = a[Role.ATTENDANT], make_user(a["tenant"], Role.ATTENDANT, full_name="Second")
+    platform = platform_client()
+    assert platform.patch(f"/api/platform/tenants/{a['tenant'].id}/features/", {"multi_attendant_enabled": True, "pump_assignment_enabled": True}, format="json").status_code == 200
+    assert platform.patch(f"/api/platform/tenants/{a['tenant'].id}/stations/{fc.station.pk}/policy/", {"attendants_mode": "multiple", "assignment_mode": "assigned"}, format="json").status_code == 200
     with db_context(tenant_id=a["tenant"].id):
-        Station.objects.filter(pk=fc.station.pk).update(attendants_mode="multiple", assignment_mode="assigned")
         Pump.objects.filter(pk=fc.pump.pk).update(assigned_to=first)
     sid, _ = ended(a, fc)
     with db_context(tenant_id=a["tenant"].id):

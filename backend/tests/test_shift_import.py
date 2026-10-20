@@ -116,6 +116,7 @@ def test_every_problem_comes_back_with_its_row_and_nothing_is_saved():
     res = _send(a[Role.OWNER], meters, cash)
     assert res.status_code == 400
     errors = {(e["file"], e["row"]): e["message"] for e in res.json()["errors"]}
+    assert ("meters", 2) in errors, res.json()
     assert "No station called 'Nowhere'" in errors[("meters", 2)]
     assert "No attendant called 'Nobody'" in errors[("meters", 3)]
     assert "below opening meter" in errors[("meters", 4)]

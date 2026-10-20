@@ -9,6 +9,7 @@ from django.db import DatabaseError, connections, transaction
 
 from apps.core.db import db_context
 from apps.onboarding.demo import seed_demo_tenant
+from apps.operations.models import ShiftAttendant, UndoRequest
 
 PLATFORM_ONLY = {"billing_paymentevent"}
 # Tables the demo does not fill (they hold events that only exist in live operation). Everything else MUST have rows,
@@ -22,6 +23,10 @@ EMPTY_OK = {"billing_billingreminder", "operations_syncoperation", "exports_tena
 def two_demo_tenants():
     a = seed_demo_tenant(name="Iso Alpha", days=4, seed=1, password="Private-demo-pass-9")
     b = seed_demo_tenant(name="Iso Beta", days=4, seed=2, password="Private-demo-pass-9")
+    for tid in (a["tenant_id"], b["tenant_id"]):  # live-only rows the demo does not make
+        with db_context(tenant_id=tid):
+            end = ShiftAttendant.objects.filter(cash_submitted_at__isnull=False).select_related("shift", "user").first()
+            UndoRequest.objects.create(tenant_id=tid, shift=end.shift, attendant=end, kind="cash", reason="seed", requested_by=end.user)
     return a["tenant_id"], b["tenant_id"]
 
 

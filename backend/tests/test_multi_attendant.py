@@ -123,7 +123,12 @@ def test_a_persons_own_correction_keeps_the_old_number():
     ca = client_for(att_a)
     sid = start(ca, fc, [0, 0]).json()["id"]
     ca.post(f"/api/shifts/{sid}/end/", {"readings": readings(fc.nozzles, [100, 0]), "cash": cash("100")}, format="json")
-    d = ca.post(f"/api/shifts/{sid}/end/", {"readings": readings(fc.nozzles, [90, 0]), "cash": cash("90")}, format="json").json()
+    fix = {"readings": readings(fc.nozzles, [90, 0]), "cash": cash("90")}
+    assert ca.post(f"/api/shifts/{sid}/end/", fix, format="json").status_code == 400  # handed in: not without permission
+    mgr = client_for(a[Role.MANAGER])
+    end_id = mgr.get(f"/api/shifts/{sid}/").json()["attendants"][0]["id"]
+    assert mgr.post(f"/api/shift-ends/{end_id}/send-back/", {"note": "Check pump 1"}, format="json").status_code == 200
+    d = ca.post(f"/api/shifts/{sid}/end/", fix, format="json").json()  # sent back: the person corrects their own numbers
     assert d["summary"]["expected"] == "90.00" and d["summary"]["submitted_total"] == "90.00"
     with db_context(tenant_id=a["tenant"].id):
         old = PumpMeterReading.all_objects.get(shift_id=sid, nozzle=fc.nozzles[0], kind="end", deleted_at__isnull=False)
@@ -382,6 +387,9 @@ def test_the_server_tells_any_phone_which_stage_an_attendant_is_at():
     assert on["stage"] == "on_shift" and on["shift"]["id"] == sid and on["shift"]["member"] is False
     assert on["shift"]["starts"] == {str(fc.nozzles[0].pk): "120.00", str(fc.nozzles[1].pk): "40.00"}
     ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_SWAP, "readings": readings(fc.nozzles, [150, 40]), "cash": cash("45")}, format="json")
+    held = stage_of(ca)
+    assert held["stage"] == "held" and held["status"] == "pending" and held["shift_id"] == sid  # waits for the manager
+    assert mgr.post(f"/api/shift-ends/{held['end_id']}/approve/").status_code == 200
     done = stage_of(ca)
     assert done["stage"] == "done" and done["shift_id"] == sid  # their part is over while the shift goes on for B
     assert stage_of(cb)["stage"] == "on_shift"
@@ -393,6 +401,9 @@ def test_on_a_one_attendant_station_the_stage_goes_back_to_start_after_the_shift
     sid = start(ca, fc, [10, 20], started_at=T0).json()["id"]
     assert stage_of(ca)["shift"]["starts"] == {str(fc.nozzles[0].pk): "10.00", str(fc.nozzles[1].pk): "20.00"}
     ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings(fc.nozzles, [30, 20]), "cash": cash("30")}, format="json")
+    held = stage_of(ca)
+    assert held["stage"] == "held" and held["status"] == "pending"
+    assert client_for(a[Role.MANAGER]).post(f"/api/shift-ends/{held['end_id']}/approve/").status_code == 200
     assert stage_of(ca) == {"stage": "start"}
 
 

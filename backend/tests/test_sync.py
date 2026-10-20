@@ -112,6 +112,12 @@ def test_a_correction_syncs_until_a_manager_reviews_then_is_rejected():
     c = client_for(a[Role.ATTENDANT])
     c.post("/api/sync/", {"ops": shift_ops(fc, sid, end=(100, 0))}, format="json")
     fix = [shift_ops(fc, sid, end=(80, 0))[1]]
+    refused = c.post("/api/sync/", {"ops": fix}, format="json").json()["results"][0]  # handed in: needs permission
+    assert refused["status"] == "rejected" and "Ask to undo" in refused["error"]
+    mgr = client_for(a[Role.MANAGER])
+    end_id = mgr.get(f"/api/shifts/{sid}/").json()["attendants"][0]["id"]
+    mgr.post(f"/api/shift-ends/{end_id}/send-back/", {"note": "Check the meter"}, format="json")
+    fix = [shift_ops(fc, sid, end=(80, 0))[1]]
     assert c.post("/api/sync/", {"ops": fix}, format="json").json()["results"][0]["status"] == "applied"
     with db_context(tenant_id=a["tenant"].id):
         assert sum(t.amount for t in Transaction.objects.filter(shift_id=sid)) == Decimal("80.00")
