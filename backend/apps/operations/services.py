@@ -28,10 +28,12 @@ from apps.stations.models import FuelType, Nozzle, Pump, Station, Tank
 from apps.stations.services import litres_from_dip, price_at
 
 from .adapters import AdapterNotAvailable, get_adapter
-from .models import CashSubmission, Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, TankReading, Transaction
+from .models import CashSubmission, Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, TankReading, Transaction, UndoRequest
 
 TWO = Decimal("0.01")
 THREE = Decimal("0.001")
+APPROVAL = ShiftAttendant.Approval
+HELD = (APPROVAL.PENDING, APPROVAL.SENT_BACK)
 
 
 class Conflict(Exception):
@@ -121,6 +123,66 @@ def _ensure_lead(shift):
         ShiftAttendant.objects.filter(shift=shift, is_lead=True).update(is_lead=False)
         nxt.is_lead = True
         nxt.save(update_fields=["is_lead", "updated_at"])
+
+
+# ---- end of shift approval -------------------------------------------------------------------------------------
+# An attendant's end of shift (their meters and cash) waits for a manager. Until it is approved they cannot start or
+# join another shift. The manager may send it back to fix. Any other change to what was handed in needs the owner's
+# permission first (UndoRequest). Managers and the owner correct directly; the audit log keeps the old numbers.
+
+def held_end(user):
+    """This attendant's end of shift still waiting for a manager, or sent back to fix (at any station), if any."""
+    return (ShiftAttendant.objects.filter(user=user, approval__in=HELD).select_related("shift__station", "user")
+            .order_by("-cash_submitted_at").first())
+
+
+def require_cleared(person):
+    """No new shift for someone whose last end of shift is not approved yet."""
+    row = held_end(person)
+    if row is not None:
+        what = "was sent back to fix" if row.approval == APPROVAL.SENT_BACK else "is waiting for the manager's approval"
+        raise ValidationError({"detail": f"{person.full_name}'s last shift at {row.shift.station.name} {what}. "
+                                         "A new shift can start once a manager approves it."})
+
+
+def _mark_handed_in(row, user, at):
+    """The first hand-in ends this person's part and puts it in front of a manager. A manager or the owner entering it
+    for them approves it at the same time."""
+    row.cash_submitted_at = at
+    if can(user, "manage_shift"):
+        row.approval, row.approval_by, row.approval_at = APPROVAL.APPROVED, user, at
+    else:
+        row.approval, row.approval_by, row.approval_at = APPROVAL.PENDING, None, None
+    row.save(update_fields=["cash_submitted_at", "approval", "approval_by", "approval_at", "updated_at"])
+
+
+def unlock_change(user, row, kind):
+    """Something already handed in changes only when a manager or the owner does it, when the manager sent the end
+    back to fix, or when the owner allowed an undo of this kind. Returns the owner's permission to use up, if any."""
+    if can(user, "manage_shift") or row.approval == APPROVAL.SENT_BACK:
+        return None
+    grant = UndoRequest.objects.filter(attendant=row, kind=kind, status=UndoRequest.Status.ALLOWED).first()
+    if grant is None:
+        raise ValidationError({"detail": 'This is already handed in. To change it, tap "Ask to undo": the owner allows it first.'})
+    return grant
+
+
+def after_change(user, row, grant):
+    """An attendant changed their handed-in end: the permission is used up and it goes back to the manager."""
+    if grant is not None:
+        grant.status, grant.used_at = UndoRequest.Status.USED, timezone.now()
+        grant.save(update_fields=["status", "used_at", "updated_at"])
+    if not can(user, "manage_shift"):
+        row.approval, row.approval_by, row.approval_at = APPROVAL.PENDING, None, None
+        row.save(update_fields=["approval", "approval_by", "approval_at", "updated_at"])
+
+
+def _new_end_numbers(shift, readings):
+    """Whether any of these end numbers differs from every end number already on the shift for that nozzle."""
+    have = {}
+    for r in PumpMeterReading.objects.filter(shift=shift, kind=PumpMeterReading.Kind.END):
+        have.setdefault(r.nozzle_id, set()).add(r.reading)
+    return any(Decimal(str(i["reading"])).quantize(TWO) not in have.get(i["nozzle"].pk, set()) for i in readings)
 
 
 # ---- readings --------------------------------------------------------------------------------------------------
@@ -271,6 +333,8 @@ def assign_pump(*, user, pump, to_user, readings=(), at=None, strict=True, reque
             shift = current.shift
             if to_user is not None and _finished_part(shift, to_user):
                 raise ValidationError({"user": f"{to_user.full_name} already ended their part of this shift."})
+            if to_user is not None:
+                require_cleared(to_user)
             _record_many(shift, PumpMeterReading.Kind.CHECKPOINT, readings, at, user)
             current.ended_at = at
             current.save(update_fields=["ended_at", "updated_at"])
@@ -316,6 +380,8 @@ def start_shift(*, user, station, readings, shift_id=None, started_at=None, atte
                 raise Conflict("Shift id already used.")
             existing.merged_from = None
             return existing
+    for person in ([user] if user.role == Role.ATTENDANT else list(attendants or [])):
+        require_cleared(person)
     if is_assigned_station(station):
         return _start_on_my_pumps(user=user, station=station, readings=readings, shift_id=shift_id, started_at=started_at, attendants=attendants, strict=strict)
     people = [_check_attendant_user(u, user.tenant_id) for u in (attendants or [])]
@@ -516,6 +582,7 @@ def join_shift(*, user, shift, who=None, at=None, request=None):
     if is_assigned_station(shift.station):
         raise ValidationError({"detail": "On assigned pumps, start your shift on your own pumps: you join the open shift."})
     _check_attendant_user(who, shift.tenant_id)
+    require_cleared(who)
     at = at or timezone.now()
     if shift.station.attendants_mode != Station.AttendantsMode.MULTIPLE and active_attendants(shift).exclude(user=who).exists():
         raise ValidationError({"detail": "This station has one attendant per shift. The current attendant leaves first (handover)."})
@@ -562,20 +629,27 @@ def submit_cash(*, user, shift, cash, who=None, at=None, request=None):
     row = attendant_row(shift, who)
     if row is None:
         raise ValidationError({"detail": "This person is not on the shift."})
+    handed_in = row.cash_submitted_at is not None
+    current = {(c.payment_type, c.currency): c.amount for c in CashSubmission.objects.filter(shift=shift, attendant=who)}
+    lines = [(c["payment_type"], c["currency"], Decimal(str(c["amount"])).quantize(TWO)) for c in cash]
+    differs = any(current.get((t, cur)) != amount for t, cur, amount in lines if not (amount == 0 and (t, cur) not in current))
+    grant = unlock_change(user, row, UndoRequest.Kind.CASH) if handed_in and differs else None  # a same-numbers resend is fine
     changes = {}
-    for c in cash:
-        amount = Decimal(str(c["amount"])).quantize(TWO)
+    for payment_type, currency, amount in lines:
         obj, created = CashSubmission.objects.get_or_create(
-            shift=shift, attendant=who, payment_type=c["payment_type"], currency=c["currency"],
+            shift=shift, attendant=who, payment_type=payment_type, currency=currency,
             defaults={"tenant_id": shift.tenant_id, "amount": amount},
         )
-        if not created and obj.amount != amount:
-            changes[f"{c['payment_type']}:{c['currency']}"] = [str(obj.amount), str(amount)]
+        if created and handed_in:
+            changes[f"{payment_type}:{currency}"] = [None, str(amount)]
+        elif not created and obj.amount != amount:
+            changes[f"{payment_type}:{currency}"] = [str(obj.amount), str(amount)]
             obj.amount = amount
             obj.save(update_fields=["amount", "updated_at"])
-    if row.cash_submitted_at is None:
-        row.cash_submitted_at = at or timezone.now()
-        row.save(update_fields=["cash_submitted_at", "updated_at"])
+    if not handed_in:
+        _mark_handed_in(row, user, at or timezone.now())
+    elif differs:
+        after_change(user, row, grant)
     if changes:
         audit.log("cash_corrected", actor=user, obj=shift, changes={"who": who.full_name, **changes}, request=request)
     maybe_close(shift)
@@ -641,13 +715,21 @@ def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close
         return shift
     require_on_shift(user, shift)
     was_closed = shift.status != Shift.Status.OPEN
+    end_readings = _readings_for_end(shift, readings, strict)
+    # Someone who already handed in sending different end numbers: that is a change, checked like a cash change.
+    sender = attendant_row(shift, user)
+    meters_changed = bool(sender and sender.cash_submitted_at and _new_end_numbers(shift, end_readings))
+    grant = unlock_change(user, sender, UndoRequest.Kind.METERS) if meters_changed else None
     with db_tx.atomic():
-        _record_many(shift, PumpMeterReading.Kind.END, _readings_for_end(shift, readings, strict), ended_at, user)
+        _record_many(shift, PumpMeterReading.Kind.END, end_readings, ended_at, user)
         shift.save()
         lead = lead_of(shift)
         person = who or (user if attendant_row(shift, user) else (lead.user if lead else None))
         if person is not None and (cash or person.pk == user.pk):
             submit_cash(user=user, shift=shift, cash=cash, who=person, at=ended_at, request=request)
+        if meters_changed:
+            sender.refresh_from_db()
+            after_change(user, sender, grant)
         if was_closed:  # a correction before review: rebuild the numbers
             compute_transactions(shift)
             from .rollups import on_shift_closed
@@ -765,7 +847,23 @@ def phone_stage(user, station):
     phone) shows the right screen: {"stage": "start"} | {"stage": "on_shift", "shift": {...}} | {"stage": "done", ...}.
 
     On shift: the shift id, when it started, whether they only hand in cash (joined someone else's shared-pump shift),
-    and the meter numbers their part started from, per nozzle (so the end screen can show and check them)."""
+    and the meter numbers their part started from, per nozzle (so the end screen can show and check them).
+
+    {"stage": "held", ...}: their last end of shift waits for a manager or was sent back to fix (no new shift until it
+    is approved), or the owner allowed them to change something they handed in (see approvals.end_stage)."""
+    if user.role == Role.ATTENDANT:
+        from .approvals import end_stage, fix_grant  # approvals builds on this module
+
+        if (held := held_end(user)) is not None:
+            return end_stage(held)
+        stage = _shift_stage(user, station)
+        if stage["stage"] != "on_shift" and (grant := fix_grant(user)) is not None:
+            return end_stage(grant.attendant)
+        return stage
+    return _shift_stage(user, station)
+
+
+def _shift_stage(user, station):
     shift = (Shift.objects.filter(station=station, status=Shift.Status.OPEN, attendants__user=user).order_by("started_at").first())
     if shift is None:
         return {"stage": "start"}

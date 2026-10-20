@@ -28,6 +28,8 @@ from apps.audit import services as audit
 from apps.core.db import db_context, tenant_scope
 from apps.insights.alerts import evaluate_tenant
 from apps.operations import services as ops
+from apps.operations.approvals import approve as approve_end
+from apps.operations.models import ShiftAttendant
 from apps.operations.rollups import deferred
 from apps.stations.models import CalibrationPoint, ExchangeRate, FuelType, Nozzle, Pump, Station, Tank
 from apps.stations.services import set_price
@@ -160,6 +162,9 @@ def load_demo(tenant, data, *, password=None):
             for run in ev["runs"]:
                 shift.refresh_from_db()
                 ops.end_shift(user=staff[run["who"]], shift=shift, readings=readings(run["end_readings"]), cash=run["cash"], ended_at=end_at)
+            # ... and the manager approves their ends, so they can work their next shift
+            for row in ShiftAttendant.objects.filter(shift=shift, approval=ShiftAttendant.Approval.PENDING).select_related("user"):
+                approve_end(user=manager, row=row)
 
         def apply(ev, at=None, start_at=None, end_at=None):
             if ev["type"] == "dip":

@@ -40,7 +40,16 @@ class Shift(TenantOwnedModel):
 
 
 class ShiftAttendant(TenantOwnedModel):
-    """A person on a shift. Joining and leaving mid-shift are joined_at / left_at; nothing is ever deleted."""
+    """A person on a shift. Joining and leaving mid-shift are joined_at / left_at; nothing is ever deleted.
+
+    An attendant's end of shift waits for a manager (approval): until it is approved they cannot start or join another
+    shift. A manager may send it back to fix; changing it otherwise needs the owner's permission (UndoRequest)."""
+
+    class Approval(models.TextChoices):
+        NONE = "", "Not ended"
+        PENDING = "pending", "Waiting for the manager"
+        APPROVED = "approved", "Approved"
+        SENT_BACK = "sent_back", "Sent back to fix"
 
     shift = models.ForeignKey(Shift, on_delete=models.PROTECT, related_name="attendants")
     user = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="+")
@@ -48,6 +57,10 @@ class ShiftAttendant(TenantOwnedModel):
     joined_at = models.DateTimeField()
     left_at = models.DateTimeField(null=True, blank=True)
     cash_submitted_at = models.DateTimeField(null=True, blank=True)
+    approval = models.CharField(max_length=10, choices=Approval.choices, default="", blank=True)
+    approval_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    approval_at = models.DateTimeField(null=True, blank=True)
+    approval_note = models.TextField(blank=True, default="")  # the manager's reason when sending it back
 
     class Meta:
         ordering = ["joined_at"]
@@ -60,6 +73,39 @@ class ShiftAttendant(TenantOwnedModel):
     def done(self):
         """Handed in, or marked as left: the shift may close without waiting for this person."""
         return self.cash_submitted_at is not None or self.left_at is not None
+
+
+class UndoRequest(TenantOwnedModel):
+    """An attendant asks the owner to change something they already handed in. Once allowed they may make that change
+    once (cash or meter numbers); "ended by mistake" puts them back on the shift as soon as the owner allows it."""
+
+    class Kind(models.TextChoices):
+        CASH = "cash", "Change the cash handed in"
+        METERS = "meters", "Change the end meter numbers"
+        REOPEN = "reopen", "I ended my shift by mistake"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Waiting for the owner"
+        ALLOWED = "allowed", "Allowed"
+        REFUSED = "refused", "Refused"
+        USED = "used", "Done"
+
+    shift = models.ForeignKey(Shift, on_delete=models.PROTECT, related_name="+")
+    attendant = models.ForeignKey(ShiftAttendant, on_delete=models.PROTECT, related_name="undo_requests")
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    reason = models.TextField()
+    requested_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="+")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    decided_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_note = models.TextField(blank=True, default="")
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(F("attendant"), "kind", condition=Q(deleted_at__isnull=True, status__in=["pending", "allowed"]), name="undorequest_one_open_per_kind"),
+        ]
 
 
 class PumpAssignment(TenantOwnedModel):

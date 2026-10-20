@@ -6,9 +6,9 @@ from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q
-from django.http import FileResponse, Http404, HttpResponseRedirect
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect
 from django.utils import timezone
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -16,15 +16,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role, User
-from apps.accounts.permissions import IsOwnerOrManager, IsTenantUser, TankRecords, can, require
+from apps.accounts.permissions import Allow, IsOwner, IsOwnerOrManager, IsTenantUser, TankRecords, can, require
 from apps.audit import services as audit
 from apps.stations.access import scope, visible_station_ids
 from apps.stations.models import FuelPrice, Pump, Station, StationAssignment, Tank
 from apps.stations.views import validate_image
 
-from . import services
-from .models import Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, SyncOperation, TankReading
+from . import approvals, imports, services
+from .models import Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, SyncOperation, TankReading, UndoRequest
 from .serializers import (
+    CashInput,
     CashInputOnly,
     CashSerializer,
     CheckpointInput,
@@ -32,6 +33,7 @@ from .serializers import (
     DeliverySerializer,
     PersonInput,
     PumpAssignmentSerializer,
+    ReadingInput,
     ReadingSerializer,
     ReassignInput,
     ResolveInput,
@@ -603,3 +605,136 @@ class SyncRejectedView(APIView):
         rows = SyncOperation.objects.filter(status="rejected").select_related("user").order_by("-created_at")[:100]
         return Response([{"op_id": str(r.op_id), "kind": r.kind, "user": r.user.full_name, "error": r.result.get("error"), "at": r.created_at} for r in rows])
 
+
+class ShiftImportView(APIView):
+    """Owner: import past shifts from CSV (multipart: `meters`, optional `cash`). `commit=true` saves them; without
+    it the files are only checked and a summary of what would be saved comes back. All or nothing."""
+
+    permission_classes = [IsOwner]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        if "meters" not in request.FILES:
+            raise ValidationError({"errors": [{"file": "meters", "row": None, "message": "Choose the meters file."}]})
+        commit = str(request.data.get("commit", "")).lower() in ("1", "true", "yes")
+        summary = imports.import_shifts(user=request.user, meters=request.FILES["meters"], cash=request.FILES.get("cash"), commit=commit, request=request)
+        return Response(summary, status=status.HTTP_201_CREATED if commit else status.HTTP_200_OK)
+
+
+class ShiftImportTemplateView(APIView):
+    """Owner: the CSV templates (?file=meters or ?file=cash), with this business's stations, pumps and nozzles."""
+
+    permission_classes = [IsOwner]
+
+    def get(self, request):
+        kind = "cash" if request.query_params.get("file") == "cash" else "meters"
+        resp = HttpResponse(imports.template_csv(kind), content_type="text/csv; charset=utf-8")
+        resp["Content-Disposition"] = f'attachment; filename="{kind}-template.csv"'
+        return resp
+
+
+# ---- end-of-shift approval and owner-allowed undo (apps/operations/approvals.py) ---------------------------------
+
+class FixInput(serializers.Serializer):
+    cash = CashInput(many=True, required=False, default=list)
+    readings = ReadingInput(many=True, required=False, default=list)
+
+
+class ShiftEndListView(APIView):
+    """Managers (their stations) and the owner: ends of shift waiting for approval, and those sent back to fix.
+    ?status=pending or ?status=sent_back narrows it."""
+
+    permission_classes = [Allow("approve_shift_end")]
+
+    def get(self, request):
+        wanted = request.query_params.get("status")
+        status_filter = wanted if wanted in (ShiftAttendant.Approval.PENDING, ShiftAttendant.Approval.SENT_BACK) else None
+        return Response([approvals.end_card(r) for r in approvals.ends_for(request.user, status_filter)[:200]])
+
+
+class ShiftEndDetailView(APIView):
+    """One end of shift: the attendant's own, or (managers, owner) one at their stations."""
+
+    permission_classes = [IsTenantUser]
+
+    def get(self, request, pk):
+        return Response(approvals.end_card(approvals.get_end(request.user, pk)))
+
+
+class ShiftEndApproveView(APIView):
+    permission_classes = [Allow("approve_shift_end")]
+
+    def post(self, request, pk):
+        row = approvals.approve(user=request.user, row=approvals.get_end(request.user, pk), request=request)
+        return Response(approvals.end_card(row))
+
+
+class ShiftEndSendBackView(APIView):
+    permission_classes = [Allow("approve_shift_end")]
+
+    def post(self, request, pk):
+        row = approvals.send_back(user=request.user, row=approvals.get_end(request.user, pk), note=request.data.get("note", ""), request=request)
+        return Response(approvals.end_card(row))
+
+
+class ShiftEndFixView(APIView):
+    """The attendant fixes their handed-in end ({"cash": [...], "readings": [...]}) when the manager sent it back or
+    the owner allowed it. Needs signal: the answer depends on the server."""
+
+    permission_classes = [IsTenantUser]
+
+    def post(self, request, pk):
+        data = FixInput(data=request.data)
+        data.is_valid(raise_exception=True)
+        row = _conflict_as_400(approvals.fix_end, user=request.user, row=approvals.get_end(request.user, pk),
+                               cash=data.validated_data["cash"], readings=data.validated_data["readings"], request=request)
+        return Response(approvals.end_card(row))
+
+
+class ShiftEndUndoView(APIView):
+    """Ask the owner for permission to change something already handed in: {"kind": "cash" | "meters" | "reopen", "reason"}."""
+
+    permission_classes = [IsTenantUser]
+
+    def post(self, request, pk):
+        req = approvals.request_undo(user=request.user, row=approvals.get_end(request.user, pk), kind=request.data.get("kind", ""),
+                                     reason=request.data.get("reason", ""), request=request)
+        return Response(approvals._undo_json(req), status=status.HTTP_201_CREATED)
+
+
+class UndoRequestListView(APIView):
+    """Owner: undo requests (?status=pending by default, or allowed / refused / used / all)."""
+
+    permission_classes = [Allow("allow_undo")]
+
+    def get(self, request):
+        wanted = request.query_params.get("status", "pending")
+        rows = approvals.undo_requests_for(request.user, None if wanted == "all" else wanted)
+        return Response([approvals.undo_card(r) for r in rows.order_by("-created_at")[:200]])
+
+
+class UndoDecideView(APIView):
+    permission_classes = [Allow("allow_undo")]
+
+    def post(self, request, pk, decision):
+        if decision not in ("allow", "refuse"):
+            raise NotFound()
+        try:
+            req = UndoRequest.objects.select_related("attendant__user", "attendant__shift__station", "shift__station").filter(pk=pk).first()
+        except DjangoValidationError:
+            req = None
+        if req is None:
+            raise NotFound("Request not found.")
+        req = approvals.decide_undo(user=request.user, req=req, allow=decision == "allow", note=request.data.get("note", ""), request=request)
+        return Response(approvals.undo_card(req))
+
+
+class ApprovalSummaryView(APIView):
+    """Counts for the menu badge: ends to approve (managers, owner) and undo requests to answer (owner)."""
+
+    permission_classes = [Allow("approve_shift_end")]
+
+    def get(self, request):
+        ends = approvals.ends_for(request.user, ShiftAttendant.Approval.PENDING).count()
+        undos = UndoRequest.objects.filter(status=UndoRequest.Status.PENDING).count() if can(request.user, "allow_undo") else 0
+        return Response({"ends": ends, "undos": undos})

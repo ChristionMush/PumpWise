@@ -11,6 +11,9 @@ export default function Reports() {
   const [tab, setTab] = useState<"sales" | "tank" | "cash" | "people">("sales");
   const [from, setFrom] = useState(daysAgo(13));
   const [to, setTo] = useState(today());
+  const [stations, setStations] = useState<{ id: string; name: string }[]>([]);
+  const [station, setStation] = useState(""); // "" = all the stations this person sees
+  useEffect(() => { api<{ results: { id: string; name: string }[] }>("/api/stations/").then((r) => setStations(r.results)).catch(() => undefined); }, []);
   // Data is kept with the tab it belongs to: right after a tab switch the old tab's data must not be drawn as the new one.
   const [loaded, setLoaded] = useState<{ tab: string; data: any } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -18,17 +21,19 @@ export default function Reports() {
   useEffect(() => {
     setLoaded(null); setError(null);
     const path = { sales: "/api/reports/daily-sales/", tank: "/api/reconciliation/tanks/", cash: "/api/reconciliation/cash/", people: "/api/reports/attendants/" }[tab];
-    api(`${path}?date_from=${from}&date_to=${to}`).then((d) => setLoaded({ tab, data: d })).catch((e) => setError(errorMessage(e)));
-  }, [tab, from, to]);
+    api(`${path}?date_from=${from}&date_to=${to}${station ? `&station=${station}` : ""}`).then((d) => setLoaded({ tab, data: d })).catch((e) => setError(errorMessage(e)));
+  }, [tab, from, to, station]);
   return (
     <>
       <h1>Reports</h1>
       <div className="chips">{([["sales", "Sales"], ["tank", "Fuel check"], ["cash", "Cash check"], ["people", "By attendant"]] as const).map(([k, l]) => <button key={k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
-      <div className="row gap"><label>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></div>
+      <div className="row gap">
+        {stations.length > 1 && <label>Station<select value={station} onChange={(e) => setStation(e.target.value)}><option value="">All stations</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
+        <label>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></div>
       <ErrorNote message={error} />
       {!data && !error && <p className="muted center">Loading…</p>}
       {data && tab === "sales" && (<>
-        <section className="card"><strong>{Number(data.totals.litres).toLocaleString()} L</strong> sold · {Object.entries(data.totals.amount_by_currency).map(([c, a]) => `${c} ${a}`).join(" · ")}
+        <section className="card">{station && <p className="muted">{stations.find((s) => s.id === station)?.name}</p>}<strong>{Number(data.totals.litres).toLocaleString()} L</strong> sold · {Object.entries(data.totals.amount_by_currency).map(([c, a]) => `${c} ${a}`).join(" · ")}
           <p className="muted">Average {Number(data.averages.avg_daily_litres).toLocaleString()} L per day</p>
           <div className="weekdays">{data.averages.by_weekday.map((w: any) => <div key={w.weekday} title={w.name}><div className="wbar" style={{ height: Math.max(4, Number(w.avg_litres) / Math.max(...data.averages.by_weekday.map((x: any) => Number(x.avg_litres)), 1) * 60) }} /><span>{w.name.slice(0, 3)}</span></div>)}</div></section>
         {[...data.days].reverse().map((d: any) => (

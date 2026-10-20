@@ -4,6 +4,7 @@ import { api, errorMessage } from "../api";
 import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
 import { allOps, enqueue, expectedVsHanded, kvGet, kvSet, uuid, type PriceRow } from "../offline";
+import HeldEnd, { type HeldStage } from "./HeldEnd";
 
 /** Each nozzle draws from its own tank, so the fuel (and its price) is per nozzle. */
 export interface Nozzle { id: string; number: number; label: string; meter_max: string; last_reading: string | null; fuel_type: string; fuel_code: string }
@@ -21,9 +22,11 @@ export interface StationInfo {
   my_stage?: Stage; // where this person is in the shift cycle, from the server
   busy_shift?: { people: string[] } | null; // one-attendant station: someone else's shift is still being worked
 }
-/** start: no shift yet · on_shift: started, the end screen is next · done: their part of an open shift is over. */
+/** start: no shift yet · on_shift: started, the end screen is next · done: their part of an open shift is over ·
+ *  held: their last end waits for the manager (no new shift until approved), was sent back, or may be changed. */
 export type Stage =
   | { stage: "start" }
+  | HeldStage
   | { stage: "on_shift"; shift: { id: string; started_at: string; member: boolean; starts: Record<string, string> } }
   | { stage: "done"; shift_id: string; ended_at: string };
 /** The shift this phone is working. `member`: joined someone else's shift (hands in cash only; the lead enters meters). */
@@ -71,7 +74,7 @@ async function settle(local: Active | undefined, st: StationInfo[], fresh: boole
       const starts = { ...local.starts, ...Object.fromEntries(Object.entries(server.shift.starts).map(([k, v]) => [k, Number(v)])) };
       return { active: { ...local, id: server.shift.id, started_at: server.shift.started_at, starts, member: server.shift.member }, waiting: false };
     }
-    return { active: null, waiting: false }; // ended or closed elsewhere (another phone, a manager)
+    return { active: null, waiting: false }; // ended or closed elsewhere (another phone, a manager), or waiting for approval
   }
   const ended = await kvGet<{ station_id: string; at: string }>("lastEnded");
   for (const s of st) {
@@ -204,16 +207,16 @@ export default function Shift() {
     if (!active) return;
     if (active.member) { // someone else leads: I only hand in my cash
       await enqueue("shift_cash", { shift_id: active.id, cash: cashLines(), at: new Date().toISOString() });
-      return finish("Your cash is saved. The lead closes the shift.");
+      return finish("Your cash is saved. The lead closes the shift. Your manager approves your end before your next shift.");
     }
     const missing = rows.filter((n) => !nums[n.id]);
     if (missing.length) return setError(`Enter the end number for ${missing.length} more nozzle${missing.length > 1 ? "s" : ""}.`);
     await enqueue("shift_end", { shift_id: active.id, ended_at: new Date().toISOString(), readings: rows.map((n) => ({ nozzle: n.id, reading: nums[n.id] })), cash: cashLines() });
     return finish(assigned
-      ? "Your part of the shift is saved. Your pumps pass to the next attendant."
+      ? "Your part of the shift is saved. Your pumps pass to the next attendant. Your manager approves it before your next shift."
       : station?.attendants_mode === "multiple"
-        ? "Saved. The shift closes once everyone on it has handed in."
-        : "It is safe on this phone and will sync when there is signal.");
+        ? "Saved. The shift closes once everyone on it has handed in. Your manager approves it before your next shift."
+        : "It is safe on this phone and will sync when there is signal. Your manager approves it before your next shift.");
   };
 
   const leave = async () => {
@@ -240,6 +243,7 @@ export default function Shift() {
     <section className="card"><Stages current={2} /><h1>Shift ended</h1>
       <p>Your end of shift is saved on this phone and will be sent when there is signal.</p></section>
   );
+  if (!active && stage?.stage === "held") return <HeldEnd stage={stage} onChanged={() => navigate(0)} />;
   if (!active && stage?.stage === "done") return (
     <section className="card"><Stages current={2} /><h1>Your part of the shift is done</h1>
       <p>You ended your part at {new Date(stage.ended_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Your pumps have passed to the next attendant.</p>

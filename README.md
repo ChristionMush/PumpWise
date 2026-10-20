@@ -18,6 +18,8 @@ Know your numbers on your phone, and stop losing fuel and cash.
 | 10 | AWS (Terraform), seed demo data, runbook, security checklist | `infra/terraform`, `docs/` |
 | 11 | Onboarding checklist, attendant tutorial, demo tenant | `apps/onboarding`, `frontend/src/components2.tsx` |
 | 12 | Demo businesses (`is_demo`: no real messages, billing sandbox, banner), `mock_data/generate_mock_data.py` + `seed_demo`, nightly reload, "Create trial" with 14-day expiry, health check, demo compose file, AWS budget alarm | `apps/onboarding/demo.py`, `backend/mock_data/`, `deploy/docker-compose.demo.yml`, `infra/terraform/monitoring.tf` |
+| + | Owner imports past shifts from CSV (templates, check first, all or nothing, old prices fill gaps in history) | `apps/operations/imports.py`, `frontend/src/pages/Import.tsx` |
+| + | End of shift waits for a manager (pumps pass on at once; no new shift until approved; send back to fix), undo of anything handed in needs the owner's permission, Reports filter by station | `apps/operations/approvals.py`, `frontend/src/pages/Approvals.tsx`, `frontend/src/pages/HeldEnd.tsx` |
 
 ### Where the plan's names live
 | PLAN.md says | In this repo |

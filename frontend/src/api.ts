@@ -43,14 +43,15 @@ async function refreshOnce(): Promise<boolean> {
 
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
   const { method = "GET", body, auth = true } = opts;
+  const form = body instanceof FormData; // file uploads: the browser sets the multipart header itself
   const send = () =>
     fetch(path, {
       method,
       headers: {
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(body !== undefined && !form ? { "Content-Type": "application/json" } : {}),
         ...(auth && tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : form ? body : JSON.stringify(body),
     });
 
   let res = await send();
@@ -59,6 +60,18 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data);
   return data as T;
+}
+
+/** Save a file the server makes (e.g. a CSV template) under the signed-in user's login. */
+export async function downloadFile(path: string, filename: string) {
+  const send = () => fetch(path, { headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {} });
+  let res = await send();
+  if (res.status === 401 && tokens.refresh && (await refreshOnce())) res = await send();
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
 }
 
 /** Plain-language message for any error. */

@@ -108,7 +108,11 @@ def test_correction_before_review_replaces_the_number_and_after_review_is_refuse
     shift = run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [100, 0], started_at=at(2026, 10, 1, 6), ended_at=at(2026, 10, 1, 14))
     att, mgr = client_for(a[Role.ATTENDANT]), client_for(a[Role.MANAGER])
     fix = {"readings": [{"nozzle": str(fc.nozzles[0].pk), "reading": "90"}, {"nozzle": str(fc.nozzles[1].pk), "reading": "0"}]}
-    d = att.post(f"/api/shifts/{shift.pk}/end/", fix, format="json").json()
+    refused = att.post(f"/api/shifts/{shift.pk}/end/", fix, format="json")  # handed in: the attendant asks the owner first
+    assert refused.status_code == 400 and "Ask to undo" in str(refused.json())
+    end_id = mgr.get(f"/api/shifts/{shift.pk}/").json()["attendants"][0]["id"]
+    assert mgr.post(f"/api/shift-ends/{end_id}/fix/", fix, format="json").status_code == 200  # a manager corrects directly
+    d = mgr.get(f"/api/shifts/{shift.pk}/").json()
     assert d["summary"]["expected"] == "90.00" and any(r["corrected"] for r in d["readings"])
     with db_context(tenant_id=a["tenant"].id):
         assert Transaction.all_objects.filter(shift=shift, deleted_at__isnull=False).count() == 2  # old rows kept, soft-deleted

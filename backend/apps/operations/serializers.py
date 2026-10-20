@@ -136,7 +136,7 @@ class ShiftAttendantSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ShiftAttendant
-        fields = ["user", "name", "is_lead", "joined_at", "left_at", "cash_submitted_at"]
+        fields = ["id", "user", "name", "is_lead", "joined_at", "left_at", "cash_submitted_at", "approval", "approval_note"]
 
 
 class PumpAssignmentSerializer(serializers.ModelSerializer):

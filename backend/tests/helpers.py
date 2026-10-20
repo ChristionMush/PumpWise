@@ -112,8 +112,9 @@ def make_forecourt(tenant, *, price="1.50", currency="USD", price_from=None, noz
     return SimpleNamespace(station=station, fuel=fuel, tank=tank, pump=pump, nozzles=nz)
 
 
-def run_shift(tenant, attendant, fc, start, end, *, started_at, ended_at, cash=(), checkpoint=None, shift_id=None):
-    """Run a complete shift through the real services. start/end are per-nozzle reading lists."""
+def run_shift(tenant, attendant, fc, start, end, *, started_at, ended_at, cash=(), checkpoint=None, shift_id=None, approve=True):
+    """Run a complete shift through the real services. start/end are per-nozzle reading lists. With approve (the default)
+    a manager's approval of the end follows, as it would before the attendant's next shift."""
     from apps.operations import services
 
     with db_context(tenant_id=tenant.id):
@@ -129,7 +130,18 @@ def run_shift(tenant, attendant, fc, start, end, *, started_at, ended_at, cash=(
             readings=[{"nozzle": n, "reading": Decimal(str(r))} for n, r in zip(fc.nozzles, end, strict=False)],
             cash=[{"payment_type": t, "currency": c, "amount": Decimal(str(a))} for t, c, a in cash],
         )
+        if approve:
+            approve_ends(attendant)
         return shift
+
+
+def approve_ends(*people):
+    """A manager approves these attendants' waiting ends of shift (call inside the tenant's db_context)."""
+    from django.utils import timezone
+
+    from apps.operations.models import ShiftAttendant
+
+    ShiftAttendant.objects.filter(user__in=people, approval__in=["pending", "sent_back"]).update(approval="approved", approval_at=timezone.now())
 
 
 def dip(tenant, user, fc, litres, when):
