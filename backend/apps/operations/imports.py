@@ -24,7 +24,6 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction as db_tx
 from django.db.models import Q, Sum
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Role, User
 from apps.accounts.utils import normalize_phone
@@ -48,6 +47,14 @@ PAYMENT_TYPES = {
 }
 DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%d/%m/%y")
 TIME_FORMATS = ("%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M%p", "%I %p", "%I%p")
+
+
+class ImportProblems(Exception):
+    """Rows to fix. Sent back as {"errors": [{"file", "row", "message"}]} with row numbers kept as numbers."""
+
+    def __init__(self, items):
+        super().__init__(f"{len(items)} problem(s)")
+        self.items = items
 
 
 class _DryRun(Exception):
@@ -76,7 +83,7 @@ class _Errors:
 
     def raise_if_any(self):
         if self.items:
-            raise ValidationError({"errors": self.items})
+            raise ImportProblems(self.items)
 
 
 # ---- reading the files -------------------------------------------------------------------------------------------
@@ -89,7 +96,7 @@ def read_csv(upload, name, required):
     """[(row number, {column: value})], skipping blank rows. Accepts Excel's CSV (BOM, ';' in some locales)."""
     raw = upload.read(MAX_BYTES + 1)
     if len(raw) > MAX_BYTES:
-        raise ValidationError({"errors": [{"file": name, "row": None, "message": "This file is too big. Import a few months at a time."}]})
+        raise ImportProblems([{"file": name, "row": None, "message": "This file is too big. Import a few months at a time."}])
     for encoding in ("utf-8-sig", "cp1252", "latin-1"):  # latin-1 decodes anything
         try:
             text = raw.decode(encoding)
@@ -98,7 +105,7 @@ def read_csv(upload, name, required):
             continue
     lines = text.splitlines()
     if not lines:
-        raise ValidationError({"errors": [{"file": name, "row": None, "message": "This file is empty."}]})
+        raise ImportProblems([{"file": name, "row": None, "message": "This file is empty."}])
     try:
         dialect = csv.Sniffer().sniff(lines[0], delimiters=",;\t")
     except csv.Error:
@@ -106,7 +113,7 @@ def read_csv(upload, name, required):
     reader = csv.reader(io.StringIO(text), dialect)
     header = [_key(h) for h in next(reader)]
     if missing := [c for c in required if c not in header]:
-        raise ValidationError({"errors": [{"file": name, "row": 1, "message": f"Missing column(s): {', '.join(missing)}. Start from the template."}]})
+        raise ImportProblems([{"file": name, "row": 1, "message": f"Missing column(s): {', '.join(missing)}. Start from the template."}])
     rows = []
     for number, values in enumerate(reader, start=2):
         row = {h: (values[i].strip() if i < len(values) else "") for i, h in enumerate(header)}
@@ -386,7 +393,7 @@ def import_shifts(*, user, meters, cash=None, commit=False, request=None):
     errors = _Errors()
     meter_rows, meter_comma = read_csv(meters, "meters", METER_REQUIRED)
     if len(meter_rows) > MAX_METER_ROWS:
-        raise ValidationError({"errors": [{"file": "meters", "row": None, "message": f"More than {MAX_METER_ROWS} rows. Import a few months at a time."}]})
+        raise ImportProblems([{"file": "meters", "row": None, "message": f"More than {MAX_METER_ROWS} rows. Import a few months at a time."}])
     cash_rows, cash_comma = read_csv(cash, "cash", CASH_REQUIRED) if cash else ([], False)
     lookup = _Lookup()
     shifts = _parse_meters(meter_rows, meter_comma, lookup, errors)

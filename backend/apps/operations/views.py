@@ -615,9 +615,12 @@ class ShiftImportView(APIView):
 
     def post(self, request):
         if "meters" not in request.FILES:
-            raise ValidationError({"errors": [{"file": "meters", "row": None, "message": "Choose the meters file."}]})
+            return Response({"errors": [{"file": "meters", "row": None, "message": "Choose the meters file."}]}, status=status.HTTP_400_BAD_REQUEST)
         commit = str(request.data.get("commit", "")).lower() in ("1", "true", "yes")
-        summary = imports.import_shifts(user=request.user, meters=request.FILES["meters"], cash=request.FILES.get("cash"), commit=commit, request=request)
+        try:
+            summary = imports.import_shifts(user=request.user, meters=request.FILES["meters"], cash=request.FILES.get("cash"), commit=commit, request=request)
+        except imports.ImportProblems as problems:
+            return Response({"errors": problems.items}, status=status.HTTP_400_BAD_REQUEST)
         return Response(summary, status=status.HTTP_201_CREATED if commit else status.HTTP_200_OK)
 
 
