@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { Badge } from "../components";
+import { PriceNews } from "../components2";
 import { t } from "../i18n";
 import Dashboard from "./Dashboard";
 import Shift from "./Shift";
@@ -33,5 +34,5 @@ export default function Home() {
   const locked =
     tenant && (tenant.status === "cancelled" || (tenant.status === "suspended" && (user?.role === "owner" || user?.role === "manager")));
   if (locked) return <Locked />;
-  return user?.role === "attendant" ? <Shift /> : <Dashboard />;
+  return <><PriceNews />{user?.role === "attendant" ? <Shift /> : <Dashboard />}</>;
 }

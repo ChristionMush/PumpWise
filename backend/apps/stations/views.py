@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -9,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role
-from apps.accounts.permissions import Allow, IsOwnerOrManager, IsTenantUser, SetupPermission, require
+from apps.accounts.permissions import Allow, IsOwnerOrManager, IsTenantUser, SetupPermission, can, require
 from apps.audit import services as audit
 
 from . import services
@@ -18,6 +21,7 @@ from .models import CalibrationPoint, ExchangeRate, FuelPrice, FuelType, Nozzle,
 from .serializers import (
     CalibrationInputSerializer,
     ExchangeRateSerializer,
+    FuelPriceOwnerSerializer,
     FuelPriceSerializer,
     FuelTypeSerializer,
     NozzleSerializer,
@@ -28,6 +32,12 @@ from .serializers import (
 )
 
 DUPLICATE = {"detail": "That already exists, or one of the values is not allowed."}
+ANNOUNCE_HOURS = 48  # a new price stays on everyone's home screen this long after it starts (and before, if set ahead)
+
+
+def price_serializer(user):
+    """Only the owner is told who set a price (PLAN.md rule 11: the server decides what each role receives)."""
+    return FuelPriceOwnerSerializer if can(user, "see_price_setter") else FuelPriceSerializer
 
 
 class SetupViewSet(viewsets.ModelViewSet):
@@ -179,8 +189,7 @@ def validate_image(f, max_mb=5):
 
 
 class NozzleViewSet(SetupViewSet):
-    """A pump's nozzles: more can be added, and one can be removed, as long as the pump keeps at least two nozzles on
-    at least two separate tanks."""
+    """A pump's nozzles: more can be added, and one can be removed, as long as the pump keeps at least one."""
 
     queryset = Nozzle.objects.select_related("pump", "tank__fuel_type").all()
     serializer_class = NozzleSerializer
@@ -207,11 +216,11 @@ class FuelPriceView(APIView):
     permission_classes = [SetupPermission]
 
     def get(self, request):
-        qs = scope(FuelPrice.objects.select_related("fuel_type").all(), request.user)
+        qs = scope(FuelPrice.objects.select_related("fuel_type", "created_by").all(), request.user)
         for key in ("station", "fuel_type", "currency"):
             if request.query_params.get(key):
                 qs = qs.filter(**{key if key == "currency" else f"{key}_id": request.query_params[key]})
-        return Response(FuelPriceSerializer(qs[:200], many=True).data)
+        return Response(price_serializer(request.user)(qs[:200], many=True).data)
 
     def post(self, request):
         data = PriceInputSerializer(data=request.data)
@@ -225,7 +234,43 @@ class FuelPriceView(APIView):
             price=d["price_per_litre"], effective_from=d.get("effective_from"), user=request.user,
         )
         audit.log("price_set", actor=request.user, obj=price, changes={"station": station.name, "fuel": d["fuel_type"].code, "price": str(price.price_per_litre), "currency": price.currency, "from": price.effective_from.isoformat()}, request=request)
-        return Response(FuelPriceSerializer(price).data, status=status.HTTP_201_CREATED)
+        return Response(price_serializer(request.user)(price).data, status=status.HTTP_201_CREATED)
+
+
+class PriceAnnouncementView(APIView):
+    """Price changes everyone at the station is told about: prices that started in the last ANNOUNCE_HOURS and are
+    still in force, and prices set to start later. The owner also gets who set each one and when."""
+
+    permission_classes = [Allow("view_setup")]
+
+    def get(self, request):
+        now = timezone.now()
+        rows = list(
+            scope(FuelPrice.objects.select_related("station", "fuel_type", "created_by"), request.user)
+            .filter(station__status=Station.Status.ACTIVE, effective_from__gte=now - timedelta(hours=ANNOUNCE_HOURS))
+            .filter(Q(effective_to__isnull=True) | Q(effective_to__gt=now))
+            .order_by("-effective_from")[:20]
+        )
+        # The price each one replaced: the row in the same series that ended the instant it started.
+        previous = {
+            (p.station_id, p.fuel_type_id, p.currency, p.effective_to): p.price_per_litre
+            for p in FuelPrice.objects.filter(station_id__in={r.station_id for r in rows}, effective_to__in={r.effective_from for r in rows})
+        }
+        owner = can(request.user, "see_price_setter")
+        out = []
+        for r in rows:
+            item = {
+                "id": str(r.pk), "station": str(r.station_id), "station_name": r.station.name, "fuel": r.fuel_type.name,
+                "currency": r.currency, "price_per_litre": str(r.price_per_litre), "effective_from": r.effective_from,
+                "previous_price": (str(prev) if (prev := previous.get((r.station_id, r.fuel_type_id, r.currency, r.effective_from))) else None),
+                "upcoming": r.effective_from > now,
+            }
+            if owner:
+                item["set_by"] = r.created_by.full_name if r.created_by else None
+                item["set_by_role"] = r.created_by.role if r.created_by else None
+                item["set_at"] = r.created_at
+            out.append(item)
+        return Response({"announcements": out})
 
 
 class ExchangeRateViewSet(SetupViewSet):

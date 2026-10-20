@@ -13,6 +13,7 @@ router.register("exchange-rates", views.ExchangeRateViewSet, basename="exchanger
 
 urlpatterns = [
     path("prices/", views.FuelPriceView.as_view(), name="prices"),
+    path("prices/announcements/", views.PriceAnnouncementView.as_view(), name="price-announcements"),
     path("users/<str:pk>/stations/", views.StationAssignmentView.as_view(), name="user-stations"),
     path("", include(router.urls)),
 ]

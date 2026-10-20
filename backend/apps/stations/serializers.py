@@ -84,7 +84,7 @@ class CalibrationInputSerializer(serializers.Serializer):
 
 class NozzleSerializer(serializers.ModelSerializer):
     """A pump's nozzle. More can be added to a pump, and one can be removed or moved to another tank, as long as the
-    pump keeps at least two nozzles on at least two separate tanks."""
+    pump keeps at least one nozzle."""
 
     pump = serializers.PrimaryKeyRelatedField(queryset=Pump.objects.all())
     tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.all())
@@ -127,9 +127,8 @@ class NewNozzleSerializer(serializers.Serializer):
 
 
 class PumpSerializer(serializers.ModelSerializer):
-    """A pump has at least two nozzles, drawing from at least two separate tanks at the pump's station (some pumps
-    have more). They are sent with the pump when it is created:
-    {"nozzles": [{"tank": <id>, "label": "Petrol"}, {"tank": <id>, "label": "Diesel"}, ...]}."""
+    """A pump starts with at least one nozzle, each drawing from a tank at the pump's station; more can be added
+    later. They are sent with the pump when it is created: {"nozzles": [{"tank": <id>, "label": "Petrol"}, ...]}."""
 
     station = serializers.PrimaryKeyRelatedField(queryset=Station.objects.all())
     nozzles = NozzleSerializer(many=True, read_only=True)
@@ -192,6 +191,16 @@ class FuelPriceSerializer(serializers.ModelSerializer):
     class Meta:
         model = FuelPrice
         fields = ["id", "station", "fuel_type", "fuel_code", "currency", "price_per_litre", "effective_from", "effective_to", "created_at"]
+        read_only_fields = fields
+
+
+class FuelPriceOwnerSerializer(FuelPriceSerializer):
+    """The owner also sees who set each price; created_at is when they set it."""
+
+    set_by = serializers.CharField(source="created_by.full_name", default=None, read_only=True)
+
+    class Meta(FuelPriceSerializer.Meta):
+        fields = [*FuelPriceSerializer.Meta.fields, "set_by"]
         read_only_fields = fields
 
 

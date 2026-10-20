@@ -30,7 +30,7 @@ export default function Prices() {
       {stations.map((st) => (
         <section key={st.id} className="card form"><h2>{st.name} <span className="muted">({st.pricing_currency})</span></h2>
           {fuels.map((f) => { const cur = current(st.id, f.id), key = st.id + f.id; return (
-            <div key={f.id} className="price-row"><strong>{f.name}</strong><span className="muted">now {cur ? Number(cur.price_per_litre).toFixed(2) : "not set"}</span>
+            <div key={f.id} className="price-row"><strong>{f.name}</strong><span className="muted">now {cur ? Number(cur.price_per_litre).toFixed(2) : "not set"}{cur?.set_by && ` · set by ${cur.set_by}, ${new Date(cur.created_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}</span>
               <input aria-label={`New ${f.name} price at ${st.name}`} inputMode="decimal" placeholder="New price" value={edit[key]?.price ?? ""} onChange={(e) => setEdit({ ...edit, [key]: { price: e.target.value, at: edit[key]?.at ?? "" } })} />
               <input aria-label="From" type="datetime-local" value={edit[key]?.at ?? ""} onChange={(e) => setEdit({ ...edit, [key]: { price: edit[key]?.price ?? "", at: e.target.value } })} />
               <button className="btn primary" onClick={() => void apply(st, f)}>Update</button></div>); })}

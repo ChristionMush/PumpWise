@@ -30,6 +30,7 @@ CAPABILITIES = {
     "manage_stations": {O},  # add or remove a station, assign staff to stations
     "edit_setup": {O, M},  # tanks, pumps, nozzles, prices, exchange rates, calibration, photos, QR images
     "view_setup": {O, M, A},  # stations, pumps, nozzles, prices (what an attendant needs to enter meters)
+    "see_price_setter": {O},  # who set each price and when; everyone else just sees the new price
     # forecourt entry
     "record_shift": {O, M, A},  # meter numbers and one's own cash
     "manage_shift": {O, M},  # review, close for others, mark someone as left, assign pumps, resolve readings
