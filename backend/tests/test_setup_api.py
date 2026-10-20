@@ -26,11 +26,12 @@ def test_owner_builds_a_forecourt_through_the_api():
     petrol = c.post("/api/fuel-types/", {"name": "Petrol", "code": "petrol"}, format="json").json()
     tank2 = c.post("/api/tanks/", {"station": st.json()["id"], "name": "T2", "fuel_type": petrol["id"], "capacity_litres": "20000"}, format="json").json()
     body = {"station": st.json()["id"], "name": "Pump 1", "brand": "Wayne", "model": "Helix", "year": 2018}
-    # a pump has at least two nozzles, drawing from at least two separate tanks
-    one = c.post("/api/pumps/", {**body, "nozzles": [{"tank": tank.json()["id"]}]}, format="json")
-    assert one.status_code == 400 and "at least two nozzles" in str(one.json())
-    same = c.post("/api/pumps/", {**body, "nozzles": [{"tank": tank.json()["id"]}, {"tank": tank.json()["id"]}]}, format="json")
-    assert same.status_code == 400 and "separate tanks" in str(same.json())
+    # a pump starts with one nozzle; more can be added, on any tank at the station
+    none = c.post("/api/pumps/", {**body, "nozzles": []}, format="json")
+    assert none.status_code == 400 and "at least one nozzle" in str(none.json())
+    solo = c.post("/api/pumps/", {**body, "name": "Solo", "nozzles": [{"tank": tank.json()["id"]}]}, format="json")
+    assert solo.status_code == 201 and len(solo.json()["nozzles"]) == 1
+    assert c.delete(f"/api/nozzles/{solo.json()['nozzles'][0]['id']}/").status_code == 400  # its only nozzle stays
     pump = c.post("/api/pumps/", {**body, "nozzles": [{"tank": tank.json()["id"], "label": "Diesel"}, {"tank": tank2["id"]}]}, format="json")
     assert pump.status_code == 201, pump.content
     assert pump.json()["data_source"] == "manual" and pump.json()["brand"] == "Wayne" and pump.json()["year"] == 2018
@@ -42,10 +43,11 @@ def test_owner_builds_a_forecourt_through_the_api():
     assert third.status_code == 201 and third.json()["number"] == 3 and third.json()["label"] == "Petrol"
     big = c.post("/api/pumps/", {**body, "name": "Pump 2", "nozzles": [{"tank": tank.json()["id"]}, {"tank": tank2["id"]}, {"tank": tank2["id"]}, {"tank": tank.json()["id"]}]}, format="json")
     assert big.status_code == 201 and len(big.json()["nozzles"]) == 4
-    # removing or moving a nozzle may never leave fewer than two tanks
-    assert c.delete(f"/api/nozzles/{nozzle1['id']}/").status_code == 400  # the rest would all be on the petrol tank
-    assert c.patch(f"/api/nozzles/{nozzle1['id']}/", {"tank": tank2["id"]}, format="json").status_code == 400
+    # nozzles can be moved to another tank and removed, as long as the pump keeps one
+    assert c.patch(f"/api/nozzles/{nozzle1['id']}/", {"tank": tank2["id"]}, format="json").status_code == 200  # all on petrol now
     assert c.delete(f"/api/nozzles/{third.json()['id']}/").status_code == 204
+    assert c.delete(f"/api/nozzles/{nozzle1['id']}/").status_code == 204
+    assert c.delete(f"/api/nozzles/{nozzle2['id']}/").status_code == 400  # the last one stays
     assert c.patch(f"/api/nozzles/{nozzle2['id']}/", {"label": "Unleaded"}, format="json").status_code == 200
 
 

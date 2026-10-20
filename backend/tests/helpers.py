@@ -105,8 +105,7 @@ def make_forecourt(tenant, *, price="1.50", currency="USD", price_from=None, noz
         for dip, litres in ((0, 0), (500, 5000), (1000, 10000)):
             CalibrationPoint.objects.create(tenant_id=tenant.id, tank=tank, dip_mm=dip, litres=litres)
         pump = Pump.objects.create(tenant_id=tenant.id, station=station, name="Pump 1")
-        # Test shortcut: both nozzles on the one tank keeps the tank arithmetic simple. The API (and the readiness
-        # checklist) require at least two nozzles on at least two separate tanks; see second_tank().
+        # Every nozzle on the one tank keeps the tank arithmetic simple; see second_tank() for a second fuel.
         nz = [Nozzle.objects.create(tenant_id=tenant.id, pump=pump, tank=tank, number=i + 1) for i in range(nozzles)]
         if price:
             set_price(tenant_id=tenant.id, station=station, fuel_type=fuel, currency=currency, price=Decimal(price), effective_from=price_from or timezone.now() - timedelta(days=60))
@@ -141,7 +140,7 @@ def dip(tenant, user, fc, litres, when):
 
 
 def second_tank(fc, *, code="DIESEL", name="Tank 2"):
-    """Another tank (and fuel) at a make_forecourt station, so a pump can have two nozzles on separate tanks."""
+    """Another tank (and fuel) at a make_forecourt station, so a pump can sell two fuels."""
     from apps.stations.models import FuelType, Tank
 
     tenant_id = fc.station.tenant_id

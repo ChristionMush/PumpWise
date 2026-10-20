@@ -152,25 +152,21 @@ class Pump(TenantOwnedModel):
         return self.name
 
 
-# A pump has at least two nozzles, drawing from at least two separate tanks (for example petrol and diesel).
-# Some pumps have more nozzles; extra nozzles may share a tank with another nozzle of the pump.
-MIN_NOZZLES_PER_PUMP = 2
-MIN_TANKS_PER_PUMP = 2
+# A pump has at least one nozzle; more can be added. Each nozzle draws from any tank at the pump's station, and
+# several nozzles may share a tank.
+MIN_NOZZLES_PER_PUMP = 1
 
 
 def pump_nozzle_problem(tank_ids):
     """Why a pump whose nozzles draw from these tanks breaks the rule, or None."""
-    tank_ids = list(tank_ids)
-    if len(tank_ids) < MIN_NOZZLES_PER_PUMP:
-        return "A pump has at least two nozzles."
-    if len(set(tank_ids)) < MIN_TANKS_PER_PUMP:
-        return "A pump's nozzles must draw from at least two separate tanks."
+    if len(list(tank_ids)) < MIN_NOZZLES_PER_PUMP:
+        return "A pump has at least one nozzle."
     return None
 
 
 class Nozzle(TenantOwnedModel):
     pump = models.ForeignKey(Pump, on_delete=models.PROTECT, related_name="nozzles")
-    # The tank this nozzle draws from. The two nozzles of a pump use different tanks at the pump's station.
+    # The tank this nozzle draws from, at the pump's station.
     tank = models.ForeignKey(Tank, on_delete=models.PROTECT, related_name="nozzles")
     number = models.PositiveSmallIntegerField()
     label = models.CharField(max_length=40, blank=True, default="")

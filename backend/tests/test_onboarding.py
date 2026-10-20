@@ -6,7 +6,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role
+from apps.core.db import db_context
 from apps.onboarding.demo import seed_demo_tenant
+from apps.stations.models import Pump
 
 from .helpers import at, client_for, dip, make_forecourt, platform_client, run_shift, second_tank, two_tenants
 
@@ -53,7 +55,11 @@ def test_calibration_and_nozzles_are_checked():
     owner.post("/api/tanks/", {"station": str(fc.station.pk), "name": "Tank 2", "fuel_type": str(fc.fuel.pk), "capacity_litres": "1000"}, format="json")
     i = items(owner)
     assert not i["calibration"]["done"] and "Tank 2" in i["calibration"]["detail"]
-    assert not i["pumps"]["done"] and "Pump 1" in i["pumps"]["detail"] and "separate tanks" in i["pumps"]["detail"]
+    assert i["pumps"]["done"]  # one tank behind every nozzle is fine
+    with db_context(tenant_id=a["tenant"].id):
+        Pump.objects.create(tenant_id=a["tenant"].id, station=fc.station, name="Pump 2")  # no nozzle yet
+    i = items(owner)
+    assert not i["pumps"]["done"] and i["pumps"]["detail"] == "Needs a nozzle: Pump 2"
 
 
 def test_checklist_roles_flags_and_tenant_separation():
