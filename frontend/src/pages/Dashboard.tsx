@@ -9,7 +9,8 @@ export default function Dashboard() {
   const [d, setD] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    const load = () => api("/api/dashboard/").then(setD).catch((e) => setError(errorMessage(e)));
+    // a failed refresh shows the error only until the next one succeeds
+    const load = () => api("/api/dashboard/").then((data) => { setD(data); setError(null); }).catch((e) => setError(errorMessage(e)));
     load();
     const t = setInterval(load, 60000);
     return () => clearInterval(t);

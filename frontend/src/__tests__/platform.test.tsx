@@ -105,7 +105,7 @@ describe("platform: create business", () => {
     await user.click(screen.getByRole("button", { name: "Create business" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("shared or assigned"); // the pump system is asked up front
     expect(calls.some((c) => c.method === "POST")).toBe(false);
-    await user.click(screen.getByLabelText(/Shared pumps/));
+    await user.click(screen.getByLabelText(/Shared pumps, one attendant/));
     await user.click(screen.getByRole("button", { name: "Create business" }));
     await vi.waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     expect(calls.find((c) => c.method === "POST")?.body.stations).toEqual([]);

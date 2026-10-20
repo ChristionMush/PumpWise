@@ -69,7 +69,9 @@ export default function CreateTenant() {
         <legend><h2>Pump system</h2></legend>
         <p className="muted">How does this business work its pumps?</p>
         <label className="row gap"><input type="radio" name="pump_system" value="shared" checked={pumpSystem === "shared"} onChange={() => setPumpSystem("shared")} />
-          Shared pumps: everyone on the shift uses every pump</label>
+          Shared pumps, one attendant: a single attendant works every pump on the shift</label>
+        <label className="row gap"><input type="radio" name="pump_system" value="shared_multi" checked={pumpSystem === "shared_multi"} onChange={() => setPumpSystem("shared_multi")} />
+          Shared pumps, several attendants: everyone on the shift uses every pump</label>
         <label className="row gap"><input type="radio" name="pump_system" value="assigned" checked={pumpSystem === "assigned"} onChange={() => setPumpSystem("assigned")} />
           Assigned pumps: a manager gives each attendant their own pumps</label>
       </fieldset>

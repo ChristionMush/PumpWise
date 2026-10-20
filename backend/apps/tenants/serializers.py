@@ -41,7 +41,7 @@ class TenantCreateSerializer(serializers.Serializer):
     paid_through = serializers.DateField(required=False, allow_null=True, default=None)
     stations = StationInputSerializer(many=True, required=False, default=list)
     # Asked on the platform's "New business" form: shared pumps, or each attendant works their own assigned pumps.
-    pump_system = serializers.ChoiceField(choices=["shared", "assigned"], required=False, default="shared")
+    pump_system = serializers.ChoiceField(choices=["shared", "shared_multi", "assigned"], required=False, default="shared")
 
     def validate_business_name(self, value):
         value = " ".join(value.split())
@@ -102,7 +102,7 @@ class FeaturesSerializer(serializers.Serializer):
 
 
 class PumpSystemSerializer(serializers.Serializer):
-    pump_system = serializers.ChoiceField(choices=["shared", "assigned"])
+    pump_system = serializers.ChoiceField(choices=["shared", "shared_multi", "assigned"])
 
 
 class StationPolicySerializer(serializers.Serializer):

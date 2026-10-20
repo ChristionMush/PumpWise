@@ -4,6 +4,11 @@ from django.db import models
 
 from apps.core.models import SoftDeleteModel, UUIDModel
 
+# How a business works its pumps, chosen by the platform when the business is created (new stations follow it):
+# shared: one attendant per shift · shared_multi: several attendants share every pump · assigned: each attendant works
+# the pumps a manager gives them
+PUMP_SYSTEMS = [("shared", "Shared pumps, one attendant per shift"), ("shared_multi", "Shared pumps, several attendants"), ("assigned", "Assigned pumps")]
+
 
 class Tenant(UUIDModel, SoftDeleteModel):
     """A fuel-station business (customer). Root of the tenant hierarchy.
@@ -24,10 +29,9 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # stations back to one attendant and shared pumps; no data is deleted.
     multi_attendant_enabled = models.BooleanField(default=False)
     pump_assignment_enabled = models.BooleanField(default=False)
-    # Chosen by the platform owner when the business is created: shared pumps (everyone on the shift uses every pump)
-    # or assigned pumps (each attendant works only the pumps a manager gave them, on their own shift). New stations
-    # follow it. "assigned" needs the pump assignment grant.
-    pump_system = models.CharField(max_length=10, choices=[("shared", "Shared pumps"), ("assigned", "Assigned pumps")], default="shared")
+    # One of PUMP_SYSTEMS, chosen by the platform owner when the business is created. New stations follow it.
+    # "shared_multi" needs the several-attendants grant; "assigned" needs the pump assignment grant.
+    pump_system = models.CharField(max_length=20, choices=PUMP_SYSTEMS, default="shared")
     # Demo and trial businesses (Phase 12): never send real SMS/WhatsApp/email, use the billing sandbox, and are the
     # only tenants the demo loader may ever wipe and reload. A trial expires (suspended), then is removed if not converted.
     is_demo = models.BooleanField(default=False)
@@ -39,7 +43,8 @@ class Tenant(UUIDModel, SoftDeleteModel):
             models.CheckConstraint(
                 condition=models.Q(pump_assignment_enabled=False) | models.Q(multi_attendant_enabled=True), name="tenant_assignment_needs_multi"
             ),
-            models.CheckConstraint(condition=models.Q(pump_system="shared") | models.Q(pump_assignment_enabled=True), name="tenant_assigned_system_needs_grant"),
+            models.CheckConstraint(condition=~models.Q(pump_system="assigned") | models.Q(pump_assignment_enabled=True), name="tenant_assigned_system_needs_grant"),
+            models.CheckConstraint(condition=~models.Q(pump_system="shared_multi") | models.Q(multi_attendant_enabled=True), name="tenant_multi_system_needs_grant"),
         ]
 
     def __str__(self):

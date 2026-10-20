@@ -20,7 +20,7 @@ from apps.core.db import tenant_scope
 from apps.stations.models import Station
 from apps.stations.serializers import StationInputSerializer, StationSerializer
 
-from .features import set_pump_system, set_station_policy, set_tenant_features
+from .features import SYSTEM_POLICY, set_pump_system, set_station_policy, set_tenant_features
 from .models import Subscription, Tenant
 from .serializers import (
     FeaturesSerializer,
@@ -163,7 +163,8 @@ class PlatformStationView(APIView):
                 with tenant_scope(tenant.id):
                     station = Station.objects.create(tenant_id=tenant.id, **data.validated_data)
                     audit.log("station_created", actor=request.user, tenant_id=tenant.id, obj=station, changes={"name": station.name}, request=request)
-                wanted = policy.validated_data or ({"attendants_mode": "multiple", "assignment_mode": "assigned"} if tenant.pump_system == "assigned" else {})
+                mode, assignment = SYSTEM_POLICY.get(tenant.pump_system, SYSTEM_POLICY["shared"])
+                wanted = policy.validated_data or ({"attendants_mode": mode, "assignment_mode": assignment} if tenant.pump_system != "shared" else {})
                 if wanted:  # a new station follows the business's pump system unless the platform chose otherwise
                     set_station_policy(station=station, actor=request.user, request=request, **wanted)
         except IntegrityError:

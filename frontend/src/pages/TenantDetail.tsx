@@ -54,9 +54,10 @@ export default function TenantDetail() {
     });
   };
 
-  // Shared or assigned pumps for the whole business (chosen when it was created).
+  // The pump system for the whole business (chosen when it was created).
   const setPumpSystem = (pump_system: PumpSystem) => {
-    if (!window.confirm(`Move every station of ${tenant?.name} to ${pump_system} pumps?`)) return;
+    const label = { shared: "shared pumps with one attendant", shared_multi: "shared pumps with several attendants", assigned: "assigned pumps" }[pump_system];
+    if (!window.confirm(`Move every station of ${tenant?.name} to ${label}?`)) return;
     void run(async () => { await api(`/api/platform/tenants/${id}/pump-system/`, { method: "PATCH", body: { pump_system } }); });
   };
 
@@ -137,7 +138,8 @@ export default function TenantDetail() {
           <h2>Pump system</h2>
           <label>How the pumps are worked
             <select aria-label="Pump system" value={tenant.pump_system} onChange={(e) => setPumpSystem(e.target.value as PumpSystem)}>
-              <option value="shared">Shared pumps: everyone on the shift uses every pump</option>
+              <option value="shared">Shared pumps, one attendant per shift</option>
+              <option value="shared_multi">Shared pumps, several attendants: everyone on the shift uses every pump</option>
               <option value="assigned">Assigned pumps: each attendant works their own pumps</option>
             </select>
           </label>
