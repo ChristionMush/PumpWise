@@ -40,7 +40,11 @@ class Shift(TenantOwnedModel):
 
 
 class ShiftAttendant(TenantOwnedModel):
-    """A person on a shift. Joining and leaving mid-shift are joined_at / left_at; nothing is ever deleted.
+    """A person's part of a shift. Joining and leaving mid-shift are joined_at / left_at; nothing is ever deleted.
+
+    Usually one row per person per shift. On assigned pumps someone who ended their part (and was approved) can start
+    again on the same open shift, on the pumps they now have: that is a second row, a second part, with its own pumps,
+    cash and approval. At most one part per person is open (not left) at a time.
 
     An attendant's end of shift waits for a manager (approval): until it is approved they cannot start or join another
     shift. A manager may send it back to fix; changing it otherwise needs the owner's permission (UndoRequest)."""
@@ -65,7 +69,7 @@ class ShiftAttendant(TenantOwnedModel):
     class Meta:
         ordering = ["joined_at"]
         constraints = [
-            models.UniqueConstraint(F("shift"), F("user"), condition=Q(deleted_at__isnull=True), name="shiftattendant_unique_user"),
+            models.UniqueConstraint(F("shift"), F("user"), condition=Q(deleted_at__isnull=True, left_at__isnull=True), name="shiftattendant_one_open_part"),
             models.UniqueConstraint(F("shift"), condition=Q(deleted_at__isnull=True, is_lead=True), name="shiftattendant_one_lead"),
         ]
 
@@ -205,13 +209,15 @@ class CashSubmission(TenantOwnedModel):
 
     shift = models.ForeignKey(Shift, on_delete=models.PROTECT, related_name="cash")
     attendant = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")  # who handed it in
+    # The part of the shift it was handed in for: someone who works two parts of one shift hands in twice.
+    part = models.ForeignKey(ShiftAttendant, null=True, blank=True, on_delete=models.PROTECT, related_name="cash")
     payment_type = models.CharField(max_length=15, choices=PaymentType.choices)
     currency = models.CharField(max_length=3, validators=[validate_currency])
     amount = models.DecimalField(max_digits=14, decimal_places=2)
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(F("shift"), F("attendant"), "payment_type", "currency", condition=Q(deleted_at__isnull=True), name="cash_unique_per_attendant"),
+            models.UniqueConstraint(F("part"), "payment_type", "currency", condition=Q(deleted_at__isnull=True, part__isnull=False), name="cash_unique_per_part"),
             models.CheckConstraint(condition=Q(amount__gte=0), name="cash_not_negative"),
         ]
 

@@ -12,6 +12,7 @@ Managers and the owner correct directly. Every step is in the audit log.
 from decimal import Decimal
 
 from django.db import transaction as db_tx
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
@@ -39,7 +40,7 @@ def _end_points(row):
     shift = row.shift
     readings = list(PumpMeterReading.objects.filter(shift=shift).select_related("nozzle__pump", "nozzle__tank__fuel_type").order_by("reading_at", "created_at"))
     out = {}
-    periods = list(PumpAssignment.objects.filter(shift=shift, user=row.user).select_related("pump").order_by("started_at"))
+    periods = list(_periods(row))
     if periods:
         for a in periods:
             for n in a.pump.nozzles.all():
@@ -54,6 +55,17 @@ def _end_points(row):
             ends = [e for e in readings if e.nozzle_id == r.nozzle_id and e.kind == PumpMeterReading.Kind.END]
             out[r.nozzle_id] = (r.nozzle, r, ends, PumpMeterReading.Kind.END, ends[0].reading_at if ends else None)
     return out
+
+
+def _periods(row):
+    """This part's pump periods: those that began while it was open (a person may work two parts of one shift)."""
+    qs = PumpAssignment.objects.filter(shift=row.shift, user=row.user, started_at__gte=row.joined_at).select_related("pump").order_by("started_at")
+    return qs.filter(started_at__lte=row.left_at) if row.left_at else qs
+
+
+def _cash(row):
+    """This part's cash (rows handed in before cash was kept per part belong to the person's only part)."""
+    return CashSubmission.objects.filter(Q(part=row) | Q(part__isnull=True, shift=row.shift, attendant=row.user)).order_by("payment_type")
 
 
 def end_summary(row):
@@ -81,15 +93,15 @@ def end_summary(row):
         meters.append(line)
     cash, handed = [], Decimal(0)
     at = row.cash_submitted_at or timezone.now()
-    for c in CashSubmission.objects.filter(shift=shift, attendant=row.user).order_by("payment_type"):
+    for c in _cash(row):
         cash.append({"payment_type": c.payment_type, "currency": c.currency, "amount": str(c.amount)})
         rate = Decimal(1) if c.currency == currency else rate_at(c.currency, currency, at)
         if rate is None:
             known = False
         else:
             handed += (c.amount * rate).quantize(TWO)
-    alone = shift.attendants.count() == 1
-    mine = bool(meters) and (PumpAssignment.objects.filter(shift=shift, user=row.user).exists() or alone)
+    alone = shift.attendants.values("user").distinct().count() == 1  # one person, maybe in two parts
+    mine = bool(meters) and (_periods(row).exists() or alone)
     return {
         "person": row.user.full_name, "currency": currency, "meters": meters, "cash": cash,
         "handed_in": str(handed.quantize(TWO)),
@@ -199,7 +211,7 @@ def fix_end(*, user, row, cash=(), readings=(), request=None):
     meter_grant = services.unlock_change(user, row, KIND.METERS) if changes else None  # checked before cash moves it on
     with db_tx.atomic():
         if cash:
-            services.submit_cash(user=user, shift=shift, cash=cash, who=row.user, at=row.cash_submitted_at, request=request)
+            services.submit_cash(user=user, shift=shift, cash=cash, who=row.user, at=row.cash_submitted_at, request=request, part=row)
         now = timezone.now()
         for (nozzle, _, ends, kind, at), value in changes:
             PumpMeterReading.objects.filter(pk__in=[e.pk for e in ends]).update(deleted_at=now)
@@ -282,6 +294,8 @@ def reopen_part(*, user, row):
     shift, station = row.shift, row.shift.station
     if shift.status == Shift.Status.REVIEWED:
         raise ValidationError({"detail": "This shift is already reviewed. Ask a manager to correct it."})
+    if ShiftAttendant.objects.filter(shift=shift, user=row.user, joined_at__gt=row.joined_at).exists():
+        raise ValidationError({"detail": "They have started again on this shift since. Ask the manager to correct the numbers instead."})
     periods = list(PumpAssignment.objects.filter(shift=shift, user=row.user, ended_at=row.left_at).select_related("pump")) if row.left_at else []
     for a in periods:
         later = PumpAssignment.objects.filter(shift=shift, pump=a.pump, started_at__gte=a.ended_at).exclude(pk=a.pk).select_related("user").first()
@@ -299,7 +313,7 @@ def reopen_part(*, user, row):
             a.save(update_fields=["ended_at", "updated_at"])
         if not periods and shift.status != Shift.Status.OPEN:
             PumpMeterReading.objects.filter(shift=shift, kind=PumpMeterReading.Kind.END).update(deleted_at=now)
-        CashSubmission.objects.filter(shift=shift, attendant=row.user).update(deleted_at=now)
+        _cash(row).update(deleted_at=now)
         row.left_at = row.cash_submitted_at = row.approval_by = row.approval_at = None
         row.approval = APPROVAL.NONE
         row.save(update_fields=["left_at", "cash_submitted_at", "approval", "approval_by", "approval_at", "updated_at"])

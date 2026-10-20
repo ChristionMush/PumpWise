@@ -161,7 +161,7 @@ class ShiftSerializer(serializers.ModelSerializer):
         return list(obj.attendants.all())  # prefetched by the list view
 
     def get_people(self, obj):
-        return [a.user.full_name for a in self._rows(obj)]
+        return list(dict.fromkeys(a.user.full_name for a in self._rows(obj)))  # once each, even with two parts
 
     def get_lead_name(self, obj):
         return next((a.user.full_name for a in self._rows(obj) if a.is_lead), None)

@@ -10,6 +10,7 @@ Wording is neutral on purpose: a "cash difference", never an accusation.
 """
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 from django.db.models import Sum
 
@@ -33,6 +34,22 @@ def _status(closed, missing, difference, limit):
     if missing:
         return "incomplete"
     return "short" if difference < -limit else "over" if difference > limit else "ok"
+
+
+def _people(shift):
+    """One line per person on the shift. Someone who worked two parts of it counts once: first in, last out, and
+    handed in only when every part is."""
+    people = {}
+    for a in shift.attendants.select_related("user").order_by("joined_at"):
+        p = people.get(a.user_id)
+        if p is None:
+            people[a.user_id] = SimpleNamespace(user_id=a.user_id, user=a.user, is_lead=a.is_lead, joined_at=a.joined_at, left_at=a.left_at,
+                                                cash_submitted_at=a.cash_submitted_at)
+        else:
+            p.is_lead = p.is_lead or a.is_lead
+            p.left_at = a.left_at
+            p.cash_submitted_at = a.cash_submitted_at if p.cash_submitted_at else None
+    return list(people.values())
 
 
 def cash_summary(shift):
@@ -62,7 +79,7 @@ def cash_summary(shift):
 
     # per attendant: always what each person handed in; expected per person when pumps are assigned, or when one
     # person ran the whole shift (then all of it is theirs)
-    on_shift = list(shift.attendants.select_related("user"))
+    on_shift = _people(shift)
     solo = on_shift[0].user_id if len(on_shift) == 1 else None
     names = {a.user_id: a.user.full_name for a in on_shift}
     assigned = shift.assignments.exists()

@@ -390,9 +390,42 @@ def test_the_server_tells_any_phone_which_stage_an_attendant_is_at():
     held = stage_of(ca)
     assert held["stage"] == "held" and held["status"] == "pending" and held["shift_id"] == sid  # waits for the manager
     assert mgr.post(f"/api/shift-ends/{held['end_id']}/approve/").status_code == 200
-    done = stage_of(ca)
-    assert done["stage"] == "done" and done["shift_id"] == sid  # their part is over while the shift goes on for B
+    assert stage_of(ca) == {"stage": "start"}  # their part is over while the shift goes on for B; they may start a new part
     assert stage_of(cb)["stage"] == "on_shift"
+
+
+def test_after_an_approved_end_an_attendant_works_a_second_part_on_new_pumps():
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    with db_context(tenant_id=a["tenant"].id):
+        pump3 = Pump.objects.create(tenant_id=a["tenant"].id, station=fc.station, name="Pump 3")
+        p3 = [Nozzle.objects.create(tenant_id=a["tenant"].id, pump=pump3, tank=fc.tank, number=n) for n in (1, 2)]
+    ca, cb = client_for(att_a), client_for(att_b)
+    body, later = {"station": str(fc.station.pk), "started_at": T0}, {"station": str(fc.station.pk), "started_at": "2026-10-01T11:00:00Z"}
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [100, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_SWAP, "readings": readings(fc.nozzles, [150, 0]), "cash": cash("75")}, format="json")
+    assert ca.post("/api/shifts/start/", {**later, "readings": readings(p3, [500, 0])}, format="json").status_code == 400  # not approved yet
+    assert mgr.post(f"/api/shift-ends/{stage_of(ca)['end_id']}/approve/").status_code == 200
+    assert mgr.post(f"/api/pumps/{pump3.pk}/assign/", {"user": str(att_a.pk)}, format="json").status_code == 200
+    assert stage_of(ca) == {"stage": "start"}
+    assert "Pump 3" in [p["name"] for p in ca.get("/api/shifts/prefill/").json()["stations"][0]["pumps"]]
+
+    second = ca.post("/api/shifts/start/", {**later, "readings": readings(p3, [500, 0])}, format="json")
+    assert second.status_code == 201, second.content
+    assert second.json()["id"] == sid  # the same station shift, a second part
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T13:00:00Z", "readings": readings(p3, [520, 0]), "cash": cash("30")}, format="json")
+    held = stage_of(ca)
+    assert held["status"] == "pending" and held["cash"] == [{"payment_type": "cash", "currency": "USD", "amount": "30.00"}]  # this part only
+    assert mgr.post(f"/api/shift-ends/{held['end_id']}/approve/").status_code == 200
+    cb.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings(p2, [10, 0]), "cash": cash("15")}, format="json")  # last: closes
+
+    d = mgr.get(f"/api/shifts/{sid}/").json()
+    assert d["status"] == "closed" and [p["name"] for p in d["attendants"]].count(att_a.full_name) == 2
+    assert d["people"].count(att_a.full_name) == 1
+    mine = [p for p in d["summary"]["by_attendant"] if p["user"] == str(att_a.pk)]
+    assert len(mine) == 1 and mine[0]["submitted"] == "105.00" and mine[0]["expected"] == "105.00"  # (50 + 20) litres x 1.50
+    with db_context(tenant_id=a["tenant"].id):
+        assert CashSubmission.objects.filter(attendant=att_a).values("part").distinct().count() == 2  # both hand-ins kept
 
 
 def test_on_a_one_attendant_station_the_stage_goes_back_to_start_after_the_shift():

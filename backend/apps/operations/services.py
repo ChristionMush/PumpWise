@@ -50,7 +50,8 @@ def adapter_for(data_source):
 # ---- people on a shift ---------------------------------------------------------------------------------------
 
 def attendant_row(shift, user):
-    return ShiftAttendant.objects.filter(shift=shift, user=user).first() if user else None
+    """This person's current part of the shift: their latest one (someone can work two parts of one shift)."""
+    return ShiftAttendant.objects.filter(shift=shift, user=user).order_by("-joined_at", "-created_at").first() if user else None
 
 
 def active_attendants(shift):
@@ -62,7 +63,7 @@ def lead_of(shift):
 
 
 def people_names(shift):
-    return [a.user.full_name for a in ShiftAttendant.objects.filter(shift=shift).select_related("user")]
+    return list(dict.fromkeys(a.user.full_name for a in ShiftAttendant.objects.filter(shift=shift).select_related("user")))
 
 
 def is_on_shift(user, shift):
@@ -106,8 +107,9 @@ def _check_attendant_user(user, tenant_id):
 
 def _add_person(shift, user, at, *, lead=False):
     row = attendant_row(shift, user)
-    if row is None:
-        row = ShiftAttendant.objects.create(tenant_id=shift.tenant_id, shift=shift, user=user, is_lead=lead, joined_at=at)
+    if row is None or (row.left_at is not None and row.cash_submitted_at is not None):
+        # new on the shift, or back for another part after ending one (handed in and approved): a part of its own
+        row = ShiftAttendant.objects.create(tenant_id=shift.tenant_id, shift=shift, user=user, is_lead=lead and row is None, joined_at=at)
     elif row.left_at is not None:
         row.left_at = None  # rejoining: same row, history in the audit log
         row.save(update_fields=["left_at", "updated_at"])
@@ -331,10 +333,8 @@ def assign_pump(*, user, pump, to_user, readings=(), at=None, strict=True, reque
         if current is not None and readings and (to_user is None or current.user_id != to_user.pk):
             _pump_readings(pump, readings)
             shift = current.shift
-            if to_user is not None and _finished_part(shift, to_user):
-                raise ValidationError({"user": f"{to_user.full_name} already ended their part of this shift."})
             if to_user is not None:
-                require_cleared(to_user)
+                require_cleared(to_user)  # someone who ended their part comes back for a new part once it is approved
             _record_many(shift, PumpMeterReading.Kind.CHECKPOINT, readings, at, user)
             current.ended_at = at
             current.save(update_fields=["ended_at", "updated_at"])
@@ -469,9 +469,7 @@ def _start_on_my_pumps(*, user, station, readings, shift_id, started_at, attenda
             except IntegrityError:
                 raise Conflict("Shift id already used.")
         else:
-            if _finished_part(shift, person):
-                raise ValidationError({"detail": f"{person.full_name} already ended their part of this shift."})
-            _add_person(shift, person, started_at)
+            _add_person(shift, person, started_at)  # after an approved end: a new part, on the pumps they have now
             _ensure_lead(shift)
         at = max(shift.started_at, started_at)
         given = {}
@@ -620,25 +618,25 @@ def leave_shift(*, user, shift, who=None, at=None, request=None):
 
 # ---- cash and closing ------------------------------------------------------------------------------------------
 
-def submit_cash(*, user, shift, cash, who=None, at=None, request=None):
+def submit_cash(*, user, shift, cash, who=None, at=None, request=None, part=None):
     """One person's handover by payment type. Re-sending before review corrects it (the audit log keeps the old amounts)."""
     who = who or user
     if who.pk != user.pk:
         require_manage(user, shift)
     _require_not_reviewed(shift)
-    row = attendant_row(shift, who)
+    row = part or attendant_row(shift, who)  # their current part, unless an earlier part is being fixed
     if row is None:
         raise ValidationError({"detail": "This person is not on the shift."})
     handed_in = row.cash_submitted_at is not None
-    current = {(c.payment_type, c.currency): c.amount for c in CashSubmission.objects.filter(shift=shift, attendant=who)}
+    current = {(c.payment_type, c.currency): c.amount for c in CashSubmission.objects.filter(part=row)}
     lines = [(c["payment_type"], c["currency"], Decimal(str(c["amount"])).quantize(TWO)) for c in cash]
     differs = any(current.get((t, cur)) != amount for t, cur, amount in lines if not (amount == 0 and (t, cur) not in current))
     grant = unlock_change(user, row, UndoRequest.Kind.CASH) if handed_in and differs else None  # a same-numbers resend is fine
     changes = {}
     for payment_type, currency, amount in lines:
         obj, created = CashSubmission.objects.get_or_create(
-            shift=shift, attendant=who, payment_type=payment_type, currency=currency,
-            defaults={"tenant_id": shift.tenant_id, "amount": amount},
+            part=row, payment_type=payment_type, currency=currency,
+            defaults={"tenant_id": shift.tenant_id, "shift": shift, "attendant": who, "amount": amount},
         )
         if created and handed_in:
             changes[f"{payment_type}:{currency}"] = [None, str(amount)]
@@ -844,7 +842,7 @@ def compute_transactions(shift):
 
 def phone_stage(user, station):
     """Where this person is in the shift cycle at this station, so any phone (after signing out and in, or a new
-    phone) shows the right screen: {"stage": "start"} | {"stage": "on_shift", "shift": {...}} | {"stage": "done", ...}.
+    phone) shows the right screen: {"stage": "start"} | {"stage": "on_shift", "shift": {...}}.
 
     On shift: the shift id, when it started, whether they only hand in cash (joined someone else's shared-pump shift),
     and the meter numbers their part started from, per nozzle (so the end screen can show and check them).
@@ -869,8 +867,7 @@ def _shift_stage(user, station):
         return {"stage": "start"}
     row = attendant_row(shift, user)
     if row.left_at is not None:
-        if row.cash_submitted_at is not None:  # assigned pumps: their part is over; the shift goes on for the others
-            return {"stage": "done", "shift_id": str(shift.pk), "ended_at": row.left_at.isoformat()}
+        # left, or ended their part (approved, else phone_stage shows it as held): they may start a new part
         return {"stage": "start"}
     readings = list(PumpMeterReading.objects.filter(shift=shift).exclude(kind=PumpMeterReading.Kind.END).order_by("reading_at", "created_at"))
     starts = {}

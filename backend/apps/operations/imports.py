@@ -372,9 +372,10 @@ def _write_shift(s, user, note):
     shift = Shift.objects.create(tenant_id=user.tenant_id, station=s.station, started_at=s.start, ended_at=s.end, status=Shift.Status.CLOSED,
                                  close_requested_at=s.end, closed_by=user, notes=note)
     handed_in = {person.pk for _, person, *_ in s.cash}
+    parts = {}
     for i, person in enumerate(s.people):
-        ShiftAttendant.objects.create(tenant_id=user.tenant_id, shift=shift, user=person, is_lead=i == 0, joined_at=s.start,
-                                      cash_submitted_at=s.end if person.pk in handed_in else None)
+        parts[person.pk] = ShiftAttendant.objects.create(tenant_id=user.tenant_id, shift=shift, user=person, is_lead=i == 0, joined_at=s.start,
+                                                         cash_submitted_at=s.end if person.pk in handed_in else None)
     for _, nozzle, opening, closing, *_ in s.readings:
         for kind, reading, at in ((PumpMeterReading.Kind.START, opening, s.start), (PumpMeterReading.Kind.END, closing, s.end)):
             PumpMeterReading.objects.create(tenant_id=user.tenant_id, shift=shift, nozzle=nozzle, kind=kind, reading=reading.quantize(Decimal("0.01")),
@@ -382,7 +383,8 @@ def _write_shift(s, user, note):
     for pump_id, person in s.holders.items():
         PumpAssignment.objects.create(tenant_id=user.tenant_id, shift=shift, pump_id=pump_id, user=person, started_at=s.start, ended_at=s.end, assigned_by=user)
     for _, person, kind, currency, amount in s.cash:
-        CashSubmission.objects.create(tenant_id=user.tenant_id, shift=shift, attendant=person, payment_type=kind, currency=currency, amount=amount.quantize(Decimal("0.01")))
+        CashSubmission.objects.create(tenant_id=user.tenant_id, shift=shift, attendant=person, part=parts[person.pk], payment_type=kind, currency=currency,
+                                      amount=amount.quantize(Decimal("0.01")))
     compute_transactions(shift)
     on_shift_closed(shift)
     return shift
