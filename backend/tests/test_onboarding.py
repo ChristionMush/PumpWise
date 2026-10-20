@@ -26,7 +26,7 @@ def test_checklist_starts_empty_and_each_step_flips_when_the_real_work_is_done()
     fc = make_forecourt(a["tenant"], price=None)
     i = items(owner)
     assert i["stations"]["done"] and i["tanks"]["done"] and i["calibration"]["done"]
-    assert not i["pumps"]["done"] and "Pump 1" in i["pumps"]["detail"]  # both nozzles on one tank
+    assert i["pumps"]["done"]  # every nozzle on one tank is fine
     diesel = second_tank(fc)
     owner.put(f"/api/tanks/{diesel.pk}/calibration/", {"points": [{"dip_mm": 0, "litres": 0}, {"dip_mm": 1000, "litres": 10000}]}, format="json")
     assert owner.patch(f"/api/nozzles/{fc.nozzles[1].pk}/", {"tank": str(diesel.pk)}, format="json").status_code == 200
