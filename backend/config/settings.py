@@ -195,6 +195,9 @@ from celery.schedules import crontab  # noqa: E402
 
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", env("REDIS_URL", "redis://localhost:6379/0"))
 CELERY_TIMEZONE = TIME_ZONE
+# Every job goes to "default", a queue the deploy kit's worker listens on (-Q critical,default,bulk). Celery's own
+# default, "celery", is one it does not, so scheduled jobs would wait there for ever.
+CELERY_TASK_DEFAULT_QUEUE = "default"
 CELERY_TASK_ALWAYS_EAGER = env_bool("CELERY_TASK_ALWAYS_EAGER", False)
 CELERY_BEAT_SCHEDULE = {
     "alerts-hourly": {"task": "apps.insights.tasks.run_alerts", "schedule": crontab(minute=5)},

@@ -14,3 +14,14 @@ def test_health_answers_with_and_without_the_slash():
     for path in ("/health", "/health/"):
         res = APIClient().get(path)
         assert res.status_code == 200 and res.json()["status"] == "ok" and "version" in res.json()
+
+
+def test_the_deploy_kit_worker_listens_on_the_queue_jobs_are_sent_to():
+    import re
+    from pathlib import Path
+
+    from django.conf import settings
+
+    compose = (Path(settings.BASE_DIR).parent / "deploy" / "docker-compose.yml").read_text()
+    queues = re.search(r"celery -A config worker -Q (\S+)", compose).group(1).split(",")
+    assert settings.CELERY_TASK_DEFAULT_QUEUE in queues  # else scheduled jobs (alerts, rollups, billing) never run
