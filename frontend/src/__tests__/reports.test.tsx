@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { mockApi, ownerUser, renderApp, signedIn } from "./helpers";
@@ -30,20 +30,25 @@ describe("reports", () => {
     expect(screen.getByText("-5.00")).toBeInTheDocument();
   });
 
-  it("shows each tank's running difference, where a loss and the matching gain cancel", async () => {
+  it("lists each tank's checks newest first with their sums, and the running difference in the latest", async () => {
     signedIn();
-    const day = (date: string, loss: string, status: string) => ({ tank_id: "k1", tank: "Diesel Tank", fuel_code: "DIESEL", date, status, flagged: status !== "ok", loss, loss_pct: null, opening: "1", closing: "1", deliveries: "0", dispensed: "500", allowed: "3" });
+    const day = (date: string, opening: string, sold: string, closing: string, loss: string, status: string) => ({ tank_id: "k1", tank: "Diesel Tank", fuel_code: "DIESEL", date, status,
+      flagged: status !== "ok", loss, loss_pct: null, opening, closing, deliveries: "0", dispensed: sold, allowed: "3", window_start: `${date}T07:00:00Z`, window_end: `${date}T19:00:00Z` });
     mockApi({
       ...me,
       "GET /api/reports/daily-sales/": { body: sales },
-      "GET /api/reconciliation/tanks/": { body: { rows: [day("2026-10-20", "69.420", "loss"), day("2026-10-21", "-78.000", "gain")],
+      "GET /api/reconciliation/tanks/": { body: { rows: [day("2026-10-20", "5358.42", "446", "4843", "69.420", "loss"), day("2026-10-21", "4843", "707", "4214", "-78.000", "gain")],
         totals: [{ tank_id: "k1", tank: "Diesel Tank", fuel_code: "DIESEL", unexplained: "-8.580", sold: "1153.000", allowed: "5.765", pct: "-0.74", checks: 2, status: "gain" }] } },
     });
     renderApp("/reports");
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Fuel check" }));
-    const total = await screen.findByRole("region", { name: "Diesel Tank running difference" });
-    expect(total).toHaveTextContent(/-8[.,]58 L over 2 checks/);
-    expect(total).toHaveClass("good");
+    const checks = within(await screen.findByRole("region", { name: "Diesel Tank fuel checks" })).getAllByText(/^2026-10-2/);
+    expect(checks.map((c) => c.textContent)).toEqual(["2026-10-21 · latest", "2026-10-20"]); // newest first
+    const total = screen.getByRole("region", { name: "Diesel Tank running difference" });
+    expect(total).toHaveTextContent(/Running difference: -8[.,]58 L/);
+    expect(total).toHaveTextContent(/= \+69[.,]42 \+ -78 L/); // the daily differences that add up to it
+    expect(total.closest("section.card")).toHaveClass("good");
+    expect(total.closest("section.card")).toHaveTextContent(/4[ ,.  ]?843 \+ 0 − 707 − 4[ ,.  ]?214 = -78 L/); // its own sum
   });
 });

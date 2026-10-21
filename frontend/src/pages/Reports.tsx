@@ -41,18 +41,8 @@ export default function Reports() {
           <details key={d.date} className="card"><summary className="row between"><span>{d.date}</span><span>{Number(d.litres).toLocaleString()} L · {Object.entries(d.amount_by_currency).map(([c, a]) => `${c} ${a}`).join(" ") || "—"}</span></summary>
             {d.by_pump.map((p: any) => <p key={p.pump_id + p.currency} className="muted">{p.pump_name}: {Number(p.litres).toLocaleString()} L · {p.currency} {p.amount}</p>)}</details>
         ))}</>)}
-      {data && tab === "tank" && data.totals?.length > 0 && data.totals.map((t: any) => (
-        <section key={`total-${t.tank_id}`} className={`card ${t.status === "gain" ? "good" : t.status === "loss" ? "bad" : ""}`} aria-label={`${t.tank} running difference`}>
-          <div className="row between"><strong>{t.tank} · running difference</strong><Badge kind={t.status === "loss" ? "suspended" : "active"}>{t.status === "ok" ? "within allowance" : t.status}</Badge></div>
-          <p><strong>{Number(t.unexplained) > 0 ? "+" : ""}{Number(t.unexplained).toLocaleString()} L</strong> over {t.checks} check{t.checks === 1 ? "" : "s"} · {Number(t.sold).toLocaleString()} L sold{t.pct ? ` (${t.pct}%)` : ""} · allowed {Number(t.allowed).toLocaleString()} L</p>
-          <p className="muted">A loss one day and the matching gain the next (a dip taken while pumps were in use) cancel here; what is left is the real difference. + is a loss, − a gain.</p>
-        </section>
-      ))}
-      {data && tab === "tank" && (data.rows.length ? data.rows.map((r: any) => (
-        <section key={r.tank_id + r.date} className={`card ${r.status === "gain" ? "good" : r.flagged ? "bad" : ""}`}><div className="row between"><strong>{r.tank} · {r.date}</strong><Badge kind={r.status === "ok" || r.status === "gain" ? "active" : "suspended"}>{r.status}</Badge></div>
-          <p className="muted">Opening {r.opening} + delivered {r.deliveries} − sold {r.dispensed} − closing {r.closing}</p>
-          <p>Unexplained: <strong>{r.loss} L</strong>{r.loss_pct && ` (${r.loss_pct}%)`}</p></section>
-      )) : <p className="muted center">No tank checks yet. They appear once a tank has been dipped on two occasions.</p>)}
+      {data && tab === "tank" && (data.rows.length ? <FuelCheck rows={data.rows} totals={data.totals ?? []} />
+        : <p className="muted center">No tank checks yet. They appear once a tank has been dipped on two occasions.</p>)}
       {data && tab === "cash" && (data.rows.length ? data.rows.map((r: any) => (
         <section key={r.shift_id} className={`card ${r.flagged ? "bad" : ""}`}><div className="row between"><strong>{r.station} · {(r.attendants?.length ? r.attendants : [r.attendant]).join(", ")}</strong><Badge kind={r.status === "ok" ? "active" : "suspended"}>{CASH_LABEL[r.status] ?? r.status}</Badge></div>
           <p className="muted">{new Date(r.started_at).toLocaleDateString()}</p>
@@ -115,4 +105,42 @@ function AccountingPack({ stations }: { stations: { id: string; name: string }[]
       <ErrorNote message={error} />
     </details>
   );
+}
+
+const litres = (v: string | number) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 3 });
+const signed = (v: string | number) => (Number(v) > 0 ? "+" : "") + litres(v);
+const when = (iso: string) => new Date(iso).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const word = (v: number, status?: string) => (status === "ok" ? "within allowance" : v > 0 ? "loss: fuel missing" : v < 0 ? "gain: more fuel than the meters show" : "balanced");
+
+/** Each tank's fuel checks, newest first. Every check shows its sum (opening dip + delivered − sold − closing dip); the
+ * latest one also shows the running difference over the chosen dates and the daily differences that add up to it.
+ * + is a loss (fuel missing), − a gain. A loss and the matching gain from a dip taken while pumps were in use cancel. */
+function FuelCheck({ rows, totals }: { rows: any[]; totals: any[] }) {
+  const tanks = [...new Map(rows.map((r) => [r.tank_id, r.tank])).entries()];
+  return (<>
+    <p className="muted">Each check: opening dip + delivered − sold (meters) − closing dip = difference. + is a loss (fuel missing), − a gain.</p>
+    {tanks.map(([id, name]) => {
+      let run = 0;
+      const oldestFirst = rows.filter((r) => r.tank_id === id).sort((x, y) => x.date.localeCompare(y.date)).map((r) => ({ ...r, running: (run += Number(r.loss)) }));
+      const total = totals.find((t) => t.tank_id === id);
+      return (
+        <section key={id} aria-label={`${name} fuel checks`}>
+          <h2>{name}</h2>
+          {[...oldestFirst].reverse().map((r, i) => (
+            <section key={r.date} className={`card ${i === 0 && total ? (total.status === "gain" ? "good" : total.status === "loss" ? "bad" : "") : r.status === "gain" ? "good" : r.flagged ? "bad" : ""}`}>
+              <div className="row between"><strong>{r.date}{i === 0 ? " · latest" : ""}</strong><Badge kind={r.status === "loss" ? "suspended" : "active"}>{r.status}</Badge></div>
+              <p className="muted">Dips {when(r.window_start)} → {when(r.window_end)}</p>
+              <p>{litres(r.opening)} + {litres(r.deliveries)} − {litres(r.dispensed)} − {litres(r.closing)} = <strong>{signed(r.loss)} L</strong> <span className="muted">({word(Number(r.loss), r.status)})</span></p>
+              {i === 0 && total ? (
+                <div aria-label={`${name} running difference`} role="region">
+                  <p><strong>Running difference: {signed(total.unexplained)} L</strong> <span className="muted">({word(Number(total.unexplained), total.status)})</span></p>
+                  <p className="muted">= {oldestFirst.map((x) => `${signed(x.loss)}`).join(" + ")} L · {litres(total.sold)} L sold{total.pct ? ` (${total.pct}%)` : ""} · allowed ±{litres(total.allowed)} L</p>
+                </div>
+              ) : <p className="muted">Running difference up to this check: {signed(r.running)} L</p>}
+            </section>
+          ))}
+        </section>
+      );
+    })}
+  </>);
 }
