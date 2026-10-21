@@ -29,4 +29,21 @@ describe("reports", () => {
     expect(await screen.findByText("Tendai")).toBeInTheDocument();
     expect(screen.getByText("-5.00")).toBeInTheDocument();
   });
+
+  it("shows each tank's running difference, where a loss and the matching gain cancel", async () => {
+    signedIn();
+    const day = (date: string, loss: string, status: string) => ({ tank_id: "k1", tank: "Diesel Tank", fuel_code: "DIESEL", date, status, flagged: status !== "ok", loss, loss_pct: null, opening: "1", closing: "1", deliveries: "0", dispensed: "500", allowed: "3" });
+    mockApi({
+      ...me,
+      "GET /api/reports/daily-sales/": { body: sales },
+      "GET /api/reconciliation/tanks/": { body: { rows: [day("2026-10-20", "69.420", "loss"), day("2026-10-21", "-78.000", "gain")],
+        totals: [{ tank_id: "k1", tank: "Diesel Tank", fuel_code: "DIESEL", unexplained: "-8.580", sold: "1153.000", allowed: "5.765", pct: "-0.74", checks: 2, status: "gain" }] } },
+    });
+    renderApp("/reports");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Fuel check" }));
+    const total = await screen.findByRole("region", { name: "Diesel Tank running difference" });
+    expect(total).toHaveTextContent(/-8[.,]58 L over 2 checks/);
+    expect(total).toHaveClass("good");
+  });
 });

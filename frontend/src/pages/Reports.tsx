@@ -41,6 +41,13 @@ export default function Reports() {
           <details key={d.date} className="card"><summary className="row between"><span>{d.date}</span><span>{Number(d.litres).toLocaleString()} L · {Object.entries(d.amount_by_currency).map(([c, a]) => `${c} ${a}`).join(" ") || "—"}</span></summary>
             {d.by_pump.map((p: any) => <p key={p.pump_id + p.currency} className="muted">{p.pump_name}: {Number(p.litres).toLocaleString()} L · {p.currency} {p.amount}</p>)}</details>
         ))}</>)}
+      {data && tab === "tank" && data.totals?.length > 0 && data.totals.map((t: any) => (
+        <section key={`total-${t.tank_id}`} className={`card ${t.status === "gain" ? "good" : t.status === "loss" ? "bad" : ""}`} aria-label={`${t.tank} running difference`}>
+          <div className="row between"><strong>{t.tank} · running difference</strong><Badge kind={t.status === "loss" ? "suspended" : "active"}>{t.status === "ok" ? "within allowance" : t.status}</Badge></div>
+          <p><strong>{Number(t.unexplained) > 0 ? "+" : ""}{Number(t.unexplained).toLocaleString()} L</strong> over {t.checks} check{t.checks === 1 ? "" : "s"} · {Number(t.sold).toLocaleString()} L sold{t.pct ? ` (${t.pct}%)` : ""} · allowed {Number(t.allowed).toLocaleString()} L</p>
+          <p className="muted">A loss one day and the matching gain the next (a dip taken while pumps were in use) cancel here; what is left is the real difference. + is a loss, − a gain.</p>
+        </section>
+      ))}
       {data && tab === "tank" && (data.rows.length ? data.rows.map((r: any) => (
         <section key={r.tank_id + r.date} className={`card ${r.status === "gain" ? "good" : r.flagged ? "bad" : ""}`}><div className="row between"><strong>{r.tank} · {r.date}</strong><Badge kind={r.status === "ok" || r.status === "gain" ? "active" : "suspended"}>{r.status}</Badge></div>
           <p className="muted">Opening {r.opening} + delivered {r.deliveries} − sold {r.dispensed} − closing {r.closing}</p>

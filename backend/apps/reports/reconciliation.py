@@ -170,6 +170,29 @@ def tank_range(tanks, date_from: date, date_to: date):
     return out
 
 
+def tank_totals(rows):
+    """Per tank, the running difference over the period: the daily windows run dip to dip, one after the other, so
+    their losses and gains add up to the whole period's. A loss one day and the matching gain the next (a dip taken
+    while pumps were in use) leave only the real difference, which is what is worth tracking."""
+    out = {}
+    for r in rows:
+        t = out.setdefault(r["tank_id"], {"tank_id": r["tank_id"], "tank": r["tank"], "fuel_code": r["fuel_code"], "from": r["window_start"],
+                                          "to": r["window_end"], "unexplained": Decimal(0), "sold": Decimal(0), "checks": 0, "_tank": r["tank_id"]})
+        t["from"], t["to"] = min(t["from"], r["window_start"]), max(t["to"], r["window_end"])
+        t["unexplained"] += Decimal(r["loss"])
+        t["sold"] += Decimal(r["dispensed"])
+        t["checks"] += 1
+    result = []
+    for t in out.values():
+        tank = Tank.objects.get(pk=t.pop("_tank"))
+        cfg = get_settings(tank.tenant_id)
+        allowed = max(cfg.loss_threshold_litres, t["sold"] * cfg.loss_threshold_pct / 100)
+        status = "loss" if t["unexplained"] > allowed else "gain" if t["unexplained"] < -allowed else "ok"
+        result.append({**t, "unexplained": str(t["unexplained"].quantize(Q3)), "sold": str(t["sold"].quantize(Q3)), "allowed": str(allowed.quantize(Q3)),
+                       "pct": str((t["unexplained"] / t["sold"] * 100).quantize(Q2)) if t["sold"] else None, "status": status})
+    return sorted(result, key=lambda t: t["tank"])
+
+
 def tanks_for(user_scope_ids, station=None):
     qs = Tank.objects.select_related("fuel_type", "station")
     if user_scope_ids is not None:

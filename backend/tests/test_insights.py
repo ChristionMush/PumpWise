@@ -351,6 +351,10 @@ def test_a_loss_and_the_gain_after_it_cancel_out_and_the_loss_alert_clears():
     with db_context(tenant_id=a["tenant"].id):
         cleared = Alert.objects.get(kind="loss")
         assert cleared.status == "auto_resolved" and "Cancelled out" in cleared.resolution_note
+    # the Fuel check report keeps the running difference per tank: the loss and the gain net to nothing
+    period = {"date_from": (day - timedelta(days=1)).date().isoformat(), "date_to": timezone.localdate().isoformat()}
+    totals = client_for(a[Role.MANAGER]).get("/api/reconciliation/tanks/", period).json()["totals"]
+    assert [(t["unexplained"], t["sold"], t["status"], t["checks"]) for t in totals] == [("0.000", "150.000", "ok", 2)]
 
 
 def test_a_cash_difference_that_is_corrected_clears_by_itself():

@@ -51,9 +51,10 @@ class TankReconciliationView(APIView):
         frm, to = _dates(request, default_days=14)
         ids = visible_station_ids(request.user)
         rows = reconciliation.tank_range(reconciliation.tanks_for(ids, request.query_params.get("station")), frm, to)
+        totals = reconciliation.tank_totals(rows)  # the running difference per tank over the period, before any filtering
         if request.query_params.get("flagged") == "1":
             rows = [r for r in rows if r["flagged"]]
-        return Response({"rows": rows})
+        return Response({"rows": rows, "totals": totals})
 
 
 def _closed_shifts(request, with_open=False):

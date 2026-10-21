@@ -21,7 +21,7 @@ from apps.stations.models import FuelPrice, Tank
 from apps.stations.services import rate_at
 from apps.tenants.services import get_settings
 
-from .reconciliation import cash_summary, reconcile_tank_day
+from .reconciliation import cash_summary, reconcile_tank_day, tank_totals
 from .sales import local_day_bounds
 
 HEAD = Font(bold=True, color="FFFFFF")
@@ -126,16 +126,23 @@ def build_pack(station, year, month):
     _sheet(wb, "Deliveries", station, period, ["Date", "Tank", "Fuel", "Supplier", "Delivery note", "Litres", "Cost per litre", "Total cost"], rows)
 
     # Stock: per tank and day, between the actual dips (the same as the Fuel check report)
-    rows, fills = [], []
+    rows, fills, checks = [], [], []
     for tank in Tank.objects.filter(station=station).select_related("fuel_type").order_by("name"):
         day = first
         while day <= min(last, timezone.localdate()):
             r = reconcile_tank_day(tank, day, cfg)
             if r["status"] != "insufficient_data":
+                checks.append(r)
                 rows.append([day, tank.name, tank.fuel_type.name, float(Decimal(r["opening"])), float(Decimal(r["deliveries"])), float(Decimal(r["dispensed"])),
                              float(Decimal(r["closing"])), float(Decimal(r["loss"])), {"ok": "OK", "loss": "Loss", "gain": "Gain"}[r["status"]]])
                 fills.append(LOSS_FILL if r["status"] == "loss" else GAIN_FILL if r["status"] == "gain" else None)
             day += timedelta(days=1)
+    # the running difference per tank for the month: a loss and the matching gain from a badly timed dip cancel here
+    for t in tank_totals(checks):
+        delivered = sum((Decimal(r["deliveries"]) for r in checks if r["tank_id"] == t["tank_id"]), Decimal(0))
+        rows.append(["Month total", t["tank"], t["fuel_code"].title(), None, float(delivered), float(Decimal(t["sold"])), None, float(Decimal(t["unexplained"])),
+                     {"ok": "OK", "loss": "Loss", "gain": "Gain"}[t["status"]] + (f" ({t['pct']}% of sold)" if t["pct"] else "")])
+        fills.append(LOSS_FILL if t["status"] == "loss" else GAIN_FILL if t["status"] == "gain" else None)
     _sheet(wb, "Stock", station, period, ["Date", "Tank", "Fuel", "Opening dip (L)", "Deliveries (L)", "Sold (L)", "Closing dip (L)",
                                           "Unexplained (L, + loss, - gain)", "Result"], rows, fills)
 
