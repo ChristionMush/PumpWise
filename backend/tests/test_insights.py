@@ -115,7 +115,7 @@ def test_missed_readings_are_flagged():
     assert ("missed_reading", "warning") in open_alerts(a)  # a shift left open for 20 hours
 
 
-def test_fuel_differences_are_tracked_not_alerted_and_cash_alerts_persist_until_resolved():
+def test_loss_and_cash_alerts_persist_until_a_person_resolves_them():
     a, _ = two_tenants()
     fc = make_forecourt(a["tenant"], price="2.00")
     now = timezone.now()
@@ -123,27 +123,22 @@ def test_fuel_differences_are_tracked_not_alerted_and_cash_alerts_persist_until_
     dip(a["tenant"], a[Role.OWNER], fc, 6000, ten - timedelta(hours=1))
     run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [100, 0], started_at=ten, ended_at=ten + timedelta(hours=2), cash=[("cash", "USD", 100)])  # 100 short
     dip(a["tenant"], a[Role.OWNER], fc, 5500, ten + timedelta(hours=4))  # 6000 - 100 sold - 5500 = 400 L unexplained
-    with db_context(tenant_id=a["tenant"].id):  # an old fuel alert from before the change is closed with a note
-        Alert.objects.create(tenant_id=a["tenant"].id, station=fc.station, tank=fc.tank, kind="loss", severity="critical", message="old loss", dedupe_key="loss:old")
     evaluate(a)
     kinds = [k for k, _ in open_alerts(a)]
-    assert "cash" in kinds and "loss" not in kinds  # fuel differences are not alerts
-    with db_context(tenant_id=a["tenant"].id):
-        old = Alert.objects.get(dedupe_key="loss:old")
-        assert old.status == "auto_resolved" and "running difference" in old.resolution_note
-    mgr = client_for(a[Role.MANAGER])
-    period = {"date_from": (ten - timedelta(days=1)).date().isoformat(), "date_to": timezone.localdate().isoformat()}
-    totals = mgr.get("/api/reconciliation/tanks/", period).json()["totals"]
-    assert [(t["unexplained"], t["status"]) for t in totals] == [("400.000", "loss")]  # tracked in the Fuel check report
+    assert "loss" in kinds and "cash" in kinds
     evaluate(a)
-    assert [k for k, _ in open_alerts(a)].count("cash") == 1
-    cash = [r for r in mgr.get("/api/alerts/").json()["results"] if r["kind"] == "cash"][0]
-    assert mgr.post(f"/api/alerts/{cash['id']}/resolve/").status_code == 400  # how it was resolved is required
-    assert mgr.post(f"/api/alerts/{cash['id']}/resolve/", {"reason": "typing_error", "note": "Cash was 200, typed 100"}, format="json").json()["status"] == "resolved"
-    evaluate(a)  # the difference is still in that shift's numbers: the manager's answer stands, no new or reopened alert
-    assert "cash" not in [k for k, _ in open_alerts(a)]
+    assert [k for k, _ in open_alerts(a)].count("loss") == 1
+    mgr = client_for(a[Role.MANAGER])
+    rows = mgr.get("/api/alerts/").json()["results"]
+    loss = [r for r in rows if r["kind"] == "loss"][0]
+    assert mgr.post(f"/api/alerts/{loss['id']}/resolve/").status_code == 400  # how it was resolved is required
+    assert mgr.post(f"/api/alerts/{loss['id']}/resolve/", {"reason": "meter_typo", "note": "Pump 1 end was 100, not 1000"}, format="json").json()["status"] == "resolved"
+    assert "loss" not in [r["kind"] for r in mgr.get("/api/alerts/").json()["results"]]
+    assert "loss" in [r["kind"] for r in mgr.get("/api/alerts/?status=resolved").json()["results"]]
+    evaluate(a)  # the loss is still in that day's numbers: the manager's answer stands, no new or reopened alert
+    assert "loss" not in [k for k, _ in open_alerts(a)]
     with db_context(tenant_id=a["tenant"].id):
-        assert Alert.objects.filter(kind="cash").count() == 1 and Alert.objects.get(kind="cash").reopened_count == 0
+        assert Alert.objects.filter(kind="loss").count() == 1 and Alert.objects.get(kind="loss").reopened_count == 0
 
 
 def test_alert_api_scoping_and_roles():
@@ -329,9 +324,9 @@ def test_insight_endpoints_require_sign_in(path):
     assert APIClient().get(path).status_code == 401
 
 
-def test_a_loss_and_the_gain_after_it_cancel_out_in_the_running_difference():
+def test_a_loss_and_the_gain_after_it_cancel_out_and_the_loss_alert_clears():
     """A dip taken while pumps were in use: fuel sold before it is counted after it. The next window shows the matching
-    gain; the running difference nets them to nothing, and neither is an alert."""
+    gain; together they balance, so the loss alert clears by itself and no gain alert is raised."""
     from apps.operations import services
 
     from .helpers import approve_ends
@@ -345,15 +340,17 @@ def test_a_loss_and_the_gain_after_it_cancel_out_in_the_running_difference():
         shift = services.start_shift(user=att, station=fc.station, started_at=day + timedelta(hours=1), readings=[{"nozzle": n, "reading": Decimal(0)} for n in fc.nozzles])
     dip(a["tenant"], a[Role.OWNER], fc, 9900, day + timedelta(hours=12))  # 20:00, pumps in use: 100 L gone, meters not read yet
     evaluate(a)
-    assert "loss" not in [k for k, _ in open_alerts(a)]
+    assert ("loss", "critical") in open_alerts(a)
     with db_context(tenant_id=a["tenant"].id):
         services.end_shift(user=att, shift=shift, ended_at=day + timedelta(hours=23), readings=[{"nozzle": fc.nozzles[0], "reading": Decimal(150)}, {"nozzle": fc.nozzles[1], "reading": Decimal(0)}],
                            cash=[{"payment_type": "cash", "currency": "USD", "amount": Decimal("300")}])
         approve_ends(att)
     dip(a["tenant"], a[Role.OWNER], fc, 9850, day + timedelta(hours=24))  # next morning, pumps stopped: 150 L sold since the first dip
     evaluate(a)
+    assert "loss" not in [k for k, _ in open_alerts(a)]  # neither the loss nor the matching gain is open
     with db_context(tenant_id=a["tenant"].id):
-        assert not Alert.objects.filter(kind="loss").exists()  # never an alert, before or after
+        cleared = Alert.objects.get(kind="loss")
+        assert cleared.status == "auto_resolved" and "Cancelled out" in cleared.resolution_note
     # the Fuel check report keeps the running difference per tank: the loss and the gain net to nothing
     period = {"date_from": (day - timedelta(days=1)).date().isoformat(), "date_to": timezone.localdate().isoformat()}
     totals = client_for(a[Role.MANAGER]).get("/api/reconciliation/tanks/", period).json()["totals"]

@@ -94,9 +94,9 @@ def test_the_demo_business_is_complete_realistic_and_shows_live_alerts():
     assert Decimal(sales["totals"]["litres"]) > 10000 and sales["totals"]["amount_by_currency"]["USD"]
     d = owner.get("/api/dashboard/").json()
     assert d["totals"]["open_shifts"] == 1 and Decimal(d["totals"]["today_litres"]) > 0 and d["next_refill"] is not None
-    assert d["totals"]["open_alerts"] >= 1 and Decimal(d["totals"]["unexplained_loss_7d"]) > 300 and d["totals"]["flagged_cash_shifts_7d"] >= 1
+    assert d["totals"]["open_alerts"] >= 2 and Decimal(d["totals"]["unexplained_loss_7d"]) > 300 and d["totals"]["flagged_cash_shifts_7d"] >= 1
     kinds = {a["kind"] for a in owner.get("/api/alerts/").json()["results"]}
-    assert "cash" in kinds and "loss" not in kinds  # the planted fuel loss is tracked in the Fuel check, not alerted
+    assert {"loss", "cash"} <= kinds
     # the planted loss is found where it was planted, and ONLY there
     yesterday = str(timezone.localdate() - timedelta(days=1))
     rows = owner.get(f"/api/reconciliation/tanks/?date_from={timezone.localdate() - timedelta(days=12)}&date_to={yesterday}").json()["rows"]
