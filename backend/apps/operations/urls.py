@@ -27,6 +27,7 @@ urlpatterns = [
     path("undo-requests/", views.UndoRequestListView.as_view()),
     path("undo-requests/<str:pk>/<str:decision>/", views.UndoDecideView.as_view()),
     path("approvals/summary/", views.ApprovalSummaryView.as_view()),
+    path("approvals/log/", views.ApprovalLogView.as_view()),
     path("tank-readings/", views.TankDipView.as_view()),
     path("deliveries/", views.DeliveryView.as_view()),
     path("readings/<str:kind>/<str:pk>/photo/", views.ReadingPhotoView.as_view()),

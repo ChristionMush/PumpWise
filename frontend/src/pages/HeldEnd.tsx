@@ -5,7 +5,7 @@ import { Badge, ErrorNote } from "../components";
 export interface EndMeter { nozzle: string; pump: string; label: string; fuel_code: string; start: string | null; end: string | null; litres: string | null; amount: string | null }
 export interface EndCash { payment_type: string; currency: string; amount: string }
 export interface UndoInfo { id: string; kind: string; kind_label: string; status: "pending" | "allowed" | "refused" | "used"; reason: string; decision_note: string }
-/** The attendant's last end of shift: waiting for the manager, sent back to fix, or a change the owner allowed. */
+/** The attendant's last end of shift: waiting for the manager, sent back to fix, or a change a manager or the owner allowed. */
 export interface HeldStage {
   stage: "held"; end_id: string; shift_id: string; station: string; status: "pending" | "sent_back" | "approved"; ended_at: string; note: string;
   person: string; currency: string; meters: EndMeter[]; cash: EndCash[]; handed_in: string; expected: string | null; cash_difference: string | null;
@@ -55,8 +55,8 @@ export default function HeldEnd({ stage, onChanged }: { stage: HeldStage; onChan
     readings: stage.can_fix.meters ? Object.entries(meters).map(([nozzle, reading]) => ({ nozzle, reading })) : [],
   }, "Fixed. It is back with your manager for approval.");
   const ask = () => {
-    if (!reason.trim()) return setError("Say why, so the owner can decide.");
-    return call(`/api/shift-ends/${stage.end_id}/undo/`, { kind, reason }, "Sent to the owner. You will see the answer here.");
+    if (!reason.trim()) return setError("Say why, so the manager or the owner can decide.");
+    return call(`/api/shift-ends/${stage.end_id}/undo/`, { kind, reason }, "Sent to the manager and the owner. You will see the answer here.");
   };
 
   if (done) return (
@@ -83,17 +83,17 @@ export default function HeldEnd({ stage, onChanged }: { stage: HeldStage; onChan
           <button className="btn primary big" disabled={busy} onClick={() => void fix()}>Send the fix to my manager</button>
         </section>
       )}
-      {stage.undo && stage.undo.status === "pending" && <p className="card" role="status">Waiting for the owner: {stage.undo.kind_label.toLowerCase()}.</p>}
-      {stage.undo && stage.undo.status === "refused" && <p className="card warn" role="status">The owner said no to "{stage.undo.kind_label.toLowerCase()}"{stage.undo.decision_note ? `: ${stage.undo.decision_note}` : "."}</p>}
+      {stage.undo && stage.undo.status === "pending" && <p className="card" role="status">Waiting for an answer: {stage.undo.kind_label.toLowerCase()}.</p>}
+      {stage.undo && stage.undo.status === "refused" && <p className="card warn" role="status">The answer was no to "{stage.undo.kind_label.toLowerCase()}"{stage.undo.decision_note ? `: ${stage.undo.decision_note}` : "."}</p>}
       {stage.status !== "sent_back" && !fixing && stage.undo?.status !== "pending" && (asking ? (
-        <section className="card form"><h2>Ask the owner to undo</h2>
+        <section className="card form"><h2>Ask to undo</h2>
           <label>What<select value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="cash">Change the cash I handed in</option>
             {stage.meters.some((m) => m.end) && <option value="meters">Change my end meter numbers</option>}
             <option value="reopen">I ended my shift by mistake</option>
           </select></label>
           <label>Why<textarea value={reason} onChange={(e) => setReason(e.target.value)} /></label>
-          <div className="row gap"><button className="btn primary" disabled={busy} onClick={() => void ask()}>Send to the owner</button><button className="link" onClick={() => setAsking(false)}>Cancel</button></div>
+          <div className="row gap"><button className="btn primary" disabled={busy} onClick={() => void ask()}>Send for approval</button><button className="link" onClick={() => setAsking(false)}>Cancel</button></div>
         </section>
       ) : <button className="btn" onClick={() => setAsking(true)}>Ask to undo</button>)}
       <ErrorNote message={error} />

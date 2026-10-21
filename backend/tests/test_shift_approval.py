@@ -6,7 +6,7 @@ from apps.audit.models import AuditLog
 from apps.core.db import db_context
 from apps.insights.models import OutboundMessage
 from apps.operations.models import PumpAssignment, ShiftAttendant, Transaction, UndoRequest
-from apps.stations.models import Pump
+from apps.stations.models import Pump, StationAssignment
 
 from .helpers import at, client_for, make_forecourt, make_user, platform_client, run_shift, two_tenants
 
@@ -95,7 +95,7 @@ def test_a_sent_back_end_checked_and_sent_again_unchanged_goes_back_to_the_manag
     assert meters_only.status_code == 400 and "Nothing changed" in str(meters_only.json())  # not sent back any more
 
 
-def test_changing_what_was_handed_in_needs_the_owners_permission_once():
+def test_changing_what_was_handed_in_needs_permission_once():
     a, _ = two_tenants()
     fc = make_forecourt(a["tenant"], price="1.50")
     att, mgr, owner = client_for(a[Role.ATTENDANT]), client_for(a[Role.MANAGER]), client_for(a[Role.OWNER])
@@ -107,8 +107,8 @@ def test_changing_what_was_handed_in_needs_the_owners_permission_once():
     assert att.post(f"/api/shift-ends/{end_id}/undo/", {"kind": "cash", "reason": ""}, format="json").status_code == 400
     asked = att.post(f"/api/shift-ends/{end_id}/undo/", {"kind": "cash", "reason": "Found 60 more in the drawer"}, format="json")
     assert asked.status_code == 201 and stage(att)["undo"]["status"] == "pending"
-    assert mgr.get("/api/undo-requests/").status_code == 403
-    assert mgr.post(f"/api/undo-requests/{asked.json()['id']}/allow/").status_code == 403
+    assert len(mgr.get("/api/undo-requests/").json()) == 1  # managers answer requests at their stations too
+    assert mgr.get("/api/approvals/summary/").json()["undos"] == 1
     listed = owner.get("/api/undo-requests/").json()
     assert [(u["person"], u["kind"], u["reason"]) for u in listed] == [(a[Role.ATTENDANT].full_name, "cash", "Found 60 more in the drawer")]
     assert owner.get("/api/approvals/summary/").json()["undos"] == 1
@@ -193,3 +193,26 @@ def test_the_owner_filters_sales_by_station():
     assert owner.get(url).json()["totals"]["litres"] == "130.000"
     assert owner.get(f"{url}&station={other.station.pk}").json()["totals"]["litres"] == "30.000"
     assert owner.get(f"{url}&station={main.station.pk}").json()["totals"]["litres"] == "100.000"
+
+
+def test_a_manager_answers_undo_requests_at_their_station_and_sees_what_was_done():
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    elsewhere = make_forecourt(a["tenant"], name="Other", code="DIESEL")
+    att, mgr = client_for(a[Role.ATTENDANT]), client_for(a[Role.MANAGER])
+    other_mgr = make_user(a["tenant"], Role.MANAGER, full_name="Other Manager")
+    with db_context(tenant_id=a["tenant"].id):
+        StationAssignment.objects.create(tenant_id=a["tenant"].id, user=other_mgr, station=elsewhere.station)
+    sid, end_id = ended(a, fc, cash="150")
+    asked = att.post(f"/api/shift-ends/{end_id}/undo/", {"kind": "cash", "reason": "Cash at hand"}, format="json").json()
+
+    om = client_for(other_mgr)  # runs another station: sees and decides none of it
+    assert om.get("/api/undo-requests/").json() == [] and om.get("/api/approvals/summary/").json()["undos"] == 0
+    assert om.post(f"/api/undo-requests/{asked['id']}/allow/").status_code == 404
+    assert om.get("/api/approvals/log/").json() == []
+
+    assert mgr.post(f"/api/undo-requests/{asked['id']}/allow/", {"note": "Counted it with him"}, format="json").json()["status"] == "allowed"
+    log = mgr.get("/api/approvals/log/").json()
+    assert [r["action"] for r in log] == ["undo_allowed", "undo_requested"]
+    assert log[0]["by"] == a[Role.MANAGER].full_name and "Counted it with him" in log[0]["what"] and log[0]["station"] == fc.station.name
+    assert att.get("/api/approvals/log/").status_code == 403  # attendants never see it

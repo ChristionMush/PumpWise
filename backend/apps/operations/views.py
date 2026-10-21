@@ -698,7 +698,7 @@ class ShiftEndFixView(APIView):
 
 
 class ShiftEndUndoView(APIView):
-    """Ask the owner for permission to change something already handed in: {"kind": "cash" | "meters" | "reopen", "reason"}."""
+    """Ask a manager or the owner for permission to change something already handed in: {"kind": "cash" | "meters" | "reopen", "reason"}."""
 
     permission_classes = [IsTenantUser]
 
@@ -709,7 +709,7 @@ class ShiftEndUndoView(APIView):
 
 
 class UndoRequestListView(APIView):
-    """Owner: undo requests (?status=pending by default, or allowed / refused / used / all)."""
+    """Managers (their stations) and the owner: undo requests (?status=pending by default, or allowed / refused / used / all)."""
 
     permission_classes = [Allow("allow_undo")]
 
@@ -736,11 +736,20 @@ class UndoDecideView(APIView):
 
 
 class ApprovalSummaryView(APIView):
-    """Counts for the menu badge: ends to approve (managers, owner) and undo requests to answer (owner)."""
+    """Counts for the menu badge: ends to approve and undo requests to answer (managers: their stations; owner: all)."""
 
     permission_classes = [Allow("approve_shift_end")]
 
     def get(self, request):
         ends = approvals.ends_for(request.user, ShiftAttendant.Approval.PENDING).count()
-        undos = UndoRequest.objects.filter(status=UndoRequest.Status.PENDING).count() if can(request.user, "allow_undo") else 0
+        undos = approvals.undo_requests_for(request.user).count() if can(request.user, "allow_undo") else 0
         return Response({"ends": ends, "undos": undos})
+
+
+class ApprovalLogView(APIView):
+    """Managers (their stations) and the owner: what has been done under approvals in the last 14 days, newest first."""
+
+    permission_classes = [Allow("approve_shift_end")]
+
+    def get(self, request):
+        return Response(approvals.approval_log(request.user))

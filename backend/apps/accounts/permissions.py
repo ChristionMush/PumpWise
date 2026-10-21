@@ -36,7 +36,7 @@ CAPABILITIES = {
     "manage_shift": {O, M},  # review, close for others, mark someone as left, assign pumps, resolve readings
     "see_all_shifts": {O, M},
     "approve_shift_end": {O, M},  # approve an attendant's end of shift, or send it back to fix
-    "allow_undo": {O},  # allow or refuse an attendant's request to change what they handed in
+    "allow_undo": {O, M},  # allow or refuse an attendant's request to change what they handed in (managers: their stations)
     # tank side: never attendants (rule 11)
     "tank_records": {O, M},  # dips and deliveries, create and read
     "view_tank_levels": {O, M},

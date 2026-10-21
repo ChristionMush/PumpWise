@@ -165,7 +165,7 @@ def unlock_change(user, row, kind):
         return None
     grant = UndoRequest.objects.filter(attendant=row, kind=kind, status=UndoRequest.Status.ALLOWED).first()
     if grant is None:
-        raise ValidationError({"detail": 'This is already handed in. To change it, tap "Ask to undo": the owner allows it first.'})
+        raise ValidationError({"detail": 'This is already handed in. To change it, tap "Ask to undo": a manager or the owner allows it first.'})
     return grant
 
 

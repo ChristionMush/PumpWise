@@ -18,7 +18,7 @@ const station = (my_stage: any) => ({ id: "st1", name: "Main", pricing_currency:
 beforeEach(async () => { await resetOffline(); localStorage.clear(); localStorage.setItem("fs_tutorial_done", "1"); signedIn(); });
 
 describe("end of shift approval", () => {
-  it("shows the attendant their end is waiting, with no start button, and lets them ask the owner to undo", async () => {
+  it("shows the attendant their end is waiting, with no start button, and lets them ask to undo", async () => {
     const { calls } = mockApi({
       "GET /api/auth/me/": { body: { user: attendant, tenant } },
       "GET /api/shifts/prefill/": { body: { stations: [station({ stage: "held", end_id: "e1", ...end, can_fix: { cash: false, meters: false } })] } },
@@ -31,7 +31,7 @@ describe("end of shift approval", () => {
     expect(screen.queryByRole("button", { name: "Start shift" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Ask to undo" }));
     await user.type(screen.getByLabelText("Why"), "Found 30 more in the drawer");
-    await user.click(screen.getByRole("button", { name: "Send to the owner" }));
+    await user.click(screen.getByRole("button", { name: "Send for approval" }));
     await waitFor(() => expect(calls.find((c) => c.path === "/api/shift-ends/e1/undo/")?.body).toEqual({ kind: "cash", reason: "Found 30 more in the drawer" }));
   });
 
@@ -52,18 +52,37 @@ describe("end of shift approval", () => {
     }));
   });
 
+  it("lets a manager answer an attendant's undo request", async () => {
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: manager, tenant } },
+      "GET /api/shift-ends/": { body: [] },
+      "GET /api/approvals/summary/": { body: { ends: 0, undos: 1 } },
+      "GET /api/undo-requests/": { body: [{ id: "u1", kind_label: "Change cash", reason: "Cash at hand", person: "Edgar", station: "Main", requested_by: "Edgar", created_at: "2026-10-21T05:49:00Z", end: { shift_started_at: "2026-10-20T16:00:00Z", ...end } }] },
+      "GET /api/approvals/log/": { body: [] },
+      "POST /api/undo-requests/u1/allow/": { body: {} },
+    });
+    renderApp("/approvals");
+    const user = userEvent.setup();
+    expect(await screen.findByRole("heading", { name: "Undo requests" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Allow" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/undo-requests/u1/allow/")).toBe(true));
+  });
+
   it("lets a manager approve an end, or send it back with a note", async () => {
     const { calls } = mockApi({
       "GET /api/auth/me/": { body: { user: manager, tenant } },
       "GET /api/shift-ends/": { body: [{ id: "e1", shift_started_at: "2026-10-20T04:00:00Z", ...end }, { id: "e2", shift_started_at: "2026-10-20T04:00:00Z", ...end, person: "Rudo" }] },
       "GET /api/approvals/summary/": { body: { ends: 2, undos: 0 } },
+      "GET /api/undo-requests/": { body: [] },
+      "GET /api/approvals/log/": { body: [{ at: "2026-10-21T05:50:00Z", action: "shift_end_approved", what: "Approved Edgar's end of shift", by: "Justice", station: "Main" }] },
       "POST /api/shift-ends/e1/approve/": { body: {} },
       "POST /api/shift-ends/e2/send-back/": { body: {} },
     });
     renderApp("/approvals");
     const user = userEvent.setup();
     expect(await screen.findByText("Tendai · Main")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Undo requests" })).not.toBeInTheDocument(); // the owner's
+    expect(screen.queryByRole("heading", { name: "Undo requests" })).not.toBeInTheDocument(); // none waiting
+    expect(screen.getByRole("list", { name: "Approvals log" })).toHaveTextContent("Justice: Approved Edgar's end of shift");
     await user.click(screen.getAllByRole("button", { name: "Approve" })[0]);
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/shift-ends/e1/approve/")).toBe(true));
     await user.click(screen.getAllByRole("button", { name: "Send back to fix" })[1]);

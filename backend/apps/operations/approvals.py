@@ -1,13 +1,13 @@
-"""End-of-shift approval and owner-allowed undo.
+"""End-of-shift approval, and undo allowed by a manager (their stations) or the owner.
 
 * An attendant ends their part (meters and cash) as before; their pumps pass on at once. Their end then waits for a
   manager of the station (or the owner): Approve, or Send back with a reason. Until it is approved they cannot start or
   join another shift (services.require_cleared).
 * Sent back: the attendant fixes it themselves (cash and their end meter numbers) and it goes back to the manager.
-* Anything else already handed in changes only with the owner's permission: the attendant asks to undo (change cash,
-  change meter numbers, or "I ended by mistake"), the owner allows or refuses. An allowed change can be made once.
-  "Ended by mistake" puts them back on the shift as soon as the owner allows it.
-Managers and the owner correct directly. Every step is in the audit log.
+* Anything else already handed in changes only with permission: the attendant asks to undo (change cash, change meter
+  numbers, or "I ended by mistake"), and a manager of the station or the owner allows or refuses. An allowed change can
+  be made once. "Ended by mistake" puts them back on the shift as soon as it is allowed.
+Managers and the owner correct directly. Every step is in the audit log, and the approvals log shows it (approval_log).
 """
 from decimal import Decimal
 
@@ -238,7 +238,7 @@ def fix_end(*, user, row, cash=(), readings=(), request=None):
     return row
 
 
-# ---- undo: the owner decides --------------------------------------------------------------------------------------
+# ---- undo: a manager (their stations) or the owner decides --------------------------------------------------------------------------------------
 
 def request_undo(*, user, row, kind, reason, request=None):
     if user.pk != row.user_id and not can(user, "manage_shift"):
@@ -247,7 +247,7 @@ def request_undo(*, user, row, kind, reason, request=None):
         raise ValidationError({"kind": "Choose what to undo."})
     reason = (reason or "").strip()
     if not reason:
-        raise ValidationError({"reason": "Say why, so the owner can decide."})
+        raise ValidationError({"reason": "Say why, so the manager or the owner can decide."})
     if row.cash_submitted_at is None:
         raise ValidationError({"detail": "Nothing is handed in yet: you can still change it before you end."})
     if row.shift.status == Shift.Status.REVIEWED:
@@ -276,7 +276,9 @@ def _tell_owner(req):
 
 
 def decide_undo(*, user, req, allow, note="", request=None):
-    require(user, "allow_undo", "Only the owner allows an undo.")
+    require(user, "allow_undo", "Only a manager or the owner allows an undo.")
+    if not scope(Shift.objects.filter(pk=req.shift_id), user).exists():  # a manager answers for their own stations
+        raise NotFound("Request not found.")
     if req.status != STATUS.PENDING:
         raise ValidationError({"detail": "This request has already been answered."})
     now = timezone.now()
@@ -334,9 +336,41 @@ def reopen_part(*, user, row):
 
 
 def undo_requests_for(user, status=STATUS.PENDING):
-    require(user, "allow_undo", "Only the owner sees undo requests.")
-    qs = UndoRequest.objects.select_related("attendant__user", "shift__station", "decided_by", "requested_by")
+    require(user, "allow_undo", "Only a manager or the owner sees undo requests.")
+    qs = scope(UndoRequest.objects.select_related("attendant__user", "shift__station", "decided_by", "requested_by"), user, "shift__station_id")
     return qs.filter(status=status) if status else qs
+
+
+# ---- what has been done under approvals (managers: their stations; the owner: all) --------------------------------
+
+LOG_ACTIONS = {
+    "shift_end_approved": lambda c: f"Approved {c.get('who')}'s end of shift",
+    "shift_end_sent_back": lambda c: f"Sent {c.get('who')}'s end back to fix: {c.get('note', '')}",
+    "shift_end_fixed": lambda c: f"{c.get('who')} fixed their end and sent it again",
+    "cash_corrected": lambda c: f"Cash changed for {c.get('who')}",
+    "undo_requested": lambda c: f"{c.get('who')} asked to change {c.get('kind')}: {c.get('reason', '')}",
+    "undo_allowed": lambda c: f"Allowed {c.get('who')} to change {c.get('kind')}" + (f": {c['note']}" if c.get("note") else ""),
+    "undo_refused": lambda c: f"Refused {c.get('who')}'s request to change {c.get('kind')}" + (f": {c['note']}" if c.get("note") else ""),
+    "shift_end_reopened": lambda c: f"{c.get('who')} was put back on the shift (ended by mistake)",
+    "shift_part_removed": lambda c: f"A part {c.get('who')} started by mistake was removed",
+    "shift_part_time_fixed": lambda c: f"{c.get('who')}'s start time was corrected",
+}
+
+
+def approval_log(user, days=14, limit=200):
+    """Every approval step at this user's stations in the last `days` days, newest first: who did what, when."""
+    from datetime import timedelta
+
+    from apps.audit.models import AuditLog
+
+    require(user, "approve_shift_end", "Only a manager or the owner sees the approvals log.")
+    since = timezone.now() - timedelta(days=days)
+    shifts = scope(Shift.objects.filter(started_at__gte=since - timedelta(days=2)), user).select_related("station")
+    station_of = {str(s.pk): s.station.name for s in shifts}
+    rows = (AuditLog.objects.filter(action__in=LOG_ACTIONS, object_type="Shift", object_id__in=list(station_of), created_at__gte=since)
+            .select_related("actor").order_by("-created_at")[:limit])
+    return [{"at": r.created_at, "action": r.action, "what": LOG_ACTIONS[r.action](r.changes or {}),
+             "by": r.actor.full_name if r.actor_id else "PumpWise", "station": station_of.get(r.object_id, "")} for r in rows]
 
 
 def undo_card(req):

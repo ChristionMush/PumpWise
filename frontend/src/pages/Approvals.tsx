@@ -7,22 +7,24 @@ import { EndDetails, type HeldStage } from "./HeldEnd";
 
 type End = Omit<HeldStage, "stage" | "end_id" | "can_fix"> & { id: string; shift_started_at: string };
 interface Undo { id: string; kind_label: string; reason: string; person: string; station: string; requested_by: string; created_at: string; end: End }
+interface LogRow { at: string; action: string; what: string; by: string; station: string }
 
 const time = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-/** Managers approve attendants' ends of shift (or send them back to fix); the owner also answers undo requests. */
+/** Managers (their stations) and the owner approve attendants' ends of shift or send them back to fix, answer undo
+ * requests, and see a log of what has been done. */
 export default function Approvals() {
   const { user } = useAuth();
-  const owner = user?.role === "owner";
   const [ends, setEnds] = useState<End[] | null>(null);
   const [undos, setUndos] = useState<Undo[]>([]);
+  const [log, setLog] = useState<LogRow[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [sending, setSending] = useState<string | null>(null); // the end being sent back
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const load = async () => {
-    const [e, u] = await Promise.all([api<End[]>("/api/shift-ends/"), owner ? api<Undo[]>("/api/undo-requests/") : Promise.resolve([])]);
-    setEnds(e); setUndos(u);
+    const [e, u, l] = await Promise.all([api<End[]>("/api/shift-ends/"), api<Undo[]>("/api/undo-requests/"), api<LogRow[]>("/api/approvals/log/").catch(() => [])]);
+    setEnds(e); setUndos(u); setLog(l);
   };
   useEffect(() => { void load().catch((e) => setError(errorMessage(e))); }, []);
   if (user?.role !== "owner" && user?.role !== "manager") return <Navigate to="/" replace />;
@@ -36,7 +38,7 @@ export default function Approvals() {
     <>
       <h1>Approvals</h1>
       <ErrorNote message={error} />{ok && <p role="status" className="ok-note">{ok}</p>}
-      {owner && undos.length > 0 && (<>
+      {undos.length > 0 && (<>
         <h2>Undo requests</h2>
         {undos.map((u) => (
           <section key={u.id} className="card"><div className="row between"><strong>{u.person} · {u.station}</strong><Badge kind="past_due">{u.kind_label}</Badge></div>
@@ -56,7 +58,7 @@ export default function Approvals() {
       {waiting.map((e) => (
         <section key={e.id} className="card"><div className="row between"><strong>{e.person} · {e.station}</strong><span className="muted">ended {time(e.ended_at)}</span></div>
           <EndDetails end={e} />
-          {e.undo?.status === "pending" && <p className="warn">Asked the owner: {e.undo.kind_label.toLowerCase()}.</p>}
+          {e.undo?.status === "pending" && <p className="warn">Asked to {e.undo.kind_label.toLowerCase()}: see the request above.</p>}
           {sending === e.id ? (
             <div className="form">
               <label>What needs fixing?<textarea value={notes[e.id] ?? ""} onChange={(ev) => setNotes({ ...notes, [e.id]: ev.target.value })} /></label>
@@ -74,6 +76,12 @@ export default function Approvals() {
       {sentBack.length > 0 && (<>
         <h2>Sent back, waiting for the attendant</h2>
         {sentBack.map((e) => <p key={e.id} className="card">{e.person} · {e.station}: {e.note}</p>)}</>)}
+      <h2>What has been done</h2>
+      {log.length === 0 ? <p className="muted">Nothing in the last 14 days.</p> : (
+        <ul className="plain card" aria-label="Approvals log">
+          {log.map((r, i) => <li key={`${r.at}-${i}`}><span className="muted">{time(r.at)} · {r.station} · {r.by}:</span> {r.what}</li>)}
+        </ul>
+      )}
     </>
   );
 }
