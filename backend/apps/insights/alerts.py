@@ -5,10 +5,10 @@ from datetime import timedelta
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 
-from apps.operations.models import Shift, TankReading
+from apps.operations.models import Shift, ShiftAttendant, TankReading
 from apps.operations.services import people_names
 from apps.reports.reconciliation import cash_summary, tank_range
-from apps.stations.models import Tank
+from apps.stations.models import Station, Tank
 from apps.tenants.services import get_settings
 
 from .alert_actions import AUTO, AWAITING, OPEN, REOPEN_WITHIN, apply_patterns, log_event
@@ -18,7 +18,9 @@ from .models import Alert
 AUTO_RESOLVE = {Alert.Kind.LOW_STOCK, Alert.Kind.MISSED_READING}  # clear themselves when the cause is gone
 MISSED_DIP_HOURS = 48
 LONG_SHIFT_HOURS = 16
+LONG_PART_HOURS = 14  # assigned pumps, one person's part: the longest shift (night, 18:00-07:00) is 13 hours
 LOOKBACK_DAYS = 3
+ASSIGNED = Station.AssignmentMode.ASSIGNED
 
 
 def evaluate_tenant(tenant_id, now=None):
@@ -43,8 +45,17 @@ def evaluate_tenant(tenant_id, now=None):
         if last is None or now - last.reading_at > timedelta(hours=MISSED_DIP_HOURS):
             hours = "ever" if last is None else f"for {int((now - last.reading_at).total_seconds() // 3600)} hours"
             want(f"dip:{t.pk}", kind="missed_reading", severity="info", station=t.station, tank=t, message=f"{t.station.name} {t.name}: no dip recorded {hours}.", data={})
-    for s in Shift.objects.filter(status="open", started_at__lt=now - timedelta(hours=LONG_SHIFT_HOURS)).select_related("station"):
+    long_shifts = Shift.objects.filter(status="open", started_at__lt=now - timedelta(hours=LONG_SHIFT_HOURS)).exclude(station__assignment_mode=ASSIGNED)
+    for s in long_shifts.select_related("station"):
         want(f"openshift:{s.pk}", kind="missed_reading", severity="warning", station=s.station, message=f"{s.station.name}: the shift ({', '.join(people_names(s)) or 'no one'}) has been open since {timezone.localtime(s.started_at):%d %b %H:%M}.", data={})
+    # Assigned pumps: the shift stays open all day while people come and go, so look at each person still on it instead.
+    long_parts = ShiftAttendant.objects.filter(shift__status="open", shift__station__assignment_mode=ASSIGNED, left_at__isnull=True,
+                                               joined_at__lt=now - timedelta(hours=LONG_PART_HOURS))
+    for a in long_parts.select_related("shift__station", "user"):
+        station = a.shift.station
+        want(f"openpart:{a.pk}", kind="missed_reading", severity="warning", station=station,
+             message=f"{station.name}: {a.user.full_name} has been on shift since {timezone.localtime(a.joined_at):%d %b %H:%M} and has not ended their part.",
+             data={"person": a.user.full_name})
 
     for row in tank_range(tanks, today - timedelta(days=LOOKBACK_DAYS - 1), today):
         if row["flagged"]:

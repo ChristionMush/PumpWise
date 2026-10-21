@@ -506,3 +506,25 @@ def test_a_planned_pump_passes_straight_to_an_attendant_already_on_the_shift():
     assert d["status"] == "closed"
     people = {p["name"]: p for p in d["summary"]["by_attendant"]}
     assert people[att_a.full_name]["expected"] == "75.00" and people["Second Attendant"]["expected"] == "105.00"  # (50 + 20) x 1.50
+
+
+def test_on_assigned_pumps_the_long_shift_alert_names_only_the_person_on_too_long():
+    """The shift stays open all day on assigned pumps; only someone on their own part for too long is flagged."""
+    from apps.insights.alerts import evaluate_tenant
+    from apps.insights.models import Alert
+
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca, cb = client_for(att_a), client_for(att_b)
+    now = timezone.now()
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": (now - timedelta(hours=20)).isoformat(), "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": (now - timedelta(hours=2)).isoformat(), "readings": readings(p2, [0, 0])}, format="json")
+
+    def missed():
+        with db_context(tenant_id=a["tenant"].id):
+            evaluate_tenant(a["tenant"].id)
+            return {al.dedupe_key.split(":")[0]: al.message for al in Alert.objects.filter(kind="missed_reading", status="open") if al.dedupe_key.startswith(("openshift", "openpart"))}
+
+    flagged = missed()
+    assert list(flagged) == ["openpart"] and att_a.full_name in flagged["openpart"] and att_b.full_name not in flagged["openpart"]
+    ca.post(f"/api/shifts/{sid}/end/", {"readings": readings(fc.nozzles, [50, 0]), "cash": cash("75")}, format="json")
+    assert missed() == {}  # A ended their part: it clears by itself; B has been on 2 hours
