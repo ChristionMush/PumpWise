@@ -498,13 +498,15 @@ def _start_on_my_pumps(*, user, station, readings, shift_id, started_at, attenda
         given = {}
         for r in readings:
             given.setdefault(r["nozzle"].pump_id, []).append(r)
-        mine = {a.pump_id for a in PumpAssignment.objects.filter(shift=shift, user=person, ended_at__isnull=True)}
+        mine = {a.pump_id: a.started_at for a in PumpAssignment.objects.filter(shift=shift, user=person, ended_at__isnull=True)}
         taking = []
         for p in pumps:
             nozzle_ids = {n.pk for n in p.nozzles.all()}
             got = [r for r in given.get(p.pk, []) if r["nozzle"].pk in nozzle_ids]
             if p.pk in mine:
-                taking.append((p, got))
+                # Already working it. An earlier start that reaches the server late (the phone was offline) must not
+                # put readings before this person's period on the pump: that would scramble the pump's numbers.
+                taking.append((p, got if at >= mine[p.pk] else []))
                 continue
             other = open_pump_assignment(p)
             if other is not None:
@@ -831,15 +833,16 @@ def compute_transactions(shift):
             if r.reading_at not in seen:  # two people snapshotting the same moment count once
                 seen.add(r.reading_at)
                 checkpoints.append(r)
+        # in time order: a reading that reached the server late (an offline phone) still takes its own place
+        points = sorted([_first(rows["start"]), *checkpoints], key=lambda r: (r.reading_at, r.created_at))
         if rows["end"]:
-            end = _first(rows["end"])
-        elif assigned and checkpoints:
-            end = checkpoints.pop()  # assigned pumps: the nozzle's last handover number closes it for this shift
+            chain = [*points, _first(rows["end"])]
+        elif assigned and len(points) > 1:
+            chain = points  # assigned pumps: the nozzle's last handover number closes it for this shift
         else:
             if shift.status != Shift.Status.OPEN:  # on an open shift the pump is simply still in use
                 shift.add_flag(f"missing_end:{rows['start'][0].nozzle_id}")
             continue
-        chain = [_first(rows["start"]), *checkpoints, end]
         nozzle = chain[0].nozzle
         fuel_type = nozzle.tank.fuel_type
         for a, b in zip(chain, chain[1:], strict=False):

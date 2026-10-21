@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django.db import connections, transaction
 from django.db.migrations.executor import MigrationExecutor
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.accounts.models import Role
@@ -563,3 +564,25 @@ def test_a_manager_starts_someone_already_on_shift_on_a_free_pump():
     d = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings(fc.nozzles, [50, 0]) + readings(p2, [30, 0]), "cash": cash("105")}, format="json").json()
     sold = {r["pump"]: r["litres"] for r in d["summary"]["by_pump"] if Decimal(r["litres"])}
     assert sold == {"Pump 1": "50.000", "Pump 2": "20.000"}  # Pump 2 counted from the 10 entered at the start
+
+
+def test_a_start_that_reaches_the_server_late_keeps_the_persons_litres():
+    """A phone queued a start while offline and the person started again later: when the old start arrives, their
+    litres still count for them (it happened at Eastview on 21 Oct, where 384 L were credited to nobody)."""
+    from django.utils.dateparse import parse_datetime
+
+    from apps.operations import services
+
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca, cb = client_for(att_a), client_for(att_b)
+    cb.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": T0, "readings": readings(p2, [0, 0])}, format="json")  # B keeps the shift open
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": T_SWAP, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    with db_context(tenant_id=a["tenant"].id):  # A's start queued at 07:00 reaches the server now
+        services.start_shift(user=att_a, station=fc.station, started_at=parse_datetime("2026-10-01T07:00:00Z"), shift_id=uuid.uuid4(),
+                             readings=[{"nozzle": n, "reading": Decimal(0)} for n in fc.nozzles])
+    d = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings(fc.nozzles, [50, 0]), "cash": cash("75")}, format="json")
+    assert d.status_code == 200, d.content
+    with db_context(tenant_id=a["tenant"].id):
+        mine = Transaction.objects.filter(shift_id=sid, attendant=att_a).aggregate(s=Sum("litres"))["s"]
+        assert mine == Decimal("50.000")
+        assert not Transaction.objects.filter(shift_id=sid, attendant__isnull=True, litres__gt=0).exists()
