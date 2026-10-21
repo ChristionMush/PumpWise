@@ -16,6 +16,22 @@ const loss = { id: "a1", kind: "loss", severity: "critical", message: "Msasa Roa
   created_at: new Date(Date.now() - 5 * 36e5).toISOString(), reopened_count: 0, pattern: "3 fuel losses on this tank in 7 days: check the tank's calibration chart and dips." };
 
 describe("alerts", () => {
+  it("shows a tank that gained fuel in green, and says why an alert cleared by itself", async () => {
+    signedIn();
+    const gain = { ...loss, id: "a2", severity: "warning", message: "Msasa Road Petrol tank on 2026-10-21: tank gained fuel it should not have (-209.000 L).", gain: true, pattern: null };
+    const cleared = { ...loss, id: "a3", status: "auto_resolved", pattern: null, resolution_note: "Cancelled out: the loss and the gain balance." };
+    mockApi({
+      "GET /api/auth/me/": { body: { user: manager, tenant } },
+      "GET /api/alerts/": { body: { count: 2, results: [gain, cleared] } },
+      "GET /api/alerts/summary/": { body: { open: 1, awaiting_approval: 0, to_review: 0, reasons } },
+    });
+    renderApp("/alerts");
+    const card = (await screen.findByText(/tank gained fuel/)).closest("section")!;
+    expect(card).toHaveClass("good");
+    expect(card).toHaveTextContent("Fuel gain");
+    expect(screen.getByText(/Cleared by itself:/).closest("p")).toHaveTextContent("Cancelled out");
+  });
+
   it("lets a manager resolve an alert by saying how, and sends write-offs to the owner with a required note", async () => {
     signedIn();
     const { calls } = mockApi({

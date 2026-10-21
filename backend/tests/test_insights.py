@@ -322,3 +322,50 @@ def test_insight_endpoints_require_sign_in(path):
     from rest_framework.test import APIClient
 
     assert APIClient().get(path).status_code == 401
+
+
+def test_a_loss_and_the_gain_after_it_cancel_out_and_the_loss_alert_clears():
+    """A dip taken while pumps were in use: fuel sold before it is counted after it. The next window shows the matching
+    gain; together they balance, so the loss alert clears by itself and no gain alert is raised."""
+    from apps.operations import services
+
+    from .helpers import approve_ends
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="2.00")
+    att = a[Role.ATTENDANT]
+    day = timezone.localtime().replace(hour=8, minute=0, second=0, microsecond=0) - timedelta(days=2)
+    dip(a["tenant"], a[Role.OWNER], fc, 10000, day)
+    with db_context(tenant_id=a["tenant"].id):
+        shift = services.start_shift(user=att, station=fc.station, started_at=day + timedelta(hours=1), readings=[{"nozzle": n, "reading": Decimal(0)} for n in fc.nozzles])
+    dip(a["tenant"], a[Role.OWNER], fc, 9900, day + timedelta(hours=12))  # 20:00, pumps in use: 100 L gone, meters not read yet
+    evaluate(a)
+    assert ("loss", "critical") in open_alerts(a)
+    with db_context(tenant_id=a["tenant"].id):
+        services.end_shift(user=att, shift=shift, ended_at=day + timedelta(hours=23), readings=[{"nozzle": fc.nozzles[0], "reading": Decimal(150)}, {"nozzle": fc.nozzles[1], "reading": Decimal(0)}],
+                           cash=[{"payment_type": "cash", "currency": "USD", "amount": Decimal("300")}])
+        approve_ends(att)
+    dip(a["tenant"], a[Role.OWNER], fc, 9850, day + timedelta(hours=24))  # next morning, pumps stopped: 150 L sold since the first dip
+    evaluate(a)
+    assert "loss" not in [k for k, _ in open_alerts(a)]  # neither the loss nor the matching gain is open
+    with db_context(tenant_id=a["tenant"].id):
+        cleared = Alert.objects.get(kind="loss")
+        assert cleared.status == "auto_resolved" and "Cancelled out" in cleared.resolution_note
+
+
+def test_a_cash_difference_that_is_corrected_clears_by_itself():
+    from apps.operations import services
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="2.00")
+    ten = timezone.now().replace(hour=10, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    shift = run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [100, 0], started_at=ten, ended_at=ten + timedelta(hours=2), cash=[("cash", "USD", 100)])
+    evaluate(a)
+    assert "cash" in [k for k, _ in open_alerts(a)]  # 200 expected, 100 handed in
+    with db_context(tenant_id=a["tenant"].id):  # the manager corrects a mistyped amount
+        services.submit_cash(user=a[Role.MANAGER], shift=shift, who=a[Role.ATTENDANT], cash=[{"payment_type": "cash", "currency": "USD", "amount": Decimal("200")}])
+    evaluate(a)
+    assert "cash" not in [k for k, _ in open_alerts(a)]
+    with db_context(tenant_id=a["tenant"].id):
+        cleared = Alert.objects.get(kind="cash")
+        assert cleared.status == "auto_resolved" and "corrected" in cleared.resolution_note

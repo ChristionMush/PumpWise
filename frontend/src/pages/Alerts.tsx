@@ -80,14 +80,15 @@ function AlertCard({ a, tab, owner, reasons, act }: { a: any; tab: Tab; owner: b
   const showStory = async () => setStory(story ? null : (await api<any>(`/api/alerts/${a.id}/`)).events);
 
   return (
-    <section className={`card alert ${a.status === "open" && a.severity === "critical" ? "bad" : ""}`}>
+    <section className={`card alert ${a.gain ? "good" : a.status === "open" && a.severity === "critical" ? "bad" : ""}`}>
       <div className="row between gap">
-        <span><Badge kind={a.severity === "critical" ? "suspended" : a.severity === "warning" ? "past_due" : "active"}>{KIND[a.kind] ?? a.kind}</Badge> <span className="muted">{a.station_name}</span></span>
+        <span><Badge kind={a.gain ? "active" : a.severity === "critical" ? "suspended" : a.severity === "warning" ? "past_due" : "active"}>{a.gain ? "Fuel gain" : KIND[a.kind] ?? a.kind}</Badge> <span className="muted">{a.station_name}</span></span>
         <Badge kind={kind}>{label}</Badge>
       </div>
       <p>{a.message}</p>
       <p className="muted">{a.status === "open" ? `Open ${age(a.created_at)}` : `Raised ${when(a.created_at)}`}{a.reopened_count ? ` · came back ${a.reopened_count}×` : ""}{a.escalated_at ? " · owner told" : a.reminded_at ? " · manager reminded" : ""}</p>
       {a.pattern && <p className="warn">{a.pattern}</p>}
+      {a.status === "auto_resolved" && a.resolution_note && <p className="resolution"><strong>Cleared by itself:</strong> {a.resolution_note}</p>}
       {a.resolution_label && (
         <p className="resolution"><strong>{a.status === "awaiting_approval" ? "Proposed" : "How"}:</strong> {a.resolution_label}{a.resolution_note ? `. “${a.resolution_note}”` : ""}
           {a.resolved_by_name && <span className="muted"> · {a.resolved_by_name} ({a.resolved_by_role})</span>}

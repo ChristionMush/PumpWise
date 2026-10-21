@@ -10,12 +10,16 @@ class AlertSerializer(serializers.ModelSerializer):
     resolved_by_role = serializers.CharField(source="resolved_by.role", default=None, read_only=True)
     reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", default=None, read_only=True)
     resolution_label = serializers.SerializerMethodField()
+    gain = serializers.SerializerMethodField()  # a tank that gained fuel (shown green), not a loss
 
     class Meta:
         model = Alert
         fields = ["id", "kind", "severity", "message", "station", "station_name", "tank", "status", "created_at", "resolved_at",
                   "resolution_reason", "resolution_label", "resolution_note", "resolved_by_name", "resolved_by_role",
-                  "reviewed_at", "reviewed_by_name", "reminded_at", "escalated_at", "reopened_count", "pattern"]
+                  "reviewed_at", "reviewed_by_name", "reminded_at", "escalated_at", "reopened_count", "pattern", "gain"]
+
+    def get_gain(self, obj):
+        return obj.kind == "loss" and (obj.data or {}).get("status") == "gain"
 
     def get_resolution_label(self, obj):
         return reason_label(obj.kind, obj.resolution_reason) if obj.resolution_reason else None

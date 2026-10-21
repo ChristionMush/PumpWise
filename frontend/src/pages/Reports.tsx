@@ -41,7 +41,7 @@ export default function Reports() {
             {d.by_pump.map((p: any) => <p key={p.pump_id + p.currency} className="muted">{p.pump_name}: {Number(p.litres).toLocaleString()} L · {p.currency} {p.amount}</p>)}</details>
         ))}</>)}
       {data && tab === "tank" && (data.rows.length ? data.rows.map((r: any) => (
-        <section key={r.tank_id + r.date} className={`card ${r.flagged ? "bad" : ""}`}><div className="row between"><strong>{r.tank} · {r.date}</strong><Badge kind={r.status === "ok" ? "active" : "suspended"}>{r.status}</Badge></div>
+        <section key={r.tank_id + r.date} className={`card ${r.status === "gain" ? "good" : r.flagged ? "bad" : ""}`}><div className="row between"><strong>{r.tank} · {r.date}</strong><Badge kind={r.status === "ok" || r.status === "gain" ? "active" : "suspended"}>{r.status}</Badge></div>
           <p className="muted">Opening {r.opening} + delivered {r.deliveries} − sold {r.dispensed} − closing {r.closing}</p>
           <p>Unexplained: <strong>{r.loss} L</strong>{r.loss_pct && ` (${r.loss_pct}%)`}</p></section>
       )) : <p className="muted center">No tank checks yet. They appear once a tank has been dipped on two occasions.</p>)}
