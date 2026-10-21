@@ -1,14 +1,13 @@
 """Alert rules. `evaluate_tenant` is idempotent: run it as often as you like."""
 import json
 from datetime import timedelta
-from decimal import Decimal
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 
 from apps.operations.models import Shift, ShiftAttendant, TankReading
 from apps.operations.services import people_names
-from apps.reports.reconciliation import cash_summary, tank_range
+from apps.reports.reconciliation import cash_summary
 from apps.stations.models import Station, Tank
 from apps.tenants.services import get_settings
 
@@ -24,40 +23,9 @@ LOOKBACK_DAYS = 3
 ASSIGNED = Station.AssignmentMode.ASSIGNED
 
 
-def cancelled_out(rows, cfg):
-    """One tank's daily checks, oldest first. A loss and a gain next to each other (each window starting at the dip the
-    one before ended on) that together are within the allowance cancel out: typically a dip taken while pumps were in
-    use, so fuel sold before it was counted after it. Returns {alert key: note} for every check in such a run."""
-    out, i = {}, 0
-    while i < len(rows):
-        if not rows[i]["flagged"]:
-            i += 1
-            continue
-        net, sold, end = Decimal(0), Decimal(0), None
-        for j in range(i, len(rows)):
-            if j > i and rows[j]["window_start"] != rows[j - 1]["window_end"]:
-                break  # a gap between dips: not one stretch
-            net += Decimal(rows[j]["loss"])
-            sold += Decimal(rows[j]["dispensed"])
-            kinds = {r["status"] for r in rows[i:j + 1]}
-            if {"loss", "gain"} <= kinds and abs(net) <= max(cfg.loss_threshold_litres, sold * cfg.loss_threshold_pct / 100):
-                end = j
-                break
-        if end is None:
-            i += 1
-            continue
-        note = (f"Cancelled out: the loss and the gain from {rows[i]['date']} to {rows[end]['date']} balance "
-                f"({net.quantize(Decimal('0.001'))} L over that time). The dip was taken while pumps were in use.")
-        for r in rows[i:end + 1]:
-            out[f"loss:{r['tank_id']}:{r['date']}"] = note
-        i = end + 1
-    return out
-
-
 def evaluate_tenant(tenant_id, now=None):
     now = now or timezone.now()
     cfg = get_settings(tenant_id)
-    today = timezone.localtime(now).date()
     wanted = {}
 
     def want(key, **kw):
@@ -88,22 +56,10 @@ def evaluate_tenant(tenant_id, now=None):
              message=f"{station.name}: {a.user.full_name} has been on shift since {timezone.localtime(a.joined_at):%d %b %H:%M} and has not ended their part.",
              data={"person": a.user.full_name})
 
-    # Loss and cash alerts looked at in this run. One of them that is no longer wanted has cleared: the numbers were
-    # corrected, or a loss and a gain cancel out. (Older ones are simply outside the window and stay as they are.)
-    checked, cleared = set(), {}
-    rows = tank_range(tanks, today - timedelta(days=LOOKBACK_DAYS - 1), today)
-    by_tank = {}
-    for row in rows:
-        checked.add(f"loss:{row['tank_id']}:{row['date']}")
-        by_tank.setdefault(row["tank_id"], []).append(row)
-    for tank_rows in by_tank.values():
-        cleared.update(cancelled_out(sorted(tank_rows, key=lambda r: r["date"]), cfg))
-    for row in rows:
-        if row["flagged"] and f"loss:{row['tank_id']}:{row['date']}" not in cleared:
-            t = next(x for x in tanks if str(x.pk) == row["tank_id"])
-            what = "unexplained loss" if row["status"] == "loss" else "tank gained fuel it should not have"
-            want(f"loss:{t.pk}:{row['date']}", kind="loss", severity="critical" if row["status"] == "loss" else "warning", station=t.station, tank=t,
-                 message=f"{t.station.name} {t.name} on {row['date']}: {what} ({row['loss']} L).", data=row)
+    # Fuel gains and losses are not alerts: they are tracked as each tank's running difference (Reports, Fuel check, and
+    # the accounting pack), where a loss and the matching gain from a dip taken while pumps were in use cancel out.
+    # Cash alerts looked at in this run: one that is no longer wanted has cleared (the numbers were corrected).
+    checked = set()
     for s in Shift.objects.filter(status__in=["closed", "reviewed"], ended_at__gte=now - timedelta(days=LOOKBACK_DAYS)).select_related("station"):
         checked.add(f"cash:{s.pk}")
         c = cash_summary(s)
@@ -144,12 +100,16 @@ def evaluate_tenant(tenant_id, now=None):
         log_event(alert, "opened", note=alert.message)
         created += 1
     for key, a in open_alerts.items():
-        if key not in wanted and a.status == OPEN and (a.kind in AUTO_RESOLVE or key in checked):
-            note = cleared.get(key) or ("The numbers were corrected: there is no difference any more." if key in checked
-                                        else "The cause went away (for example a delivery or a dip was recorded).")
-            a.status, a.resolved_at, a.resolution_note = AUTO, now, note
-            a.save(update_fields=["status", "resolved_at", "resolution_note", "updated_at"])
-            log_event(a, "auto_resolved", note=note)
-            resolved += 1
+        if a.kind == Alert.Kind.LOSS and a.status == OPEN:
+            note = "Fuel gains and losses are no longer alerts: they are tracked as the tank's running difference in Reports, Fuel check."
+        elif key not in wanted and a.status == OPEN and (a.kind in AUTO_RESOLVE or key in checked):
+            note = ("The numbers were corrected: there is no difference any more." if key in checked
+                    else "The cause went away (for example a delivery or a dip was recorded).")
+        else:
+            continue
+        a.status, a.resolved_at, a.resolution_note = AUTO, now, note
+        a.save(update_fields=["status", "resolved_at", "resolution_note", "updated_at"])
+        log_event(a, "auto_resolved", note=note)
+        resolved += 1
     apply_patterns(now)
     return {"created": created, "resolved": resolved, "reopened": reopened, "open": Alert.objects.filter(status=OPEN).count()}
