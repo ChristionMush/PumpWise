@@ -1,6 +1,6 @@
 """Is this business ready to go live? Computed from real data, so it can never drift from reality."""
 from apps.accounts.models import User
-from apps.operations.models import Shift, TankReading
+from apps.operations.models import Shift, ShiftAttendant, TankReading
 from apps.stations.models import FuelPrice, Nozzle, Pump, Station, Tank, pump_nozzle_problem
 from apps.tenants.services import get_settings
 
@@ -27,6 +27,9 @@ def build_checklist(tenant_id):
                        if not FuelPrice.objects.filter(station=n.pump.station, fuel_type=n.tank.fuel_type, currency=n.pump.station.pricing_currency, effective_to__isnull=True).exists()})
     attendants = User.objects.filter(role="attendant", is_active=True).count()
     undipped = [t.name for t in tanks if not TankReading.objects.filter(tank=t).exists()]
+    # A shift that closed, or (assigned pumps, where the shift stays open all day) one person's part started and handed in
+    shift_done = (Shift.objects.filter(status__in=["closed", "reviewed"]).exists()
+                  or ShiftAttendant.objects.filter(left_at__isnull=False, cash_submitted_at__isnull=False).exists())
     items = [
         ("stations", "Add the station(s)", bool(stations), f"{len(stations)} added", "/setup"),
         ("tanks", "Add every tank (capacity and reserve level)", bool(tanks) and all(any(t.station_id == s.pk for t in tanks) for s in stations), f"{len(tanks)} tanks", "/setup"),
@@ -38,7 +41,7 @@ def build_checklist(tenant_id):
         *([("assign", "Give every pump to an attendant (assigned pumps)", not unassigned, f"Not assigned: {', '.join(unassigned)}", "/pumps")] if any(
             s.assignment_mode == "assigned" for s in stations) else []),
         ("dips", "Record a first dip for every tank", bool(tanks) and not undipped, f"Not dipped yet: {', '.join(undipped)}" if undipped else "All tanks dipped", "/dip"),
-        ("shift", "Complete one test shift end to end", Shift.objects.filter(status__in=["closed", "reviewed"]).exists(), "Start and end a shift on a phone", "/shift"),
+        ("shift", "Complete one test shift end to end", shift_done, "Start and end a shift on a phone", "/shift"),
         ("summary", "Set the phone for the owner's daily message", bool(cfg.summary_phone) and cfg.summary_channel != "none", cfg.summary_phone or "Not set", "/settings"),
     ]
     out = [{"key": k, "title": t, "done": d, "detail": detail, "link": link} for k, t, d, detail, link in items]

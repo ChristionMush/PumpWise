@@ -528,3 +528,18 @@ def test_on_assigned_pumps_the_long_shift_alert_names_only_the_person_on_too_lon
     assert list(flagged) == ["openpart"] and att_a.full_name in flagged["openpart"] and att_b.full_name not in flagged["openpart"]
     ca.post(f"/api/shifts/{sid}/end/", {"readings": readings(fc.nozzles, [50, 0]), "cash": cash("75")}, format="json")
     assert missed() == {}  # A ended their part: it clears by itself; B has been on 2 hours
+
+
+def test_the_setup_checklist_counts_a_part_handed_in_while_the_shift_goes_on():
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    owner, ca, cb = client_for(a[Role.OWNER]), client_for(att_a), client_for(att_b)
+
+    def shift_item():
+        return next(i for i in owner.get("/api/onboarding/checklist/").json()["items"] if i["key"] == "shift")["done"]
+
+    body = {"station": str(fc.station.pk), "started_at": T0}
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+    assert not shift_item()
+    ended = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_SWAP, "readings": readings(fc.nozzles, [50, 0]), "cash": cash("75")}, format="json")
+    assert ended.json()["status"] == "open" and shift_item()  # B is still on, but A's part went end to end
