@@ -355,6 +355,20 @@ def assign_pump(*, user, pump, to_user, readings=(), at=None, strict=True, reque
             update_sales_so_far(shift)
             swapped = {"from": current.user.full_name, "to": to_user.full_name if to_user else None, "at": at.isoformat(),
                        "meters": {str(i["nozzle"].pk): str(i["reading"]) for i in readings}}
+        elif current is None and to_user is not None and readings:
+            # A free pump for someone already on shift here: they start on it now, at these numbers, so it shows on
+            # their phone and is theirs to end. (Without numbers it is theirs from their next start.)
+            on = ShiftAttendant.objects.filter(user=to_user, left_at__isnull=True, shift__station=station, shift__status=Shift.Status.OPEN).select_related("shift").first()
+            if on is None:
+                raise ValidationError({"user": f"{to_user.full_name} is not on shift at {station.name}. They start on {pump.name} when they start their shift."})
+            _pump_readings(pump, readings)
+            shift = on.shift
+            for item in readings:
+                had = PumpMeterReading.objects.filter(shift=shift, nozzle=item["nozzle"]).exists()
+                _record_reading(shift, item["nozzle"], PumpMeterReading.Kind.CHECKPOINT if had else PumpMeterReading.Kind.START, item["reading"], at, user)
+            PumpAssignment.objects.create(tenant_id=pump.tenant_id, shift=shift, pump=pump, user=to_user, started_at=at, assigned_by=user)
+            shift.save()
+            swapped = {"from": None, "to": to_user.full_name, "at": at.isoformat(), "meters": {str(i["nozzle"].pk): str(i["reading"]) for i in readings}}
         before = pump.assigned_to.full_name if pump.assigned_to_id else None
         pump.assigned_to = to_user
         pump.save(update_fields=["assigned_to", "updated_at"])

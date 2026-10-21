@@ -18,7 +18,7 @@ export interface StationInfo {
   tanks?: any[]; // only sent to managers and owners (attendants never see tank data)
   attendants_mode?: "single" | "multiple"; assignment_mode?: "shared" | "assigned";
   joinable_shift?: { id: string; started_at: string; people: string[] } | null;
-  staff?: { id: string; name: string }[];
+  staff?: { id: string; name: string; on_shift?: boolean }[];
   my_stage?: Stage; // where this person is in the shift cycle, from the server
   busy_shift?: { people: string[] } | null; // one-attendant station: someone else's shift is still being worked
 }

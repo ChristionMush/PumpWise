@@ -543,3 +543,23 @@ def test_the_setup_checklist_counts_a_part_handed_in_while_the_shift_goes_on():
     assert not shift_item()
     ended = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_SWAP, "readings": readings(fc.nozzles, [50, 0]), "cash": cash("75")}, format="json")
     assert ended.json()["status"] == "open" and shift_item()  # B is still on, but A's part went end to end
+
+
+def test_a_manager_starts_someone_already_on_shift_on_a_free_pump():
+    """A free pump given to someone on shift starts now, at the numbers entered: it is on their phone and theirs to end."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca = client_for(att_a)
+    att_c = make_user(a["tenant"], Role.ATTENDANT, full_name="Third Attendant")
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": T0, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    staff = {s["name"]: s["on_shift"] for s in mgr.get("/api/shifts/prefill/").json()["stations"][0]["staff"]}
+    # Pump 2 is free (B never started). Someone not on shift cannot be started on it now: it is theirs from their next start.
+    refused = mgr.post(f"/api/pumps/{pump2.pk}/assign/", {"user": str(att_c.pk), "readings": readings(p2, [10, 0])}, format="json")
+    assert refused.status_code == 400 and "not on shift" in str(refused.json())
+    # The manager gives it to A, who is on shift, with its meter numbers now.
+    res = mgr.post(f"/api/pumps/{pump2.pk}/assign/", {"user": str(att_a.pk), "at": T_SWAP, "readings": readings(p2, [10, 0])}, format="json")
+    assert res.status_code == 200, res.content
+    assert sorted(p["name"] for p in ca.get("/api/shifts/prefill/").json()["stations"][0]["pumps"]) == ["Pump 1", "Pump 2"]
+    assert staff[att_a.full_name] is True and staff["Third Attendant"] is False
+    d = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings(fc.nozzles, [50, 0]) + readings(p2, [30, 0]), "cash": cash("105")}, format="json").json()
+    sold = {r["pump"]: r["litres"] for r in d["summary"]["by_pump"] if Decimal(r["litres"])}
+    assert sold == {"Pump 1": "50.000", "Pump 2": "20.000"}  # Pump 2 counted from the 10 entered at the start

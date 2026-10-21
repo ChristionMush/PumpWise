@@ -125,10 +125,13 @@ def _resolve_shift(user, shift_id):
 # ---- REST ------------------------------------------------------------------------------------------------------
 
 def _station_staff(station):
-    """Attendants who may work at this station (no station assignment = every station)."""
+    """Attendants who may work at this station (no station assignment = every station), and whether each is on shift
+    here now (a free pump given to them then starts at the meter numbers the manager enters)."""
     limited = set(StationAssignment.objects.values_list("user_id", flat=True))
     here = set(StationAssignment.objects.filter(station=station).values_list("user_id", flat=True))
-    return [{"id": str(u.pk), "name": u.full_name} for u in User.objects.filter(role=Role.ATTENDANT, is_active=True) if u.pk not in limited or u.pk in here]
+    on = set(ShiftAttendant.objects.filter(shift__station=station, shift__status=Shift.Status.OPEN, left_at__isnull=True).values_list("user_id", flat=True))
+    return [{"id": str(u.pk), "name": u.full_name, "on_shift": u.pk in on}
+            for u in User.objects.filter(role=Role.ATTENDANT, is_active=True) if u.pk not in limited or u.pk in here]
 
 
 class PrefillView(APIView):

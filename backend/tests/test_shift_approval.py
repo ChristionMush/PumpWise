@@ -82,6 +82,19 @@ def test_a_sent_back_end_is_fixed_by_the_attendant_without_asking_the_owner():
     assert more.status_code == 400 and "Ask to undo" in str(more.json())  # the fix is used up
 
 
+def test_a_sent_back_end_checked_and_sent_again_unchanged_goes_back_to_the_manager():
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    att, mgr = client_for(a[Role.ATTENDANT]), client_for(a[Role.MANAGER])
+    sid, end_id = ended(a, fc)
+    mgr.post(f"/api/shift-ends/{end_id}/send-back/", {"note": "Check your meter"}, format="json")
+    same = {"cash": [{"payment_type": "cash", "currency": "USD", "amount": "210"}], "readings": [{"nozzle": str(fc.nozzles[0].pk), "reading": "1100"}]}
+    res = att.post(f"/api/shift-ends/{end_id}/fix/", same, format="json")
+    assert res.status_code == 200 and res.json()["status"] == "pending", res.content  # "it was right": the manager sees it again
+    meters_only = att.post(f"/api/shift-ends/{end_id}/fix/", {"readings": same["readings"]}, format="json")
+    assert meters_only.status_code == 400 and "Nothing changed" in str(meters_only.json())  # not sent back any more
+
+
 def test_changing_what_was_handed_in_needs_the_owners_permission_once():
     a, _ = two_tenants()
     fc = make_forecourt(a["tenant"], price="1.50")

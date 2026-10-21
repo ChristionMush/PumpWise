@@ -206,7 +206,7 @@ def fix_end(*, user, row, cash=(), readings=(), request=None):
         value = Decimal(str(item["reading"])).quantize(TWO)
         if value != point[2][0].reading:
             changes.append((point, value))
-    if not cash and not changes:
+    if not cash and not changes and row.approval != APPROVAL.SENT_BACK:
         raise ValidationError({"detail": "Nothing changed."})
     meter_grant = services.unlock_change(user, row, KIND.METERS) if changes else None  # checked before cash moves it on
     with db_tx.atomic():
@@ -223,6 +223,10 @@ def fix_end(*, user, row, cash=(), readings=(), request=None):
             row.refresh_from_db()
             services.after_change(user, row, meter_grant)
             shift.save()
+        row.refresh_from_db()
+        if row.approval == APPROVAL.SENT_BACK and not can(user, "manage_shift"):
+            # sent back, checked and sent again unchanged ("it was right"): it still goes back to the manager
+            services.after_change(user, row, None)
         if shift.status != Shift.Status.OPEN:
             services.compute_transactions(shift)
             on_shift_closed(shift)

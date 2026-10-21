@@ -16,27 +16,35 @@ export default function Pumps() {
   const [meters, setMeters] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ pump: string; message: string } | null>(null);
 
   const load = async () => setStations(await loadPrefill());
   useEffect(() => { void load(); }, []);
 
-  const save = async (station: StationInfo, pump: PumpInfo, now: boolean) => {
+  // A free pump for someone already on shift: they start on it now, at the meter numbers entered (last numbers prefilled).
+  const meterOf = (n: PumpInfo["nozzles"][number]) => meters[n.id] ?? n.last_reading ?? "";
+
+  const save = async (station: StationInfo, pump: PumpInfo, now: boolean, startNow: boolean) => {
     const to = choice[pump.id] ?? pump.assigned_to ?? "";
-    if (now && pump.nozzles.some((n) => !meters[n.id])) return setError(`To swap ${pump.name} now, enter the meter number of every nozzle on it.`);
+    const withNumbers = now || startNow;
+    // a swap needs the numbers read now; starting on a free pump may keep the last numbers shown
+    const number = (n: PumpInfo["nozzles"][number]) => (now ? meters[n.id] ?? "" : meterOf(n));
+    if (withNumbers && pump.nozzles.some((n) => !number(n))) {
+      return setError({ pump: pump.id, message: `To ${now ? "swap" : "start"} ${pump.name} now, enter the meter number of every nozzle on it.` });
+    }
     setBusy(pump.id); setError(null); setNote(null);
     try {
       await api(`/api/pumps/${pump.id}/assign/`, {
         method: "POST",
-        body: { user: to || null, ...(now ? { at: new Date().toISOString(), readings: pump.nozzles.map((n) => ({ nozzle: n.id, reading: meters[n.id] })) } : {}) },
+        body: { user: to || null, ...(withNumbers ? { at: new Date().toISOString(), readings: pump.nozzles.map((n) => ({ nozzle: n.id, reading: number(n) })) } : {}) },
       });
       const name = station.staff?.find((s) => s.id === to)?.name ?? "nobody";
-      setNote(now ? `${pump.name} swapped to ${name}.`
+      setNote(now ? `${pump.name} swapped to ${name}.` : startNow ? `${name} is now on ${pump.name}.`
         : pump.in_use_by ? `${pump.name} goes to ${name} when ${pump.in_use_by} ends their part of the shift.` : `${pump.name} is now ${name === "nobody" ? "unassigned" : `${name}'s`}.`);
       setMeters({}); setChoice({}); setSwapNow({});
       await load();
     } catch (err) {
-      setError(errorMessage(err));
+      setError({ pump: pump.id, message: errorMessage(err) });
     } finally {
       setBusy(null);
     }
@@ -54,6 +62,9 @@ export default function Pumps() {
             const to = choice[pump.id] ?? pump.assigned_to ?? "";
             const changed = to !== (pump.assigned_to ?? "");
             const now = Boolean(swapNow[pump.id]);
+            const person = (station.staff ?? []).find((s) => s.id === to);
+            // free pump, chosen person on shift here and not already on it: start them on it now with its numbers
+            const startNow = !pump.in_use_by && Boolean(person?.on_shift);
             return (
               <div key={pump.id} className="pump-row">
                 <label>{pump.name} <span className="muted">({pump.nozzles.map((n) => n.fuel_code).join(" + ")}){pump.in_use_by ? ` · in use by ${pump.in_use_by}` : ""}</span>
@@ -67,23 +78,24 @@ export default function Pumps() {
                   <label className="row gap"><input type="checkbox" checked={now} onChange={(e) => setSwapNow({ ...swapNow, [pump.id]: e.target.checked })} />
                     Swap now (instead of when {pump.in_use_by} ends their part)</label>
                 )}
-                {now && pump.nozzles.map((n) => (
+                {startNow && <p className="muted">{person?.name} is on shift now: enter {pump.name}'s meter numbers to start them on it.</p>}
+                {(now || startNow) && pump.nozzles.map((n) => (
                   <label key={n.id}>{n.label} ({n.fuel_code}): meter number now
-                    <input inputMode="decimal" value={meters[n.id] ?? ""} onChange={(e) => setMeters({ ...meters, [n.id]: e.target.value.replace(",", ".") })} />
+                    <input inputMode="decimal" value={now ? meters[n.id] ?? "" : meterOf(n)} onChange={(e) => setMeters({ ...meters, [n.id]: e.target.value.replace(",", ".") })} />
                   </label>
                 ))}
-                {(changed || now) && (
-                  <button className="btn" disabled={busy === pump.id} onClick={() => void save(station, pump, now)}>
-                    {now ? "Swap pump now" : pump.in_use_by ? "Hand over when they end" : "Save"}
+                {(changed || now || startNow) && (
+                  <button className="btn" disabled={busy === pump.id} onClick={() => void save(station, pump, now, startNow && !now)}>
+                    {now ? "Swap pump now" : startNow ? `Start ${person?.name} on it now` : pump.in_use_by ? "Hand over when they end" : "Save"}
                   </button>
                 )}
+                {error?.pump === pump.id && <ErrorNote message={error.message} />}
               </div>
             );
           })}
         </section>
       ))}
       {note && <p role="status" className="ok-note">{note}</p>}
-      <ErrorNote message={error} />
     </>
   );
 }

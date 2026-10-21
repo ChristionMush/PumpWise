@@ -112,6 +112,25 @@ describe("assigned pumps", () => {
     expect(body.readings).toEqual([{ nozzle: "n1", reading: "1500" }, { nozzle: "n2", reading: "800" }]);
   });
 
+  it("starts someone already on shift on a free pump, at the meter numbers shown", async () => {
+    const freeStation = { ...assigned, staff: [{ id: "a", name: "Tendai", on_shift: false }, { id: "b", name: "Rudo", on_shift: true }], pumps: [myPump] };
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: manager }, "GET /api/shifts/prefill/": { body: { stations: [freeStation] } },
+      "POST /api/pumps/pu1/assign/": { body: { id: "pu1" } },
+    });
+    renderApp("/pumps");
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Who works Pump 1"), "b");
+    expect(screen.getByText(/Rudo is on shift now/)).toBeInTheDocument();
+    await user.clear(screen.getByLabelText(/Diesel \(DIESEL\): meter number now/));
+    await user.type(screen.getByLabelText(/Diesel \(DIESEL\): meter number now/), "1010");
+    await user.click(screen.getByRole("button", { name: "Start Rudo on it now" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/pumps/pu1/assign/")).toBe(true));
+    const body = calls.find((c) => c.path === "/api/pumps/pu1/assign/")!.body;
+    expect(body.user).toBe("b");
+    expect(body.readings).toEqual([{ nozzle: "n1", reading: "1000.00" }, { nozzle: "n2", reading: "1010" }]); // last number kept unless changed
+  });
+
   it("warns an attendant that a pump is still with the outgoing attendant and does not take it over by itself", async () => {
     const second = { id: "pu2", name: "Pump 2", nozzles: [nozzle("n3"), nozzle("n4", "d", "DIESEL")], in_use_by: "Rudo" };
     const { calls } = mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [{ ...assigned, pumps: [myPump, second] }] } }, "POST /api/sync/": applyAll });
