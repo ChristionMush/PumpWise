@@ -122,3 +122,39 @@ def test_cash_reconciliation_lists_closed_shifts_and_filters_flagged():
     flagged = owner.get("/api/reconciliation/cash/?date_from=2026-10-01&date_to=2026-10-02&flagged=1").json()["rows"]
     assert len(flagged) == 1 and flagged[0]["variance"] == "-50.00" and flagged[0]["attendant"]
     assert client_for(a[Role.ATTENDANT]).get("/api/reconciliation/cash/").status_code == 403
+
+
+def test_the_monthly_accounting_pack_has_every_sheet_with_the_months_numbers():
+    import io
+
+    from openpyxl import load_workbook
+
+    from apps.operations import services
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    mgr = client_for(a[Role.MANAGER])
+    dip(a["tenant"], a[Role.OWNER], fc, 8000, at(2026, 10, 1, 4))
+    run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [100, 0], started_at=at(2026, 10, 1, 5), ended_at=at(2026, 10, 1, 15), cash=[("cash", "USD", 140)])
+    with db_context(tenant_id=a["tenant"].id):
+        services.record_delivery(user=a[Role.OWNER], tank=fc.tank, litres=Decimal(1000), delivered_at=at(2026, 10, 1, 16), supplier="Zuva", note_number="DN-7")
+    dip(a["tenant"], a[Role.OWNER], fc, 8900, at(2026, 10, 1, 20))  # 8000 - 100 sold + 1000 delivered: balances
+
+    res = mgr.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"})
+    assert res.status_code == 200 and "spreadsheetml" in res["Content-Type"] and "2026-10" in res["Content-Disposition"]
+    wb = load_workbook(io.BytesIO(res.content))
+    assert wb.sheetnames == ["Sales", "Takings", "Cash differences", "Deliveries", "Stock", "Prices"]
+
+    def first(name):
+        return next(wb[name].iter_rows(min_row=4, values_only=True))
+
+    assert first("Sales")[1:] == ("Petrol", 100.0, 1.5, 150.0, "USD")
+    assert first("Takings")[1:] == ("Cash", "USD", 140.0, 1.0, 140.0)
+    assert first("Cash differences")[3:] == (150.0, 140.0, -10.0, "Short")
+    assert first("Deliveries")[1:6] == ("Tank 1", "Petrol", "Zuva", "DN-7", 1000.0)
+    assert first("Stock")[1:] == ("Tank 1", "Petrol", 8000.0, 1000.0, 100.0, 8900.0, 0.0, "OK")
+    assert first("Prices")[:3] == ("Petrol", "USD", 1.5)
+
+    assert client_for(a[Role.ATTENDANT]).get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"}).status_code == 403
+    assert mgr.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "October"}).status_code == 400
+    assert mgr.get("/api/reports/accounting-pack/", {"month": "2026-10"}).status_code == 400

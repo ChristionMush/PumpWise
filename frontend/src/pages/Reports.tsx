@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, errorMessage } from "../api";
+import { api, downloadFile, errorMessage } from "../api";
 import { Badge, ErrorNote } from "../components";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -31,6 +31,7 @@ export default function Reports() {
         {stations.length > 1 && <label>Station<select value={station} onChange={(e) => setStation(e.target.value)}><option value="">All stations</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
         <label>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></div>
       <ErrorNote message={error} />
+      <AccountingPack stations={stations} />
       {!data && !error && <p className="muted center">Loading…</p>}
       {data && tab === "sales" && (<>
         <section className="card">{station && <p className="muted">{stations.find((s) => s.id === station)?.name}</p>}<strong>{Number(data.totals.litres).toLocaleString()} L</strong> sold · {Object.entries(data.totals.amount_by_currency).map(([c, a]) => `${c} ${a}`).join(" · ")}
@@ -73,5 +74,38 @@ export default function Reports() {
         </section>
       )) : <p className="muted center">No closed shifts in this period.</p>)}
     </>
+  );
+}
+
+/** The monthly accounting pack: one Excel workbook per station and month (sales, takings, cash differences, deliveries,
+ * stock and prices), for the bookkeeper. */
+function AccountingPack({ stations }: { stations: { id: string; name: string }[] }) {
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [station, setStation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const chosen = station || stations[0]?.id || "";
+  const download = async () => {
+    setBusy(true); setError(null);
+    try {
+      const name = stations.find((s) => s.id === chosen)?.name ?? "station";
+      await downloadFile(`/api/reports/accounting-pack/?station=${chosen}&month=${month}`, `Accounting pack - ${name} - ${month}.xlsx`);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <details className="card">
+      <summary><strong>Accounting pack (Excel)</strong> <span className="muted">· one month, one station</span></summary>
+      <p className="muted">Sales, takings, cash differences, deliveries, stock and prices for the bookkeeper.</p>
+      <div className="row gap">
+        {stations.length > 1 && <label>Station<select value={chosen} onChange={(e) => setStation(e.target.value)}>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
+        <label>Month<input type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></label>
+      </div>
+      <button className="btn primary" disabled={busy || !chosen} onClick={() => void download()}>{busy ? "Preparing…" : "Download accounting pack"}</button>
+      <ErrorNote message={error} />
+    </details>
   );
 }

@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -102,3 +103,37 @@ class TankHistoryView(APIView):
     def get(self, request):
         frm, to = _dates(request, default_days=14)
         return Response(tank_history(station_ids=_stations(request), date_from=frm, date_to=to))
+
+
+class AccountingPackView(APIView):
+    """Owner and managers (their stations): the monthly accounting pack, one Excel workbook per station and month.
+    ?station=<id>&month=2026-10"""
+
+    permission_classes = [IsOwnerOrManager]
+
+    def get(self, request):
+        from django.http import HttpResponse
+
+        from apps.stations.models import Station
+
+        from .accounting import build_pack
+
+        try:
+            year, month = (int(x) for x in request.query_params.get("month", "").split("-"))
+            date(year, month, 1)
+        except ValueError:
+            raise ValidationError({"month": "Choose a month, like 2026-10."})
+        if not request.query_params.get("station"):
+            raise ValidationError({"station": "Choose a station."})
+        wanted = _stations(request)[0]  # refuses a station this manager does not run
+        try:
+            station = Station.objects.filter(pk=wanted).first()
+        except DjangoValidationError:
+            station = None
+        if station is None:
+            raise ValidationError({"station": "Not available."})
+        body = build_pack(station, year, month)
+        name = f"Accounting pack - {station.name} - {year}-{month:02d}.xlsx"
+        resp = HttpResponse(body, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = f'attachment; filename="{name}"'
+        return resp
