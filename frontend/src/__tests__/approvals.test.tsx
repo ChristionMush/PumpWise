@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetOffline } from "../offline";
@@ -16,6 +16,8 @@ const end = {
 const station = (my_stage: any) => ({ id: "st1", name: "Main", pricing_currency: "USD", open_shift_id: null, pumps: [], prices: [], my_stage });
 
 beforeEach(async () => { await resetOffline(); localStorage.clear(); localStorage.setItem("fs_tutorial_done", "1"); signedIn(); });
+
+const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
 
 describe("end of shift approval", () => {
   it("shows the attendant their end is waiting, with no start button, and lets them ask to undo", async () => {
@@ -74,7 +76,11 @@ describe("end of shift approval", () => {
       "GET /api/shift-ends/": { body: [{ id: "e1", shift_started_at: "2026-10-20T04:00:00Z", ...end }, { id: "e2", shift_started_at: "2026-10-20T04:00:00Z", ...end, person: "Rudo" }] },
       "GET /api/approvals/summary/": { body: { ends: 2, undos: 0 } },
       "GET /api/undo-requests/": { body: [] },
-      "GET /api/approvals/log/": { body: [{ at: "2026-10-21T05:50:00Z", action: "shift_end_approved", what: "Approved Edgar's end of shift", by: "Justice", station: "Main" }] },
+      "GET /api/approvals/log/": { body: [
+        { at: "2026-10-20T10:00:00Z", action: "undo_allowed", what: "Allowed Rudo to change their cash", by: "Justice", station: "Main" },
+        { at: "2026-10-21T05:50:00Z", action: "shift_end_approved", what: "Approved Edgar's end of shift", by: "Justice", station: "Main" },
+        { at: "2026-10-21T08:15:00Z", action: "shift_end_approved", what: "Approved Rudo's end of shift", by: "Justice", station: "Main" },
+      ] },
       "POST /api/shift-ends/e1/approve/": { body: {} },
       "POST /api/shift-ends/e2/send-back/": { body: {} },
     });
@@ -82,7 +88,11 @@ describe("end of shift approval", () => {
     const user = userEvent.setup();
     expect(await screen.findByText("Tendai · Main")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Undo requests" })).not.toBeInTheDocument(); // none waiting
-    expect(screen.getByRole("list", { name: "Approvals log" })).toHaveTextContent("Justice: Approved Edgar's end of shift");
+    // the log is grouped by date like the dip history: newest day first, its actions newest first
+    const days = screen.getAllByRole("region", { name: /^Approvals on / });
+    expect(days.map((d) => within(d).getByRole("heading").textContent)).toEqual([dayName("2026-10-21"), dayName("2026-10-20")]);
+    expect(days[0]).toHaveTextContent(/2 actions.*Approved Rudo's end of shift.*Justice: Approved Edgar's end of shift/);
+    expect(days[1]).toHaveTextContent(/1 action.*Allowed Rudo to change their cash/);
     await user.click(screen.getAllByRole("button", { name: "Approve" })[0]);
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/shift-ends/e1/approve/")).toBe(true));
     await user.click(screen.getAllByRole("button", { name: "Send back to fix" })[1]);

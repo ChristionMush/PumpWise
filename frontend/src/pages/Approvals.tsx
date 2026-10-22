@@ -11,6 +11,16 @@ interface Undo { id: string; kind_label: string; reason: string; person: string;
 interface LogRow { at: string; action: string; what: string; by: string; station: string }
 
 const time = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+const localDate = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+
+/** The log grouped by date like the dip history: newest day first, each day's actions newest first. */
+const byDay = (rows: LogRow[]) => {
+  const days = new Map<string, LogRow[]>();
+  for (const r of [...rows].sort((a, b) => b.at.localeCompare(a.at))) days.set(localDate(r.at), [...(days.get(localDate(r.at)) ?? []), r]);
+  return [...days.entries()];
+};
 
 /** Managers (their stations) and the owner approve attendants' ends of shift or send them back to fix, answer undo
  * requests, and see a log of what has been done. */
@@ -82,11 +92,14 @@ export default function Approvals() {
         <h2>Sent back, waiting for the attendant</h2>
         {sentBack.map((e) => <p key={e.id} className="card">{e.person} · {e.station}: {e.note}</p>)}</>)}
       <h2>What has been done</h2>
-      {log.length === 0 ? <p className="muted">Nothing in the last 14 days.</p> : (
-        <ul className="plain card" aria-label="Approvals log">
-          {log.map((r, i) => <li key={`${r.at}-${i}`}><span className="muted">{time(r.at)} · {r.station} · {r.by}:</span> {r.what}</li>)}
-        </ul>
-      )}
+      {log.length === 0 ? <p className="muted">Nothing in the last 14 days.</p> : byDay(log).map(([day, rows]) => (
+        <section key={day} className="card" aria-label={`Approvals on ${dayName(day)}`}>
+          <div className="row between"><h3>{dayName(day)}</h3><span className="muted">{rows.length} action{rows.length === 1 ? "" : "s"}</span></div>
+          <ul className="plain hist" aria-label="Approvals log">
+            {rows.map((r, i) => <li key={`${r.at}-${i}`}><span className="hist-time">{clock(r.at)}</span> <span><span className="muted">{r.station} · {r.by}:</span> {r.what}</span></li>)}
+          </ul>
+        </section>
+      ))}
     </>
   );
 }
