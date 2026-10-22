@@ -162,7 +162,7 @@ describe("day close", () => {
     await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.path === "/api/day-close/")?.body).toEqual({
       station: "s1", note: "", at: new Date("2026-10-20T21:15").toISOString(), dips: [{ tank: "k1", dip_mm: "1290" }], meters: [{ nozzle: "n1", reading: "924000" }],
     }));
-    expect(await screen.findByText(/Tue, 20 Oct is closed\. Its sales, fuel check and report are recalculated\.|20 Oct.* is closed/)).toBeInTheDocument();
+    expect(await screen.findByText(/(20 Oct|Oct 20) is closed\. Its sales, fuel check and report are recalculated\./)).toBeInTheDocument();
   });
 });
 
