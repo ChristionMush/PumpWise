@@ -61,7 +61,7 @@ def test_single_attendant_station_allows_a_handover_but_not_two_people_at_once()
     assert ca.post(f"/api/shifts/{sid}/leave/", {}, format="json").status_code == 200
     joined = cb.post(f"/api/shifts/{sid}/join/", {}, format="json").json()
     assert {p["name"]: p["is_lead"] for p in joined["attendants"] if p["left_at"] is None} == {"Second Attendant": True}
-    done = cb.post(f"/api/shifts/{sid}/end/", {"readings": readings(fc.nozzles, [100, 0]), "cash": cash("150")}, format="json").json()
+    done = cb.post(f"/api/shifts/{sid}/end/", {"readings": readings(fc.nozzles, [100, 0]), "cash": cash("148")}, format="json").json()
     assert done["status"] == "closed" and done["summary"]["status"] == "ok"  # the person who left does not block closing
     with db_context(tenant_id=a["tenant"].id):
         assert set(AuditLog.objects.values_list("action", flat=True)) >= {"shift_left", "shift_joined", "shift_closed"}
@@ -643,7 +643,7 @@ def test_the_day_close_ends_the_trading_day_at_about_21_00():
     assert lower.status_code == 400 and "below its last number" in str(lower.json())
 
     # A works on through the close and ends at 07:00: their part and cash are whole
-    end = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:00:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150")}, format="json").json()
+    end = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:00:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": cash("148")}, format="json").json()
     assert end["status"] == "open"
     with db_context(tenant_id=a["tenant"].id):
         mine = Transaction.objects.filter(shift_id=sid, attendant=att_a).aggregate(s=Sum("litres"))["s"]
@@ -659,3 +659,14 @@ def test_the_day_close_ends_the_trading_day_at_about_21_00():
     assert ("Pump 1", "40.00") in meters and ("Pump 2", "10.00") in meters
     assert {p["attendant"]: p["litres"] for p in report["people"]} == {att_a.full_name: "40.000", att_b.full_name: "10.000"}
     assert report["tanks"] == []  # the first dip ever: the fuel check runs from this close to the next
+    assert [(f["fuel_code"], f["litres"]) for f in report["dips"]] == [(fc.tank.fuel_type.code, "5000.000")]  # the close dip
+
+    # 2 Oct: A hands in 148 of 150 (a $2 loss is theirs); B hands in 14.50 of 15.00 (a 50c milking error)
+    cb.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:10:00Z", "readings": readings(p2, [10, 0]),
+                                        "cash": cash("10") + cash("4.50", kind="card")}, format="json")
+    report = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-02"}).json()[0]
+    assert report["totals"]["grand_total"] == "162.50"
+    assert [(h["label"], h["amount"]) for h in report["handed_in"]] == [("Cash", "158.00"), ("Swipe", "4.50"), ("EcoCash", "0.00"), ("Inter Company Credit", "0.00")]
+    losses = report["cash_losses"]
+    assert (losses["total"], losses["milking"], losses["milking_count"]) == ("2.50", "0.50", 1)
+    assert losses["by_attendant"] == [{"attendant": att_a.full_name, "amount": "2.00"}]

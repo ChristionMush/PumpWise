@@ -3,7 +3,11 @@
 * Per fuel: litres sold and the money they are worth (each litre at the price in force when it was sold).
 * Per pump: the opening meter (the previous day close) and the closing meter (this day close).
 * Tanks: the fuel check from the opening dip to the closing dip.
-* Money handed in during the day, by payment type; intercompany issues are owed by the other company.
+* Grand total: everything handed in during the day, broken down by cash, swipe, EcoCash and intercompany credit
+  (intercompany issues are owed by the other company).
+* Cash losses: each attendant's shortage on each shift handed in during the day. $1.00 and above is the attendant's
+  loss; under $1.00 is a milking error (change, rounding, a drip of fuel), totalled separately.
+* Dips: the day close dips in mm and litres, per fuel type.
 * Deep dive: each attendant's litres and money within the day, with the shift they belong to.
 """
 from collections import defaultdict
@@ -13,20 +17,65 @@ from decimal import Decimal
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.operations.models import CashSubmission, DayClose, DayCloseReading, Transaction
+from apps.operations.models import CashSubmission, DayClose, DayCloseReading, Shift, TankReading, Transaction
 from apps.operations.services import dispensed_litres
 from apps.operations.tradingday import Calendar
 from apps.stations.models import Nozzle, Tank
 from apps.tenants.services import get_settings
 
-from .reconciliation import reconcile_tank_day
+from .reconciliation import cash_summary, reconcile_tank_day
 
 Q2, Q3 = Decimal("0.01"), Decimal("0.001")
-PAYMENT = {"cash": "Cash", "mobile_money": "EcoCash / mobile money", "card": "Card / swipe", "credit": "Intercompany issue"}
+# the grand total's breakdown, always in this order (a type nobody used shows 0.00)
+PAYMENT = {"cash": "Cash", "card": "Swipe", "mobile_money": "EcoCash", "credit": "Inter Company Credit"}
+MILKING = Decimal("1.00")  # a shortage under $1.00 is a milking error, $1.00 and above the attendant's loss
 
 
 def _s(v, q):
     return str((v or Decimal(0)).quantize(q))
+
+
+def cash_losses(station, start, end):
+    """Shortages on the shifts whose cash was handed in during the day, per attendant: their own difference when
+    pumps are assigned (or they ran the shift alone), else the shift's difference shared by the people on it."""
+    shifts = Shift.objects.filter(station=station, attendants__cash_submitted_at__gt=start,
+                                  attendants__cash_submitted_at__lte=end).distinct().select_related("station")
+    people, milking, milking_count = defaultdict(Decimal), Decimal(0), 0
+    for shift in shifts:
+        c = cash_summary(shift)
+        if c["missing_rate"]:
+            continue
+        if c["per_attendant_expected"]:  # each person who has handed in, even while others work on
+            rows = [(a["name"], Decimal(a["cash_difference"])) for a in c["by_attendant"] if a["handed_in"]]
+        elif shift.status == Shift.Status.OPEN:  # a shared shift is only short once everyone has handed in
+            continue
+        else:
+            rows = [(" & ".join(a["name"] for a in c["by_attendant"]) or "Not assigned", Decimal(c["variance"]))]
+        for name, difference in rows:
+            short = -difference
+            if short >= MILKING:
+                people[name] += short
+            elif short > 0:
+                milking += short
+                milking_count += 1
+    by_attendant = [{"attendant": k, "amount": _s(v, Q2)} for k, v in sorted(people.items(), key=lambda kv: -kv[1])]
+    attendants = sum(people.values(), Decimal(0))
+    return {"total": _s(attendants + milking, Q2), "attendants": _s(attendants, Q2), "by_attendant": by_attendant,
+            "milking": _s(milking, Q2), "milking_count": milking_count}
+
+
+def dips_by_fuel(station, close, end):
+    """The day close dips (mm and litres) per fuel type; before the close, each tank's latest dip."""
+    out = {}
+    for t in Tank.objects.filter(station=station).select_related("fuel_type").order_by("fuel_type__name", "name"):
+        qs = TankReading.objects.filter(tank=t)
+        dip = (qs.filter(day_close=close) if close else qs.filter(reading_at__lte=end)).order_by("-reading_at").first()
+        f = out.setdefault(t.fuel_type.code, {"fuel": t.fuel_type.name, "fuel_code": t.fuel_type.code, "litres": Decimal(0), "tanks": []})
+        if dip is not None:
+            f["litres"] += dip.litres
+        f["tanks"].append({"tank": t.name, "dip_mm": str(dip.dip_mm) if dip and dip.dip_mm is not None else None,
+                           "litres": _s(dip.litres, Q3) if dip else None, "at": dip.reading_at if dip else None})
+    return [{**f, "litres": _s(f["litres"], Q3)} for f in out.values()]
 
 
 def last_closed_day(station):
@@ -69,7 +118,8 @@ def daily_report(station, day):
     cash = defaultdict(Decimal)
     for c in CashSubmission.objects.filter(shift__station=station, part__cash_submitted_at__gt=start, part__cash_submitted_at__lte=end):
         cash[c.payment_type] += c.amount
-    handed = [{"payment_type": k, "label": PAYMENT.get(k, k), "amount": _s(v, Q2)} for k, v in sorted(cash.items())]
+    handed = [{"payment_type": k, "label": label, "amount": _s(cash.get(k), Q2)} for k, label in PAYMENT.items()]
+    handed += [{"payment_type": k, "label": k, "amount": _s(v, Q2)} for k, v in cash.items() if k not in PAYMENT]
     received = sum((v for k, v in cash.items() if k != "credit"), Decimal(0))
 
     # deep dive: each person's litres and money within the day, by shift
@@ -84,6 +134,8 @@ def daily_report(station, day):
         "closed_by": close.closed_by.full_name if close and close.closed_by_id else None, "opened_by_close": bool(opening),
         "so_far": not close and end > timezone.now(),
         "totals": {"litres": _s(totals["litres"], Q3), "amount": _s(totals["amount"], Q2), "handed_in": _s(sum(cash.values(), Decimal(0)), Q2),
+                   "grand_total": _s(sum(cash.values(), Decimal(0)), Q2),
                    "received": _s(received, Q2), "intercompany": _s(cash.get("credit"), Q2)},
         "fuels": fuels, "pumps": pumps, "tanks": tanks, "handed_in": handed, "people": people,
+        "cash_losses": cash_losses(station, start, end), "dips": dips_by_fuel(station, close, end),
     }
