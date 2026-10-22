@@ -41,16 +41,19 @@ def build_dashboard(user):
 
 
 def _build(user):
+    from apps.operations.tradingday import Calendar
+
     now = timezone.now()
-    today = timezone.localdate()
     stations = list(scope(Station.objects.filter(status="active"), user, "id"))
     station_ids = [s.pk for s in stations]
+    today_of = {s.pk: Calendar(s.pk).today() for s in stations}  # each station's trading day (closes about 21:00)
+    today = max(today_of.values(), default=Calendar().today())
     tanks = list(Tank.objects.filter(station_id__in=station_ids).select_related("fuel_type"))
     statuses = {s.tank_id: s for s in TankStatus.objects.filter(tank__in=tanks)}
     for t in tanks:
         if t.pk not in statuses:  # a tank set up since the last write: build its row now (write path, once)
             statuses[t.pk] = refresh_tank(t, bump=False)  # no bump: this very read is about to be cached
-    sales = list(DailySalesRollup.objects.filter(station_id__in=station_ids, day=today))
+    sales = [r for r in DailySalesRollup.objects.filter(station_id__in=station_ids, day__in=set(today_of.values())) if r.day == today_of[r.station_id]]
     flagged_cash = ShiftSummary.objects.filter(station_id__in=station_ids, day__gte=today - timedelta(days=6), flagged=True).count()
     open_shifts = list(Shift.objects.filter(station_id__in=station_ids, status="open").order_by("started_at"))
     people = {}

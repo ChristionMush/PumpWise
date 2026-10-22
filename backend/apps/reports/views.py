@@ -1,12 +1,12 @@
 from datetime import date, timedelta
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsOwner, IsOwnerOrManager, TankRecords
+from apps.operations import tradingday
 from apps.operations.models import Shift
 from apps.stations.access import visible_station_ids
 
@@ -17,7 +17,7 @@ from .tank_history import tank_history
 def _dates(request, default_days=30):
     q = request.query_params
     try:
-        to = date.fromisoformat(q["date_to"]) if q.get("date_to") else timezone.localdate()
+        to = date.fromisoformat(q["date_to"]) if q.get("date_to") else tradingday.today()
         frm = date.fromisoformat(q["date_from"]) if q.get("date_from") else to - timedelta(days=default_days - 1)
     except ValueError:
         raise ValidationError({"detail": "Dates must look like 2026-10-31."})

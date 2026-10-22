@@ -619,3 +619,36 @@ def test_close_my_meters_first_then_hand_in_the_cash_after_counting():
     assert cb.post(f"/api/shifts/{sid}/cash/", {"cash": cash("30")}, format="json").status_code == 200
     people = {p["name"]: p for p in mgr.get(f"/api/shifts/{sid}/").json()["summary"]["by_attendant"]}
     assert (people["Second Attendant"]["expected"], people["Second Attendant"]["submitted"]) == ("30.00", "30.00")
+
+
+def test_the_day_close_ends_the_trading_day_at_about_21_00():
+    """The manager dips every tank and reads every pump at about 21:00: that moment ends the trading day (named by the
+    day it closes). Someone working through it keeps their part and their cash; their litres split between the days."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca, cb = client_for(att_a), client_for(att_b)
+    body = {"station": str(fc.station.pk), "started_at": "2026-10-01T15:00:00Z"}  # 17:00 in Harare
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+
+    def close(meters, at="2026-10-01T19:10:00Z"):  # 21:10 in Harare: closes 1 Oct
+        return mgr.post("/api/day-close/", {"station": str(fc.station.pk), "at": at, "dips": [{"tank": str(fc.tank.pk), "litres": "5000"}],
+                                            "meters": [{"nozzle": str(n.pk), "reading": str(v)} for n, v in meters]}, format="json")
+
+    assert close(list(zip(fc.nozzles, [40, 0], strict=True))).status_code == 400  # Pump 2 missing
+    assert close(list(zip(fc.nozzles + p2, [40, 0, 10, 0], strict=True))).status_code == 201
+    again = close(list(zip(fc.nozzles + p2, [40, 0, 10, 0], strict=True)), at="2026-10-01T19:20:00Z")
+    assert again.status_code == 400 and "already closed" in str(again.json())
+    assert ca.post("/api/day-close/", {}, format="json").status_code == 403  # attendants never close the day
+    lower = close(list(zip(fc.nozzles + p2, [30, 0, 10, 0], strict=True)), at="2026-10-02T19:05:00Z")
+    assert lower.status_code == 400 and "below its last number" in str(lower.json())
+
+    # A works on through the close and ends at 07:00: their part and cash are whole
+    end = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:00:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150")}, format="json").json()
+    assert end["status"] == "open"
+    with db_context(tenant_id=a["tenant"].id):
+        mine = Transaction.objects.filter(shift_id=sid, attendant=att_a).aggregate(s=Sum("litres"))["s"]
+        assert mine == Decimal("100.000")  # 40 before the close + 60 after
+    stage = ca.get("/api/shifts/prefill/").json()["stations"][0]["my_stage"]
+    assert stage["expected"] == "150.00"  # 100 L at 1.50: the close did not change what they owe
+    days = {d["date"]: d["litres"] for d in mgr.get("/api/reports/daily-sales/", {"date_from": "2026-10-01", "date_to": "2026-10-02"}).json()["days"]}
+    assert days == {"2026-10-01": "50.000", "2026-10-02": "60.000"}  # 1 Oct: 40 (A) + 10 (B) to 21:10; 2 Oct: A's 60 after it

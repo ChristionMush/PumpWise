@@ -173,11 +173,39 @@ class TankReading(TenantOwnedModel):
     source = models.CharField(max_length=20, default="manual")
     photo = models.FileField(upload_to=upload_to, null=True, blank=True)
     recorded_by = models.ForeignKey("accounts.User", null=True, on_delete=models.PROTECT, related_name="+")
+    day_close = models.ForeignKey("DayClose", null=True, blank=True, on_delete=models.PROTECT, related_name="dips")  # the 21:00 dip
 
     class Meta:
         ordering = ["-reading_at"]
         indexes = [models.Index(fields=["tank", "-reading_at"])]
         constraints = [models.UniqueConstraint(F("tenant"), "client_id", condition=Q(client_id__isnull=False), name="tankreading_client_id_unique")]
+
+
+class DayClose(TenantOwnedModel):
+    """The end of a trading day at a station (about 21:00): the pumps pause, the manager dips every tank and reads every
+    pump's meter. The trading day it ends is named by the day it closes (21:00 on 21 Oct to 21:00 on 22 Oct is 22 Oct);
+    the day runs from the previous close to this one (see tradingday.py)."""
+
+    station = models.ForeignKey("stations.Station", on_delete=models.PROTECT, related_name="+")
+    day = models.DateField()
+    closed_at = models.DateTimeField()
+    closed_by = models.ForeignKey("accounts.User", null=True, on_delete=models.PROTECT, related_name="+")
+    note = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-closed_at"]
+        constraints = [models.UniqueConstraint(F("station"), F("day"), condition=Q(deleted_at__isnull=True), name="dayclose_one_per_station_day")]
+
+
+class DayCloseReading(TenantOwnedModel):
+    """Every nozzle's meter number at the day close: the opening of the next trading day and the closing of this one."""
+
+    day_close = models.ForeignKey(DayClose, on_delete=models.PROTECT, related_name="meters")
+    nozzle = models.ForeignKey("stations.Nozzle", on_delete=models.PROTECT, related_name="+")
+    reading = models.DecimalField(max_digits=14, decimal_places=2)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(F("day_close"), F("nozzle"), condition=Q(deleted_at__isnull=True), name="daycloseread_one_per_nozzle")]
 
 
 class Delivery(TenantOwnedModel):

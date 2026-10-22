@@ -22,13 +22,14 @@ from apps.stations.access import scope, visible_station_ids
 from apps.stations.models import FuelPrice, Pump, Station, StationAssignment, Tank
 from apps.stations.views import validate_image
 
-from . import approvals, imports, services
+from . import approvals, dayclose, imports, services
 from .models import Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, SyncOperation, TankReading, UndoRequest
 from .serializers import (
     CashInput,
     CashInputOnly,
     CashSerializer,
     CheckpointInput,
+    DayCloseInput,
     DeliveryInput,
     DeliverySerializer,
     PersonInput,
@@ -762,3 +763,25 @@ class ApprovalLogView(APIView):
 
     def get(self, request):
         return Response(approvals.approval_log(request.user))
+
+
+class DayCloseView(APIView):
+    """Managers (their stations) and the owner: GET ?station= shows the day to close now and the last closes; POST closes
+    the trading day with every tank's dip and every pump's meter (dayclose.py)."""
+
+    permission_classes = [TankRecords]
+
+    def get(self, request):
+        station = Station.objects.filter(pk=request.query_params.get("station")).first() if request.query_params.get("station") else None
+        stations = [station] if station else list(scope(Station.objects.filter(status="active"), request.user, "id"))
+        for st in stations:
+            _check_station(request.user, st)
+        return Response([dayclose.close_status(st) for st in stations])
+
+    def post(self, request):
+        data = DayCloseInput(data=request.data)
+        data.is_valid(raise_exception=True)
+        d = data.validated_data
+        _check_station(request.user, d["station"])
+        dayclose.close_day(user=request.user, station=d["station"], dips=d["dips"], meters=d["meters"], at=d.get("at"), note=d["note"], request=request)
+        return Response(dayclose.close_status(d["station"]), status=status.HTTP_201_CREATED)

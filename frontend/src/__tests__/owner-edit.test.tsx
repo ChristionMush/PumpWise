@@ -110,3 +110,28 @@ describe("fuel delivery", () => {
     expect([op.payload.tank, op.payload.fuel_code, op.payload.litres]).toEqual(["k2", "DIESEL", "10000"]);
   });
 });
+
+describe("day close", () => {
+  it("needs every tank's dip and every pump's meter, then closes the day in one entry", async () => {
+    signedIn();
+    const tank = { id: "k1", name: "Petrol Tank", fuel_code: "PETROL", capacity_litres: "15030", has_calibration: false, last_litres: "5000" };
+    const pump = { id: "p1", name: "4A", nozzles: [{ id: "n1", number: 1, label: "Petrol", meter_max: "99999999.99", last_reading: "924759.36", fuel_type: "f1", fuel_code: "PETROL" }] };
+    const station = { id: "s1", name: "Chigwende", pricing_currency: "USD", open_shift_id: null, pumps: [pump], prices: [], tanks: [tank] };
+    const status = [{ station: "s1", day: "2026-10-22", closed: null, recent: [] }];
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: manager, tenant } }, "GET /api/shifts/prefill/": { body: { stations: [station] } },
+      "GET /api/day-close/": { body: status }, "POST /api/day-close/": { status: 201, body: status[0] },
+    });
+    renderApp("/dip");
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Close the day" });
+    await user.type(within(form).getByLabelText("Litres"), "5400");
+    await user.click(within(form).getByRole("button", { name: "Close the day" }));
+    expect(await screen.findByText(/Missing: 4A Petrol/)).toBeInTheDocument();
+    await user.type(within(form).getByLabelText(/4A · Petrol/), "925100.5");
+    await user.click(within(form).getByRole("button", { name: "Close the day" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.path === "/api/day-close/")?.body).toEqual({
+      station: "s1", note: "", dips: [{ tank: "k1", litres: "5400" }], meters: [{ nozzle: "n1", reading: "925100.5" }],
+    }));
+  });
+});

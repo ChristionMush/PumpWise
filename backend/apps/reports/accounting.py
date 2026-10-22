@@ -16,13 +16,13 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from apps.operations import tradingday
 from apps.operations.models import CashSubmission, Delivery, Shift, Transaction
 from apps.stations.models import FuelPrice, Tank
 from apps.stations.services import rate_at
 from apps.tenants.services import get_settings
 
 from .reconciliation import cash_summary, reconcile_tank_day, tank_totals
-from .sales import local_day_bounds
 
 HEAD = Font(bold=True, color="FFFFFF")
 HEAD_FILL = PatternFill("solid", fgColor="166534")
@@ -33,9 +33,11 @@ PAYMENT_LABEL = {"cash": "Cash", "mobile_money": "Mobile money", "card": "Card",
 INTERCOMPANY = "credit"  # fuel issued to another company on account: not money received, money owed to the business
 
 
-def month_bounds(year, month):
+def month_bounds(year, month, cal=None):
+    """The month's trading days (each 21:00 to 21:00, named by its closing day) and the moments they span."""
+    cal = cal or tradingday.Calendar()
     first, last = date(year, month, 1), date(year, month, monthrange(year, month)[1])
-    return first, last, local_day_bounds(first)[0], local_day_bounds(last)[1]
+    return first, last, cal.bounds(first)[0], cal.bounds(last)[1]
 
 
 def _local(dt):
@@ -66,7 +68,8 @@ def _sheet(wb, title, station, period, columns, rows, fills=None):
 
 def build_pack(station, year, month):
     """The workbook for one station and month, as .xlsx bytes. Call inside the tenant's database context."""
-    first, last, start, end = month_bounds(year, month)
+    cal = tradingday.Calendar(station.pk)
+    first, last, start, end = month_bounds(year, month, cal)
     period = f"{first:%B %Y}"
     currency = station.pricing_currency
     cfg = get_settings(station.tenant_id)
@@ -75,8 +78,8 @@ def build_pack(station, year, month):
 
     # Sales: per day (local time) and fuel, from the meter readings (the same as the Sales report)
     by_day = {}
-    for t in Transaction.objects.filter(station=station, occurred_at__gte=start, occurred_at__lt=end).select_related("fuel_type"):
-        key = (timezone.localdate(t.occurred_at), t.fuel_type.name, t.currency)
+    for t in Transaction.objects.filter(station=station, occurred_at__gt=start, occurred_at__lte=end).select_related("fuel_type"):
+        key = (cal.day_of(t.occurred_at), t.fuel_type.name, t.currency)
         litres, amount = by_day.get(key, (Decimal(0), Decimal(0)))
         by_day[key] = (litres + t.litres, amount + t.amount)
     rows = []
@@ -88,15 +91,15 @@ def build_pack(station, year, month):
 
     # Takings: what was handed in, per day and payment type, converted at the owner's rate on that day
     takings = {}
-    handed_in = (Q(part__cash_submitted_at__gte=start, part__cash_submitted_at__lt=end)
-                 | Q(part__cash_submitted_at__isnull=True, created_at__gte=start, created_at__lt=end))  # older rows without a part
+    handed_in = (Q(part__cash_submitted_at__gt=start, part__cash_submitted_at__lte=end)
+                 | Q(part__cash_submitted_at__isnull=True, created_at__gt=start, created_at__lte=end))  # older rows without a part
     for c in CashSubmission.objects.filter(shift__station=station).filter(handed_in).select_related("part"):
         when = c.part.cash_submitted_at if c.part_id and c.part.cash_submitted_at else c.created_at
-        key = (timezone.localdate(when), c.payment_type, c.currency)
+        key = (cal.day_of(when), c.payment_type, c.currency)
         takings[key] = takings.get(key, Decimal(0)) + c.amount
     rows, received, owed = [], Decimal(0), Decimal(0)
     for (day, kind, cur), amount in sorted(takings.items()):
-        rate = rate_at(cur, currency, local_day_bounds(day)[1] - timedelta(seconds=1))
+        rate = rate_at(cur, currency, cal.bounds(day)[1] - timedelta(seconds=1))
         converted = (amount * rate).quantize(Q2) if rate is not None else None
         if kind == INTERCOMPANY:
             owed += converted or 0
@@ -112,7 +115,7 @@ def build_pack(station, year, month):
 
     # Cash differences: per closed shift (ended in the month) and attendant
     rows, fills = [], []
-    for s in Shift.objects.filter(station=station, ended_at__gte=start, ended_at__lt=end).exclude(status="open").order_by("started_at"):
+    for s in Shift.objects.filter(station=station, ended_at__gt=start, ended_at__lte=end).exclude(status="open").order_by("started_at"):
         c = cash_summary(s)
         people = c["by_attendant"] if c["per_attendant_expected"] else [{"name": "Everyone on the shift", "expected": c["expected"],
                                                                           "submitted": c["submitted_total"], "cash_difference": c["cash_difference"], "status": c["status"]}]
@@ -126,7 +129,7 @@ def build_pack(station, year, month):
 
     # Deliveries (purchases)
     rows = [[_local(d.delivered_at), d.tank.name, d.tank.fuel_type.name, d.supplier, d.note_number, float(d.litres_received), None, None]
-            for d in Delivery.objects.filter(tank__station=station, delivered_at__gte=start, delivered_at__lt=end).select_related("tank__fuel_type").order_by("delivered_at")]
+            for d in Delivery.objects.filter(tank__station=station, delivered_at__gt=start, delivered_at__lte=end).select_related("tank__fuel_type").order_by("delivered_at")]
     if rows:
         rows.append(["Total", "", "", "", "", float(sum(r[5] for r in rows)), None, None])
     _sheet(wb, "Deliveries", station, period, ["Date", "Tank", "Fuel", "Supplier", "Delivery note", "Litres", "Cost per litre", "Total cost"], rows)
@@ -135,7 +138,7 @@ def build_pack(station, year, month):
     rows, fills, checks = [], [], []
     for tank in Tank.objects.filter(station=station).select_related("fuel_type").order_by("name"):
         day = first
-        while day <= min(last, timezone.localdate()):
+        while day <= min(last, cal.today()):
             r = reconcile_tank_day(tank, day, cfg)
             if r["status"] != "insufficient_data":
                 checks.append(r)

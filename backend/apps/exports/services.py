@@ -23,7 +23,7 @@ EXPORT_MODELS = [
     ("stations", "station"), ("stations", "stationassignment"), ("stations", "fueltype"), ("stations", "tank"), ("stations", "calibrationpoint"),
     ("stations", "pump"), ("stations", "nozzle"), ("stations", "fuelprice"), ("stations", "exchangerate"),
     ("operations", "shift"), ("operations", "shiftattendant"), ("operations", "pumpassignment"), ("operations", "pumpmeterreading"), ("operations", "tankreading"), ("operations", "delivery"),
-    ("operations", "cashsubmission"), ("operations", "transaction"), ("operations", "undorequest"),
+    ("operations", "cashsubmission"), ("operations", "transaction"), ("operations", "undorequest"), ("operations", "dayclose"), ("operations", "dayclosereading"),
     ("insights", "alert"), ("insights", "alertevent"), ("insights", "outboundmessage"), ("billing", "payment"), ("audit", "auditlog"),
 ]
 # Tables with tenant data that are deliberately not exported (technical bookkeeping), each with the reason.

@@ -197,3 +197,29 @@ class DeliverySerializer(serializers.ModelSerializer):
 
     def get_photo_url(self, obj):
         return f"/api/media/delivery/{obj.pk}/photo/" if obj.photo else None
+
+
+class DayCloseDipInput(serializers.Serializer):
+    tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.all())
+    litres = serializers.DecimalField(max_digits=12, decimal_places=3, required=False, allow_null=True)
+    dip_mm = serializers.DecimalField(max_digits=8, decimal_places=1, required=False, allow_null=True)
+
+    def validate(self, attrs):
+        if attrs.get("litres") is None and attrs.get("dip_mm") is None:
+            raise serializers.ValidationError(f"{attrs['tank'].name}: enter the dip height or the litres.")
+        return attrs
+
+
+class DayCloseMeterInput(serializers.Serializer):
+    nozzle = serializers.PrimaryKeyRelatedField(queryset=Nozzle.objects.select_related("pump"))
+    reading = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0"))
+
+
+class DayCloseInput(serializers.Serializer):
+    """The manager's day close at about 21:00: every tank's dip and every pump's meter at the station."""
+
+    station = serializers.PrimaryKeyRelatedField(queryset=Station.objects.all())
+    at = serializers.DateTimeField(required=False)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+    dips = DayCloseDipInput(many=True)
+    meters = DayCloseMeterInput(many=True)

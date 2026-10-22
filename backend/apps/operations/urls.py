@@ -30,6 +30,7 @@ urlpatterns = [
     path("approvals/log/", views.ApprovalLogView.as_view()),
     path("tank-readings/", views.TankDipView.as_view()),
     path("deliveries/", views.DeliveryView.as_view()),
+    path("day-close/", views.DayCloseView.as_view()),
     path("readings/<str:kind>/<str:pk>/photo/", views.ReadingPhotoView.as_view()),
     path("media/<str:model>/<str:pk>/<str:field>/", views.MediaView.as_view()),
     path("sync/", views.SyncView.as_view()),

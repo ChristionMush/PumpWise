@@ -19,8 +19,6 @@ from apps.stations.models import Tank
 from apps.stations.services import rate_at
 from apps.tenants.services import get_settings
 
-from .sales import local_day_bounds
-
 Q2, Q3 = Decimal("0.01"), Decimal("0.001")
 
 
@@ -150,7 +148,9 @@ def reconcile_window(tank, opening, closing, cfg=None):
 
 
 def reconcile_tank_day(tank, day: date, cfg=None):
-    start, end = local_day_bounds(day)
+    from apps.operations.tradingday import Calendar
+
+    start, end = Calendar(tank.station_id).bounds(day)
     opening = _latest_dip(tank, start)
     if opening is None:  # the tank's first-ever dip is today: open from the earliest dip of the day
         opening = TankReading.objects.filter(tank=tank, reading_at__gt=start, reading_at__lte=end).order_by("reading_at").first()

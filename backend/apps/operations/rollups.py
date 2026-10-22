@@ -60,10 +60,13 @@ def _flush(pending):
 
 
 def _days_of(shift):
-    days = {timezone.localtime(t).date() for t in Transaction.objects.filter(shift=shift).values_list("occurred_at", flat=True)}
-    days |= {timezone.localtime(t).date() for t in Transaction.all_objects.filter(shift=shift).values_list("occurred_at", flat=True)}
+    """The trading days this shift's sales fall in (and fell in, before a rebuild)."""
+    from .tradingday import Calendar
+
+    cal = Calendar(shift.station_id)
+    days = {cal.day_of(t) for t in Transaction.all_objects.filter(shift=shift).values_list("occurred_at", flat=True)}
     if shift.ended_at:
-        days.add(timezone.localtime(shift.ended_at).date())
+        days.add(cal.day_of(shift.ended_at))
     return days
 
 
@@ -122,11 +125,11 @@ def on_tank_changed(tank):
 
 
 def refresh_daily(station, day):
-    from apps.reports.sales import local_day_bounds
+    from .tradingday import Calendar
 
-    start, end = local_day_bounds(day)
+    start, end = Calendar(station.pk).bounds(day)
     rows = (
-        Transaction.objects.filter(station=station, occurred_at__gte=start, occurred_at__lt=end)
+        Transaction.objects.filter(station=station, occurred_at__gt=start, occurred_at__lte=end)
         .values("fuel_type_id", "currency").annotate(litres=Sum("litres"), amount=Sum("amount")).order_by()
     )
     existing = {(r.fuel_type_id, r.currency): r for r in DailySalesRollup.objects.filter(station=station, day=day)}
