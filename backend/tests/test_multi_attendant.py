@@ -652,3 +652,10 @@ def test_the_day_close_ends_the_trading_day_at_about_21_00():
     assert stage["expected"] == "150.00"  # 100 L at 1.50: the close did not change what they owe
     days = {d["date"]: d["litres"] for d in mgr.get("/api/reports/daily-sales/", {"date_from": "2026-10-01", "date_to": "2026-10-02"}).json()["days"]}
     assert days == {"2026-10-01": "50.000", "2026-10-02": "60.000"}  # 1 Oct: 40 (A) + 10 (B) to 21:10; 2 Oct: A's 60 after it
+    # the daily report for 1 Oct: what the manager used to work out by hand at 21:00
+    report = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-01"}).json()[0]
+    assert report["closed"] and (report["totals"]["litres"], report["totals"]["amount"]) == ("50.000", "75.00")
+    meters = {(p["pump"], p["closing_meter"]) for p in report["pumps"] if p["closing_meter"] is not None}
+    assert ("Pump 1", "40.00") in meters and ("Pump 2", "10.00") in meters
+    assert {p["attendant"]: p["litres"] for p in report["people"]} == {att_a.full_name: "40.000", att_b.full_name: "10.000"}
+    assert report["tanks"] == []  # the first dip ever: the fuel check runs from this close to the next

@@ -1,5 +1,4 @@
 from celery import shared_task
-from django.utils import timezone
 
 from apps.core.tenancy import for_each_tenant
 
@@ -33,7 +32,7 @@ def send_summary_for(tenant_id):
     from apps.tenants.services import get_settings
 
     cfg = get_settings(tenant_id)
-    return send_message(tenant_id=tenant_id, channel=cfg.summary_channel, to=cfg.summary_phone, kind="daily_summary", body=build_daily_summary(tenant_id, timezone.localdate()))
+    return send_message(tenant_id=tenant_id, channel=cfg.summary_channel, to=cfg.summary_phone, kind="daily_summary", body=build_daily_summary(tenant_id))  # the current trading day
 
 
 @shared_task

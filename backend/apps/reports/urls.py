@@ -9,4 +9,5 @@ urlpatterns = [
     path("reports/attendants/", views.AttendantReportView.as_view()),
     path("reports/dip-history/", views.TankHistoryView.as_view()),
     path("reports/accounting-pack/", views.AccountingPackView.as_view()),
+    path("reports/daily/", views.DailyReportView.as_view()),
 ]

@@ -137,3 +137,30 @@ class AccountingPackView(APIView):
         resp = HttpResponse(body, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         resp["Content-Disposition"] = f'attachment; filename="{name}"'
         return resp
+
+
+class DailyReportView(APIView):
+    """Owner and managers (their stations): the daily report for a station and trading day (21:00 to 21:00, named by
+    the closing day). ?station=<id>&day=2026-10-22; without a day, the last closed day (else the day so far)."""
+
+    permission_classes = [IsOwnerOrManager]
+
+    def get(self, request):
+        from apps.stations.models import Station
+
+        from .daily import daily_report, last_closed_day
+
+        ids = visible_station_ids(request.user)
+        stations = Station.objects.filter(status="active")
+        if ids is not None:
+            stations = stations.filter(pk__in=ids)
+        if request.query_params.get("station"):
+            stations = stations.filter(pk=_stations(request)[0])
+        out = []
+        for st in stations.order_by("name"):
+            try:
+                day = date.fromisoformat(request.query_params["day"]) if request.query_params.get("day") else (last_closed_day(st) or tradingday.today(st.pk))
+            except ValueError:
+                raise ValidationError({"day": "Dates must look like 2026-10-22."})
+            out.append(daily_report(st, day))
+        return Response(out)

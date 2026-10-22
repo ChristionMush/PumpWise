@@ -186,7 +186,7 @@ def test_the_owner_filters_sales_by_station():
     a, _ = two_tenants()
     main, other = make_forecourt(a["tenant"], price="1.00"), make_forecourt(a["tenant"], price="1.00", name="Avondale", code="DIESEL")
     run_shift(a["tenant"], a[Role.ATTENDANT], main, [0, 0], [100, 0], started_at=at(2026, 10, 1, 6), ended_at=at(2026, 10, 1, 14))
-    run_shift(a["tenant"], a[Role.ATTENDANT], other, [0, 0], [30, 0], started_at=at(2026, 10, 1, 15), ended_at=at(2026, 10, 1, 20))
+    run_shift(a["tenant"], a[Role.ATTENDANT], other, [0, 0], [30, 0], started_at=at(2026, 10, 1, 15), ended_at=at(2026, 10, 1, 18))  # 20:00 Harare: before the 21:00 close
     owner = client_for(a[Role.OWNER])
     day = date(2026, 10, 1).isoformat()
     url = f"/api/reports/daily-sales/?date_from={day}&date_to={day}"

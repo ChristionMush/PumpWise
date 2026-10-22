@@ -135,3 +135,26 @@ describe("day close", () => {
     }));
   });
 });
+
+describe("daily report on the Today dashboard", () => {
+  it("shows the last closed day per station, with intercompany owed and the pumps and shifts as the deep dive", async () => {
+    signedIn();
+    const DASH = { as_of: "2026-10-22T19:30:00Z", totals: { today_litres: "0", today_amount_by_currency: {}, open_alerts: 0, unexplained_loss_7d: "0", flagged_cash_shifts_7d: 0, open_shifts: 0 }, next_refill: null, stations: [] };
+    const report = {
+      station: "s1", station_name: "Chigwende", day: "2026-10-22", currency: "USD", closed: true, closed_at: "2026-10-22T19:12:00Z", closed_by: "Justice", so_far: false,
+      totals: { litres: "1659.000", amount: "3393.88", handed_in: "3390.92", received: "3190.92", intercompany: "200.00" },
+      fuels: [{ fuel: "Diesel", fuel_code: "DIESEL", litres: "707.000", amount: "1442.28" }, { fuel: "Petrol (Unleaded)", fuel_code: "PETROL", litres: "952.000", amount: "1951.60" }],
+      pumps: [{ pump: "4A", nozzle: "Petrol", opening_meter: "924759.36", closing_meter: "925100.36", meter_litres: "341.000", sold_litres: "341.000" }],
+      tanks: [{ tank: "Petrol Tank", fuel_code: "PETROL", opening: "6199", deliveries: "0", dispensed: "952", closing: "5240", loss: "7.000", status: "ok" }],
+      handed_in: [{ payment_type: "cash", label: "Cash", amount: "3190.92" }, { payment_type: "credit", label: "Intercompany issue", amount: "200.00" }],
+      people: [{ attendant: "Latifah Taibu", shift_id: "sh1", shift_started_at: "2026-10-22T11:10:00Z", litres: "341.000", amount: "699.05" }],
+    };
+    mockApi({ "GET /api/auth/me/": { body: { user: ownerUser, tenant } }, "GET /api/dashboard/": { body: DASH }, "GET /api/prices/announcements/": { body: { announcements: [] } }, "GET /api/reports/daily/": { body: [report] } });
+    renderApp("/");
+    const card = await screen.findByRole("region", { name: "Daily report Chigwende" });
+    expect(card).toHaveTextContent(/closed .* by Justice/);
+    expect(card).toHaveTextContent(/Total.*1\D?659 L.*USD 3\D?393\D88/);
+    expect(card).toHaveTextContent(/intercompany 200\D00 is owed by the other company/);
+    expect(card).toHaveTextContent(/Latifah Taibu/); // the deep dive
+  });
+});

@@ -1,8 +1,7 @@
 """The owner's daily message: so they only open the app when something is wrong."""
 from datetime import date
 
-from django.utils import timezone
-
+from apps.operations import tradingday
 from apps.reports.reconciliation import tank_range
 from apps.reports.sales import daily_sales
 from apps.stations.models import Station, Tank
@@ -14,7 +13,7 @@ from .models import Alert
 
 
 def build_daily_summary(tenant_id, day: date | None = None):
-    day = day or timezone.localdate()
+    day = day or tradingday.today()
     tenant = Tenant.objects.get(pk=tenant_id)
     cfg = get_settings(tenant_id)
     name = cfg.display_name or tenant.name

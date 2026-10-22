@@ -4,12 +4,15 @@ Rather than trusting per-feature tests to cover new tables, this walks the live 
 tenant_id, tenant A must see none of tenant B's rows, must not be able to change them, and even the table OWNER
 (which holds DELETE rights) is blocked by FORCE ROW LEVEL SECURITY.
 """
+from datetime import date
+
 import pytest
 from django.db import DatabaseError, connections, transaction
 
 from apps.core.db import db_context
 from apps.onboarding.demo import seed_demo_tenant
-from apps.operations.models import ShiftAttendant, UndoRequest
+from apps.operations.models import DayClose, DayCloseReading, ShiftAttendant, UndoRequest
+from apps.stations.models import Nozzle
 
 PLATFORM_ONLY = {"billing_paymentevent"}
 # Tables the demo does not fill (they hold events that only exist in live operation). Everything else MUST have rows,
@@ -27,6 +30,8 @@ def two_demo_tenants():
         with db_context(tenant_id=tid):
             end = ShiftAttendant.objects.filter(cash_submitted_at__isnull=False).select_related("shift", "user").first()
             UndoRequest.objects.create(tenant_id=tid, shift=end.shift, attendant=end, kind="cash", reason="seed", requested_by=end.user)
+            close = DayClose.objects.create(tenant_id=tid, station=end.shift.station, day=date(2000, 1, 1), closed_at=end.shift.started_at, closed_by=end.user)
+            DayCloseReading.objects.create(tenant_id=tid, day_close=close, nozzle=Nozzle.objects.filter(pump__station=end.shift.station).first(), reading=1)
     return a["tenant_id"], b["tenant_id"]
 
 

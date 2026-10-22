@@ -66,7 +66,7 @@ def _day_with_sales(a, fc, sold, *, opening, closing, delivered=0, day=1):
 
         with db_context(tenant_id=a["tenant"].id):
             services.record_delivery(user=owner, tank=fc.tank, litres=delivered, delivered_at=at(2026, 10, day, 8))
-    dip(a["tenant"], owner, fc, closing, at(2026, 10, day, 20, 0))
+    dip(a["tenant"], owner, fc, closing, at(2026, 10, day, 18, 0))  # 20:00 Harare, before the day closes at 21:00
 
 
 def test_tank_loss_is_opening_plus_deliveries_minus_sold_minus_closing():

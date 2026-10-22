@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Role
 from apps.core.db import db_context
-from apps.operations import rollups
+from apps.operations import rollups, tradingday
 from apps.operations.models import DailySalesRollup, ShiftSummary, TankStatus
 
 from .helpers import client_for, dip, make_forecourt, run_shift, two_tenants
@@ -19,7 +19,7 @@ def test_closing_a_shift_writes_the_rollups():
     now = timezone.now()
     run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [100, 50], started_at=now - timedelta(minutes=9), ended_at=now - timedelta(minutes=2), cash=[("cash", "USD", 250)])
     with db_context(tenant_id=a["tenant"].id):
-        day = DailySalesRollup.objects.get(station=fc.station, day=timezone.localdate())
+        day = DailySalesRollup.objects.get(station=fc.station, day=tradingday.today(fc.station.pk))
         assert (day.litres, day.amount, day.currency) == (Decimal("150.000"), Decimal("300.00"), "USD")
         summary = ShiftSummary.objects.get()
         assert summary.litres == Decimal("150.000") and summary.flagged is True and summary.cash["variance"] == "-50.00"
@@ -68,7 +68,7 @@ def test_deferred_rollups_are_written_once_at_the_end():
         run_shift(a["tenant"], a[Role.ATTENDANT], fc, [10, 0], [30, 0], started_at=now - timedelta(minutes=5), ended_at=now - timedelta(minutes=2))
         assert not DailySalesRollup.objects.exists()  # nothing yet
     with db_context(tenant_id=a["tenant"].id):
-        assert DailySalesRollup.objects.get(station=fc.station, day=timezone.localdate()).litres == Decimal("30.000")
+        assert DailySalesRollup.objects.get(station=fc.station, day=tradingday.today(fc.station.pk)).litres == Decimal("30.000")
         assert ShiftSummary.objects.count() == 2
 
 
