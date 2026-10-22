@@ -211,9 +211,12 @@ def escalate(tenant_id, now=None):
 
 def summary_lines(day):
     """For the owner's daily message: what managers resolved that day and how, and what is still open."""
+    from apps.operations import tradingday
+
     lines = []
+    start, end = tradingday.bounds(None, day)  # the trading day, 21:00 to 21:00
     done = AlertEvent.objects.filter(kind__in=["resolved", "submitted_for_approval"], actor__role=Role.MANAGER,
-                                     created_at__date=day).select_related("alert")
+                                     created_at__gt=start, created_at__lte=end).select_related("alert")
     if done:
         counts = {}
         for e in done:
