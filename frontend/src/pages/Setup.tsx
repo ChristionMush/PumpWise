@@ -20,6 +20,9 @@ export default function Setup() {
   const [ptanks, setPtanks] = useState<string[]>([""]); // one tank per nozzle of the new pump
   const [calibTank, setCalibTank] = useState<string | null>(null); // the tank whose chart is being loaded
   const [note, setNote] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null); // "tank:<id>", "pump:<id>" or "nozzle:<id>" (owner only)
+  const owner = user?.role === "owner";
+  const saved = (msg: string) => { setEditing(null); setNote(msg); setError(null); void load(); };
   const load = async () => {
     const [s, fu, t, p, c] = await Promise.all([api("/api/stations/"), api("/api/fuel-types/"), api("/api/tanks/"), api("/api/pumps/"), api("/api/onboarding/checklist/")]);
     setStations(s.results); setFuels(fu.results); setTanks(t.results); setPumps(p.results); setCheck(c);
@@ -64,12 +67,45 @@ export default function Setup() {
       {stations.map((s) => (
         <section key={s.id} className="card"><h2>{s.name}</h2>
           {s.assignment_mode === "assigned" && <p className="muted">Assigned pumps: each attendant works the pumps a manager gives them (Pumps screen).</p>}
-          {tanks.filter((t) => t.station === s.id).map((t) => <p key={t.id}>🛢 {t.name} · {t.fuel_code} · {Number(t.capacity_litres).toLocaleString()} L {!t.has_calibration && <a className="warn" href="#calibration" onClick={() => setCalibTank(t.id)}>needs calibration chart: upload it</a>}</p>)}
+          {tanks.filter((t) => t.station === s.id).map((t) => (
+            <div key={t.id}>
+              <p>🛢 {t.name} · {t.fuel_code} · {Number(t.capacity_litres).toLocaleString()} L · reserve {Number(t.reserve_litres).toLocaleString()} L {!t.has_calibration && <a className="warn" href="#calibration" onClick={() => setCalibTank(t.id)}>needs calibration chart: upload it</a>}
+                {owner && editing !== `tank:${t.id}` && <button type="button" className="link" onClick={() => setEditing(`tank:${t.id}`)}>Edit</button>}</p>
+              {editing === `tank:${t.id}` && (
+                <ItemEditor title={`Edit ${t.name}`} path={`/api/tanks/${t.id}/`} onClose={() => setEditing(null)} onSaved={() => saved(`${t.name} saved.`)}
+                  note="The fuel and station of a tank are fixed: they decide past sales. Add a new tank if they are wrong."
+                  fields={[{ key: "name", label: "Name", value: t.name }, { key: "capacity_litres", label: "Capacity (litres)", value: t.capacity_litres, numeric: true },
+                    { key: "reserve_litres", label: "Reserve level (litres)", value: t.reserve_litres, numeric: true }]} />
+              )}
+            </div>
+          ))}
           {pumps.filter((p) => p.station === s.id).map((p) => (
-            <p key={p.id}>⛽ {p.name} · {p.nozzles.map((n: any) => `${n.label || `Nozzle ${n.number}`}: ${tankName(n.tank)?.name ?? n.tank_name} (${n.fuel_code})`).join(" · ")}
-              {p.assigned_to_name && <span className="muted"> · {p.assigned_to_name}</span>}
-              {p.brand && <span className="muted"> · {p.brand} {p.model}</span>}
-              {pumpProblem(p) && <span className="warn"> {pumpProblem(p)}</span>}</p>
+            <div key={p.id}>
+              <p>⛽ {p.name} · {p.nozzles.map((n: any) => `${n.label || `Nozzle ${n.number}`}: ${tankName(n.tank)?.name ?? n.tank_name} (${n.fuel_code})`).join(" · ")}
+                {p.assigned_to_name && <span className="muted"> · {p.assigned_to_name}</span>}
+                {p.brand && <span className="muted"> · {p.brand} {p.model}</span>}
+                {pumpProblem(p) && <span className="warn"> {pumpProblem(p)}</span>}
+                {owner && editing !== `pump:${p.id}` && <button type="button" className="link" onClick={() => setEditing(`pump:${p.id}`)}>Edit</button>}</p>
+              {editing === `pump:${p.id}` && (
+                <ItemEditor title={`Edit ${p.name}`} path={`/api/pumps/${p.id}/`} onClose={() => setEditing(null)} onSaved={() => saved(`${p.name} saved.`)}
+                  fields={[{ key: "name", label: "Name", value: p.name }, { key: "brand", label: "Brand", value: p.brand ?? "" },
+                    { key: "model", label: "Model", value: p.model ?? "" }, { key: "year", label: "Year", value: p.year ?? "", numeric: true }]}>
+                  {p.nozzles.map((n: any) => (
+                    <div key={n.id} className="row gap">
+                      <span>{n.label || `Nozzle ${n.number}`}: {tankName(n.tank)?.name ?? n.tank_name} ({n.fuel_code})</span>
+                      {editing !== `nozzle:${n.id}` && <button type="button" className="link" onClick={() => setEditing(`nozzle:${n.id}`)}>Edit nozzle</button>}
+                    </div>
+                  ))}
+                </ItemEditor>
+              )}
+              {p.nozzles.filter((n: any) => editing === `nozzle:${n.id}`).map((n: any) => (
+                <ItemEditor key={n.id} title={`Edit ${p.name}, ${n.label || `nozzle ${n.number}`}`} path={`/api/nozzles/${n.id}/`} onClose={() => setEditing(null)}
+                  onSaved={() => saved(`${p.name}, ${n.label || `nozzle ${n.number}`} saved.`)}
+                  note="Change the tank only if the nozzle was set up on the wrong one: its sales are counted against the tank it draws from."
+                  fields={[{ key: "label", label: "Label", value: n.label ?? "" },
+                    { key: "tank", label: "Draws from", value: n.tank, options: tanks.filter((x) => x.station === p.station).map((x) => ({ value: x.id, label: `${x.name} · ${x.fuel_code}` })) }]} />
+              ))}
+            </div>
           ))}
         </section>
       ))}
@@ -105,5 +141,43 @@ export default function Setup() {
         <label>Draws from<select required value={f.ntank ?? ""} onChange={set("ntank")}><option value="" />{tanks.filter((t) => t.station === nozzlePump?.station).map((t) => <option key={t.id} value={t.id}>{t.name} · {t.fuel_code}</option>)}</select></label>
         <label>Label (optional)<input value={f.nlabel ?? ""} onChange={set("nlabel")} /></label><button className="btn">Add nozzle</button></form>
     </>
+  );
+}
+
+type Field = { key: string; label: string; value: string | number; numeric?: boolean; options?: { value: string; label: string }[] };
+
+/** Owner: edit a tank, pump or nozzle in place. Only changed fields are sent; every change is in the audit log. */
+function ItemEditor({ title, path, fields, note, onClose, onSaved, children }: {
+  title: string; path: string; fields: Field[]; note?: string; onClose: () => void; onSaved: () => void; children?: React.ReactNode;
+}) {
+  const [values, setValues] = useState<Record<string, string>>(Object.fromEntries(fields.map((f) => [f.key, String(f.value ?? "")])));
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    const body: Record<string, unknown> = {};
+    for (const f of fields) {
+      if (values[f.key] === String(f.value ?? "")) continue;
+      body[f.key] = f.numeric ? (values[f.key] === "" ? null : values[f.key].replace(",", ".")) : values[f.key];
+    }
+    if (!Object.keys(body).length) return onClose();
+    setBusy(true); setError(null);
+    try { await api(path, { method: "PATCH", body }); onSaved(); } catch (err) { setError(errorMessage(err)); } finally { setBusy(false); }
+  };
+  return (
+    <form className="card form" onSubmit={save} aria-label={title}>
+      <h3>{title}</h3>
+      {fields.map((f) => (
+        <label key={f.key}>{f.label}
+          {f.options
+            ? <select value={values[f.key]} onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}>{f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+            : <input inputMode={f.numeric ? "decimal" : undefined} value={values[f.key]} onChange={(e) => setValues({ ...values, [f.key]: e.target.value })} />}
+        </label>
+      ))}
+      {note && <p className="muted">{note}</p>}
+      {children}
+      <ErrorNote message={error} />
+      <div className="row gap"><button className="btn primary" disabled={busy}>Save</button><button type="button" className="link" onClick={onClose}>Cancel</button></div>
+    </form>
   );
 }

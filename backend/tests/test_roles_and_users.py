@@ -89,9 +89,15 @@ def test_password_reset_by_owner_signs_the_user_out():
     a, _ = two_tenants()
     att = a[Role.ATTENDANT]
     att_client = client_for(att)
-    res = client_for(a[Role.OWNER]).patch(f"/api/users/{att.id}/", {"password": "Fresh-pass-123"}, format="json")
-    assert res.status_code == 200
+    owner = client_for(a[Role.OWNER])
+    res = owner.patch(f"/api/users/{att.id}/", {"password": "Fresh-pass-123"}, format="json")
+    assert res.status_code == 200 and res.json()["must_change_password"] is True  # they choose their own at next sign-in
     assert att_client.get("/api/auth/me/").status_code == 401
+    # the owner's own password changes only with their current one (Your account, Change my password)
+    mine = owner.patch(f"/api/users/{a[Role.OWNER].id}/", {"password": "Another-pass-456"}, format="json")
+    assert mine.status_code == 400 and "current password" in str(mine.json())
+    changed = owner.post("/api/auth/change-password/", {"current_password": PASSWORD, "new_password": "Another-pass-456"}, format="json")
+    assert changed.status_code == 200, changed.content
 
 
 def test_audit_records_who_changed_what_without_secrets():

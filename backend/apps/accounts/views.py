@@ -168,12 +168,17 @@ class UserViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         user = self.get_object()
         self._guard_target(user)
+        if "password" in request.data and user.pk == request.user.pk:
+            raise ValidationError({"password": "Change your own password under Your account: it asks for your current password."})
         before = audit.snapshot(user, AUDITED_USER_FIELDS)
         serializer = self.get_serializer(user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         try:
             with transaction.atomic():
                 user = serializer.save()
+                if "password" in request.data:  # set by the owner: the person chooses their own at their next sign-in
+                    user.must_change_password = True
+                    user.save(update_fields=["must_change_password", "updated_at"])
         except IntegrityError:
             raise ValidationError({"detail": "That email or phone number is already in use."})
         audit.log("user_updated", actor=request.user, obj=user, changes=audit.diff(before, audit.snapshot(user, AUDITED_USER_FIELDS)), request=request)

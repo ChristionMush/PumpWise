@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, errorMessage } from "../api";
+import { useAuth } from "../auth";
 import { ErrorNote, PasswordInput } from "../components";
 
 export default function Settings() {
+  const { user } = useAuth();
+  const owner = user?.role === "owner";
+  const [editing, setEditing] = useState<string | null>(null); // the team member being edited
   const [s, setS] = useState<any>(null);
   const [exports, setExports] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -36,7 +41,9 @@ export default function Settings() {
         <button className="btn primary" onClick={wrap(() => api("/api/settings/", { method: "PATCH", body: { ...s, logo_url: undefined } }), "Saved.")}>Save settings</button></section>
       <section className="card form"><h2>Team</h2>
         {users.map((u) => (
-          <div key={u.id} className="row between gap"><span>{u.full_name} <span className="muted">· {u.role} · {u.phone ?? u.email}</span></span>
+          <div key={u.id}>
+          <div className="row between gap"><span>{u.full_name} <span className="muted">· {u.role} · {u.phone ?? u.email}</span></span>
+            {owner && editing !== u.id && <button type="button" className="link" onClick={() => setEditing(u.id)}>Edit</button>}
             {(u.role === "manager" || u.role === "attendant") && (
               <select aria-label={`Station of ${u.full_name}`} value={u.station_ids?.length === 1 ? u.station_ids[0] : ""}
                 onChange={(e) => void wrap(() => setStation(u, e.target.value), `${u.full_name}: station saved.`)()}>
@@ -47,6 +54,11 @@ export default function Settings() {
                 })}
               </select>
             )}
+          </div>
+          {owner && editing === u.id && (
+            <MemberEditor member={u} self={u.id === user?.id} onClose={() => setEditing(null)}
+              onSaved={(text) => { setEditing(null); setMsg(text); setError(null); void load(); }} />
+          )}
           </div>
         ))}
         <label>Name<input value={nu.full_name} onChange={(e) => setNu({ ...nu, full_name: e.target.value })} /></label>
@@ -63,9 +75,53 @@ export default function Settings() {
           if (station) await setStation(created, station);
           setNu({ full_name: "", phone: "", role: "attendant", password: "", station: "" });
         }, "User added.")}>Add user</button></section>
+      <section className="card form"><h2>Your account</h2>
+        <p className="muted">Signed in as {user?.full_name}{user?.phone || user?.email ? ` (${user?.phone ?? user?.email})` : ""}.</p>
+        <Link className="btn" to="/change-password">Change my password</Link></section>
       <section className="card form"><h2>Your data</h2><p className="muted">Download everything we hold for your business (CSV and JSON). The link works for 24 hours.</p>
         <button className="btn" onClick={wrap(() => api("/api/exports/", { method: "POST" }), "Preparing your export. Refresh in a minute.")}>Export my data</button>
         {exports.map((e) => <div key={e.id} className="row between"><span>{new Date(e.created_at).toLocaleString()} · {e.status}</span>{e.status === "ready" && <button className="btn" onClick={() => void download(e.id)}>Download</button>}</div>)}</section>
     </>
+  );
+}
+
+/** Owner: change a team member's details, set a new password for them (they choose their own at their next sign-in),
+ * or remove them. The owner changes their own password under "Your account", with their current password. */
+function MemberEditor({ member, self, onClose, onSaved }: { member: any; self: boolean; onClose: () => void; onSaved: (msg: string) => void }) {
+  const [form, setForm] = useState({ full_name: member.full_name ?? "", phone: member.phone ?? "", email: member.email ?? "", role: member.role, password: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof typeof form) => (e: any) => setForm({ ...form, [k]: e.target.value });
+  const run = async (fn: () => Promise<unknown>, msg: string) => {
+    setBusy(true); setError(null);
+    try { await fn(); onSaved(msg); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+  };
+  const save = () => run(() => api(`/api/users/${member.id}/`, { method: "PATCH", body: {
+    full_name: form.full_name, phone: form.phone || null, email: form.email || null,
+    ...(self ? {} : { role: form.role }), ...(form.password ? { password: form.password } : {}),
+  } }), form.password ? `${form.full_name}: saved. They choose their own password at their next sign-in.` : `${form.full_name}: saved.`);
+  const remove = () => {
+    if (!window.confirm(`Remove ${member.full_name}? They can no longer sign in. Their past shifts stay.`)) return;
+    void run(() => api(`/api/users/${member.id}/`, { method: "DELETE" }), `${member.full_name} removed.`);
+  };
+  return (
+    <div className="card form" aria-label={`Edit ${member.full_name}`} role="group">
+      <label>Name<input value={form.full_name} onChange={set("full_name")} /></label>
+      <label>Phone<input inputMode="tel" value={form.phone} onChange={set("phone")} /></label>
+      <label>Email<input type="email" value={form.email} onChange={set("email")} /></label>
+      {!self && member.role !== "owner" && (
+        <label>Role<select value={form.role} onChange={set("role")}><option value="attendant">Attendant</option><option value="manager">Manager</option></select></label>
+      )}
+      {!self && (
+        <label>New password (leave empty to keep theirs)<PasswordInput value={form.password} onChange={set("password")} autoComplete="new-password" /></label>
+      )}
+      {self && <p className="muted">To change your own password, use "Change my password" under Your account.</p>}
+      <ErrorNote message={error} />
+      <div className="row gap">
+        <button type="button" className="btn primary" disabled={busy} onClick={() => void save()}>Save</button>
+        <button type="button" className="link" onClick={onClose}>Cancel</button>
+        {!self && member.role !== "owner" && <button type="button" className="btn danger" disabled={busy} onClick={remove}>Remove</button>}
+      </div>
+    </div>
   );
 }

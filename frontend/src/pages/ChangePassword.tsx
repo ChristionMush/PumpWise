@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, errorMessage, tokens } from "../api";
 import { useAuth } from "../auth";
 import { ErrorNote, PasswordInput } from "../components";
@@ -44,6 +44,7 @@ export default function ChangePassword() {
       </label>
       <ErrorNote message={error} />
       <button className="btn primary" disabled={busy}>{t("pw.submit")}</button>
+      {!user?.must_change_password && <Link className="link" to="/settings">Cancel</Link>}
     </form>
   );
 }
