@@ -1,5 +1,8 @@
 const longDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const n = (v: string | number, digits = 2) => Number(v).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+// a meter at a day close, else the attendants' nearest reading with its time
+const meter = (value: string | null, from: string | null) =>
+  value == null ? "no reading" : from === "close" || from == null ? value : `${value} (attendant, ${new Date(from).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })})`;
 const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 /** One station's trading day (21:00 to 21:00, named by the day it closes): the grand total by payment type, cash
@@ -36,7 +39,8 @@ export function DayReport({ r }: { r: any }) {
         <p key={t.tank} className={t.status === "loss" ? "warn" : "muted"}>{t.tank}: {n(t.opening, 0)} + {n(t.deliveries, 0)} − {n(t.dispensed, 0)} − {n(t.closing, 0)} = {Number(t.loss) > 0 ? "+" : ""}{n(t.loss, 1)} L</p>
       ))}
       <details><summary>Deep dive: pumps and shifts</summary>
-        <ul className="plain">{r.pumps.map((p: any) => <li key={`${p.pump}-${p.nozzle}`}>{p.pump} · {p.nozzle}: {p.opening_meter ?? "?"} → {p.closing_meter ?? "?"}{p.meter_litres ? ` = ${n(p.meter_litres, 0)} L` : ""}</li>)}</ul>
+        <ul className="plain">{r.pumps.map((p: any) => <li key={`${p.pump}-${p.nozzle}`}>{p.pump} · {p.nozzle}: {meter(p.opening_meter, p.opening_from)} → {meter(p.closing_meter, p.closing_from)}{p.meter_litres ? ` = ${n(p.meter_litres, 0)} L` : ""}</li>)}</ul>
+        {r.pumps.some((p: any) => p.opening_from !== "close" || p.closing_from !== "close") && <p className="muted">Without a day close, the nearest attendant reading is shown with its time.</p>}
         <ul className="plain">{r.people.map((p: any) => <li key={`${p.shift_id}-${p.attendant}`}>{p.attendant} (shift from {new Date(p.shift_started_at).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}): {n(p.litres, 0)} L · {r.currency} {n(p.amount)}</li>)}</ul>
       </details>
       {r.shifts?.length > 0 && <details><summary>Shifts ({r.shifts.length})</summary>

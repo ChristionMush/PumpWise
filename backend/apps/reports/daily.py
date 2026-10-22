@@ -17,7 +17,7 @@ from decimal import Decimal
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.operations.models import CashSubmission, DayClose, DayCloseReading, Shift, TankReading, Transaction
+from apps.operations.models import CashSubmission, DayClose, DayCloseReading, PumpMeterReading, Shift, TankReading, Transaction
 from apps.operations.services import dispensed_litres
 from apps.operations.tradingday import Calendar
 from apps.stations.models import Nozzle, Tank
@@ -106,15 +106,28 @@ def daily_report(station, day):
              for r in sales.values("fuel_type__name", "fuel_type__code").annotate(litres=Sum("litres"), amount=Sum("amount")).order_by("fuel_type__name")]
     totals = sales.aggregate(litres=Sum("litres"), amount=Sum("amount"))
 
-    # per pump: opening and closing meters at the day closes
+    # per pump: opening and closing meters at the day closes; without a close, the attendants' nearest reading
+    # (with its time), so the line is never blank
     opened = {r.nozzle_id: r.reading for r in DayCloseReading.objects.filter(day_close=opening)} if opening else {}
     closed = {r.nozzle_id: r.reading for r in DayCloseReading.objects.filter(day_close=close)} if close else {}
     sold_by_nozzle = {r["nozzle_id"]: r["litres"] for r in sales.values("nozzle_id").annotate(litres=Sum("litres"))}
+    until = min(end, timezone.now())
+
+    def attendant_reading(nozzle, at):
+        r = PumpMeterReading.objects.filter(nozzle=nozzle, reading_at__lte=at).order_by("-reading_at", "-created_at").first()
+        return (r.reading, r.reading_at) if r else (None, None)
+
     pumps = []
     for n in Nozzle.objects.filter(pump__station=station).select_related("pump", "tank__fuel_type").order_by("pump__name", "number"):
         a, b = opened.get(n.pk), closed.get(n.pk)
+        a_at = b_at = None
+        if a is None:
+            a, a_at = attendant_reading(n, start)
+        if b is None:
+            b, b_at = attendant_reading(n, until)
         pumps.append({"pump": n.pump.name, "nozzle": str(n), "fuel_code": n.tank.fuel_type.code,
                       "opening_meter": str(a) if a is not None else None, "closing_meter": str(b) if b is not None else None,
+                      "opening_from": "close" if n.pk in opened else a_at, "closing_from": "close" if n.pk in closed else b_at,
                       "meter_litres": _s(dispensed_litres(a, b, n.meter_max, []), Q3) if a is not None and b is not None else None,
                       "sold_litres": _s(sold_by_nozzle.get(n.pk), Q3)})
 

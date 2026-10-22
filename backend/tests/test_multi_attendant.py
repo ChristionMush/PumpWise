@@ -670,6 +670,10 @@ def test_the_day_close_ends_the_trading_day_at_about_21_00():
     losses = report["cash_losses"]
     assert (losses["total"], losses["milking"], losses["milking_count"]) == ("2.50", "0.50", 1)
     assert losses["by_attendant"] == [{"attendant": att_a.full_name, "amount": "2.00"}]
+    # 2 Oct is not closed: Pump 1 opens at the 1 Oct close, and closes at the attendant's last reading (with its time)
+    pump1 = next(p for p in report["pumps"] if p["pump"] == "Pump 1" and p["closing_meter"] == "100.00")
+    assert pump1["opening_meter"] == "40.00" and pump1["opening_from"] == "close" and pump1["closing_from"] != "close"
+    assert pump1["meter_litres"] == "60.000"
 
 
 def test_an_earlier_day_can_be_closed_afterwards_and_its_sales_are_re_split():

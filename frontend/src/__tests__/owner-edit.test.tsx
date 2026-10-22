@@ -176,7 +176,7 @@ describe("daily report on the Today dashboard", () => {
       cash_losses: { total: "3.46", attendants: "2.50", by_attendant: [{ attendant: "Nancy Moyo", amount: "2.50" }], milking: "0.96", milking_count: 3 },
       dips: [{ fuel: "Petrol (Unleaded)", fuel_code: "PETROL", litres: "5240.000", tanks: [{ tank: "Petrol Tank", dip_mm: "1312.0", litres: "5240.000", at: "2026-10-22T19:12:00Z" }] }],
       fuels: [{ fuel: "Diesel", fuel_code: "DIESEL", litres: "707.000", amount: "1442.28" }, { fuel: "Petrol (Unleaded)", fuel_code: "PETROL", litres: "952.000", amount: "1951.60" }],
-      pumps: [{ pump: "4A", nozzle: "Petrol", opening_meter: "924759.36", closing_meter: "925100.36", meter_litres: "341.000", sold_litres: "341.000" }],
+      pumps: [{ pump: "4A", nozzle: "Petrol", opening_meter: "924759.36", closing_meter: "925100.36", opening_from: "2026-10-21T16:37:00Z", closing_from: "close", meter_litres: "341.000", sold_litres: "341.000" }],
       tanks: [{ tank: "Petrol Tank", fuel_code: "PETROL", opening: "6199", deliveries: "0", dispensed: "952", closing: "5240", loss: "7.000", status: "ok" }],
       handed_in: [{ payment_type: "cash", label: "Cash", amount: "3190.92" }, { payment_type: "card", label: "Swipe", amount: "0.00" }, { payment_type: "mobile_money", label: "EcoCash", amount: "0.00" }, { payment_type: "credit", label: "Inter Company Credit", amount: "200.00" }],
       people: [{ attendant: "Latifah Taibu", shift_id: "sh1", shift_started_at: "2026-10-22T11:10:00Z", litres: "341.000", amount: "699.05" }],
@@ -193,5 +193,6 @@ describe("daily report on the Today dashboard", () => {
     expect(losses).toHaveTextContent(/Cash Losses Total\s*USD 3\D46.*Nancy Moyo\s*USD 2\D50.*Milking errors \(under \$1, 3\)\s*USD 0\D96/);
     expect(within(card).getByRole("table", { name: "Dips" })).toHaveTextContent(/Petrol \(Unleaded\)\s*5\D?240 L.*Petrol Tank\s*1\D?312 mm\s*5\D?240 L/);
     expect(card).toHaveTextContent(/Latifah Taibu/); // the deep dive
+    expect(card).toHaveTextContent(/4A · Petrol: 924759\.36 \(attendant, .+\) → 925100\.36 = 341 L/); // no close the day before: the attendant's reading
   });
 });
