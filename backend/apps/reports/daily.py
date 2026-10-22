@@ -35,14 +35,25 @@ def _s(v, q):
     return str((v or Decimal(0)).quantize(q))
 
 
-def cash_losses(station, start, end):
+def shift_checks(station, start, end):
+    """The shifts whose cash was handed in during the day, each with its cash check: the day's drill-down."""
+    shifts = (Shift.objects.filter(station=station, attendants__cash_submitted_at__gt=start, attendants__cash_submitted_at__lte=end)
+              .distinct().select_related("station").order_by("started_at"))
+    return [(shift, cash_summary(shift)) for shift in shifts]
+
+
+def shift_rows(checks):
+    return [{"shift_id": str(s.pk), "started_at": s.started_at, "ended_at": s.ended_at, "status": s.status,
+             "attendants": [a["name"] for a in c["by_attendant"]], "expected": c["expected"], "handed_in": c["submitted_total"],
+             "cash_difference": c["cash_difference"], "cash_status": c["status"], "per_attendant_expected": c["per_attendant_expected"],
+             "by_attendant": c["by_attendant"], "by_pump": c["by_pump"]} for s, c in checks]
+
+
+def cash_losses(checks):
     """Shortages on the shifts whose cash was handed in during the day, per attendant: their own difference when
     pumps are assigned (or they ran the shift alone), else the shift's difference shared by the people on it."""
-    shifts = Shift.objects.filter(station=station, attendants__cash_submitted_at__gt=start,
-                                  attendants__cash_submitted_at__lte=end).distinct().select_related("station")
     people, milking, milking_count = defaultdict(Decimal), Decimal(0), 0
-    for shift in shifts:
-        c = cash_summary(shift)
+    for shift, c in checks:
         if c["missing_rate"]:
             continue
         if c["per_attendant_expected"]:  # each person who has handed in, even while others work on
@@ -128,6 +139,7 @@ def daily_report(station, day):
               for r in sales.values("attendant__full_name", "shift_id", "shift__started_at").annotate(litres=Sum("litres"), amount=Sum("amount"))
               .order_by("shift__started_at", "attendant__full_name")]
 
+    checks = shift_checks(station, start, end)
     return {
         "station": str(station.pk), "station_name": station.name, "day": day.isoformat(), "currency": station.pricing_currency,
         "from": start, "to": end, "closed": bool(close), "closed_at": close.closed_at if close else None,
@@ -137,5 +149,5 @@ def daily_report(station, day):
                    "grand_total": _s(sum(cash.values(), Decimal(0)), Q2),
                    "received": _s(received, Q2), "intercompany": _s(cash.get("credit"), Q2)},
         "fuels": fuels, "pumps": pumps, "tanks": tanks, "handed_in": handed, "people": people,
-        "cash_losses": cash_losses(station, start, end), "dips": dips_by_fuel(station, close, end),
+        "cash_losses": cash_losses(checks), "dips": dips_by_fuel(station, close, end), "shifts": shift_rows(checks),
     }

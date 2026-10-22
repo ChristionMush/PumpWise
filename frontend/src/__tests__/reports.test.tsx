@@ -3,12 +3,34 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { mockApi, ownerUser, renderApp, signedIn } from "./helpers";
 
-const me = { "GET /api/auth/me/": { body: { user: ownerUser, tenant: { id: "t1", name: "Msasa Fuel", slug: "m", status: "active" } } } };
+const me = { "GET /api/auth/me/": { body: { user: ownerUser, tenant: { id: "t1", name: "Msasa Fuel", slug: "m", status: "active" } } }, "GET /api/reports/days/": { body: { days: [] } } };
 const sales = { totals: { litres: "100", amount_by_currency: { USD: "150.00" } }, averages: { avg_daily_litres: "100", by_weekday: [] }, days: [] };
+const dayReport = {
+  station: "s1", station_name: "Chigwende", day: "2026-10-21", currency: "USD", closed: true, closed_at: "2026-10-21T19:05:00Z", closed_by: "Justice", so_far: false,
+  totals: { litres: "105.000", amount: "157.50", handed_in: "155.00", grand_total: "155.00", received: "155.00", intercompany: "0.00" },
+  handed_in: [{ payment_type: "cash", label: "Cash", amount: "155.00" }, { payment_type: "card", label: "Swipe", amount: "0.00" }, { payment_type: "mobile_money", label: "EcoCash", amount: "0.00" }, { payment_type: "credit", label: "Inter Company Credit", amount: "0.00" }],
+  cash_losses: { total: "2.50", attendants: "2.50", by_attendant: [{ attendant: "Tendai", amount: "2.50" }], milking: "0.00", milking_count: 0 },
+  dips: [], fuels: [{ fuel: "Petrol", fuel_code: "PETROL", litres: "105.000", amount: "157.50" }], pumps: [], tanks: [], people: [],
+  shifts: [{ shift_id: "sh1", started_at: "2026-10-20T16:00:00Z", ended_at: "2026-10-21T05:00:00Z", status: "closed", attendants: ["Tendai"], expected: "157.50", handed_in: "155.00",
+    cash_difference: "-2.50", cash_status: "short", per_attendant_expected: true, by_attendant: [], by_pump: [{ pump_id: "p1", pump: "Pump 1", fuel_code: "PETROL", attendant: "u1", attendant_name: "Tendai", litres: "105.000", amount: "157.50" }] }],
+};
 const person = { user: "u1", name: "Tendai", shifts: 2, shared_shifts: 0, flagged_shifts: 1, litres: "80.000", sales: "120.00", handed_in: "115.00", expected: "120.00", cash_difference: "-5.00",
   pumps: [{ pump: "Pump 1", fuel_code: "PETROL", litres: "80.000", amount: "120.00" }] };
 
 describe("reports", () => {
+  it("opens on the trading days, each with its grand total and its shifts as the drill-down", async () => {
+    signedIn();
+    mockApi({ ...me, "GET /api/reports/days/": { body: { days: [dayReport] } } });
+    renderApp("/reports");
+    const day = await screen.findByRole("region", { name: "Daily report Chigwende" });
+    expect(day).toHaveTextContent(/Date: Wednesday,? (21 October|October 21),? 2026/);
+    expect(day).toHaveTextContent(/Grand Total\s*USD 155\D00/);
+    const user = userEvent.setup();
+    await user.click(within(day).getByText("Shifts (1)"));
+    expect(within(day).getByRole("generic", { name: "Shift Tendai" })).toHaveTextContent(/Expected USD 157\D50 · handed in 155\D00 · cash difference -2\D50/);
+  });
+
+
   it("switches tabs without drawing one tab's data as another (no blank screen)", async () => {
     signedIn();
     mockApi({
@@ -20,8 +42,10 @@ describe("reports", () => {
     });
     renderApp("/reports");
     const user = userEvent.setup();
+    expect(await screen.findByText("No days in this period.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Sales" }));
     expect(await screen.findByText("Average 100 L per day")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Cash check" }));
+    await user.click(screen.getByRole("button", { name: "Shifts: cash check" }));
     expect(await screen.findByText("No closed shifts in this period.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Fuel check" }));
     expect(await screen.findByText(/No tank checks yet/)).toBeInTheDocument();
@@ -62,9 +86,9 @@ describe("reports", () => {
   it("does not show the accounting pack to a manager", async () => {
     signedIn();
     const manager = { ...ownerUser, id: "m", role: "manager", full_name: "Justice" };
-    mockApi({ "GET /api/auth/me/": { body: { user: manager, tenant: { id: "t1", name: "Msasa Fuel", slug: "m", status: "active" } } }, "GET /api/reports/daily-sales/": { body: sales } });
+    mockApi({ "GET /api/auth/me/": { body: { user: manager, tenant: { id: "t1", name: "Msasa Fuel", slug: "m", status: "active" } } }, "GET /api/reports/days/": { body: { days: [] } } });
     renderApp("/reports");
-    expect(await screen.findByText("Average 100 L per day")).toBeInTheDocument();
+    expect(await screen.findByText("No days in this period.")).toBeInTheDocument();
     expect(screen.queryByText(/Accounting pack/)).not.toBeInTheDocument();
   });
 });

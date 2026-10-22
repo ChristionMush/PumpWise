@@ -8,6 +8,7 @@ import { loadPrefill, type StationInfo } from "./Shift";
 interface CloseStatus { station: string; day: string; closed: { day: string; closed_at: string; closed_by: string | null } | null; recent: { id: string; day: string; closed_at: string; closed_by: string | null }[] }
 
 const dayName = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+const yesterday = () => { const d = new Date(Date.now() - 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /** Managers: close the trading day at about 21:00 (every tank's dip and every pump's meter in one go), record fuel
@@ -19,6 +20,7 @@ export default function Dip() {
   const [dips, setDips] = useState<Record<string, { mm: string; litres: string }>>({});
   const [meters, setMeters] = useState<Record<string, string>>({});
   const [note, setNote] = useState("");
+  const [earlier, setEarlier] = useState<{ day: string; time: string } | null>(null); // closing a day that was missed
   const [busy, setBusy] = useState(false);
   const [tankId, setTankId] = useState("");
   const [litres, setLitres] = useState("");
@@ -51,12 +53,14 @@ export default function Dip() {
     if (noChart) return setError(`${noChart.name} has no calibration chart yet. Enter its litres instead.`);
     setBusy(true); setError(null); setMsg(null);
     try {
+      const at = earlier ? new Date(`${earlier.day}T${earlier.time}`).toISOString() : undefined;
       await api("/api/day-close/", { method: "POST", body: {
-        station: station.id, note,
+        station: station.id, note, ...(at ? { at } : {}),
         dips: stationTanks.map((t) => ({ tank: t.id, ...(dips[t.id].litres ? { litres: dips[t.id].litres } : { dip_mm: dips[t.id].mm }) })),
         meters: nozzles.map((n) => ({ nozzle: n.id, reading: meters[n.id] })),
       } });
-      setDips({}); setMeters({}); setNote(""); setMsg(`${station.name}: the day is closed.`);
+      setDips({}); setMeters({}); setNote(""); setEarlier(null);
+      setMsg(earlier ? `${station.name}: ${dayName(earlier.day)} is closed. Its sales, fuel check and report are recalculated.` : `${station.name}: the day is closed.`);
       await loadStatus();
     } catch (err) {
       setError(errorMessage(err));
@@ -91,11 +95,18 @@ export default function Dip() {
       {stations.length > 1 && <label>Station<select value={stationId} onChange={(e) => setStationId(e.target.value)}>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
 
       <form onSubmit={closeDay} className="card form" aria-label="Close the day">
-        <h2>Close the day{today ? `: ${dayName(today.day)}` : ""}</h2>
-        {today?.closed ? (
-          <p className="ok-note">Closed at {time(today.closed.closed_at)}{today.closed.closed_by ? ` by ${today.closed.closed_by}` : ""}.</p>
-        ) : (<>
-          <p className="muted">At about 21:00, pause the pumps, dip every tank and read every pump's meter, then close the day. The day's sales, fuel check and report run from one close to the next.</p>
+        <h2>{earlier ? "Close an earlier day" : `Close the day${today ? `: ${dayName(today.day)}` : ""}`}</h2>
+        {!earlier && today?.closed && <p className="ok-note">Closed at {time(today.closed.closed_at)}{today.closed.closed_by ? ` by ${today.closed.closed_by}` : ""}.</p>}
+        {earlier ? (
+          <div className="row gap">
+            <label>Day<input type="date" aria-label="Day to close" max={yesterday()} value={earlier.day} onChange={(e) => setEarlier({ ...earlier, day: e.target.value })} /></label>
+            <label>Closed at<input type="time" aria-label="Time of the close" value={earlier.time} onChange={(e) => setEarlier({ ...earlier, time: e.target.value })} /></label>
+            <button type="button" className="btn" onClick={() => setEarlier(null)}>Cancel</button>
+          </div>
+        ) : <button type="button" className="btn" onClick={() => setEarlier({ day: yesterday(), time: "21:00" })}>Close an earlier day</button>}
+        {earlier && <p className="muted">Enter the dips and meters as they were at that time (from the paper record). The sales of anyone working through it are split there, and that day's and the next day's figures are recalculated. Nobody's litres or cash change.</p>}
+        {(earlier || !today?.closed) && (<>
+          {!earlier && <p className="muted">At about 21:00, pause the pumps, dip every tank and read every pump's meter, then close the day. The day's sales, fuel check and report run from one close to the next.</p>}
           <h3>Tank dips</h3>
           {stationTanks.map((t) => (
             <div key={t.id} className="row gap">
@@ -106,12 +117,12 @@ export default function Dip() {
           ))}
           <h3>Pump meters</h3>
           {nozzles.map((n) => (
-            <label key={n.id}>{n.pump.name} · {n.label} <span className="muted">({n.fuel_code}{n.last_reading ? `, last ${n.last_reading}` : ""})</span>
+            <label key={n.id}>{n.pump.name} · {n.label} <span className="muted">({n.fuel_code}{n.last_reading && !earlier ? `, last ${n.last_reading}` : ""})</span>
               <input inputMode="decimal" value={meters[n.id] ?? ""} onChange={(e) => setMeters({ ...meters, [n.id]: e.target.value.replace(",", ".") })} />
             </label>
           ))}
           <label>Note (optional)<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
-          <button className="btn primary" disabled={busy}>Close the day</button>
+          <button className="btn primary" disabled={busy}>{earlier ? `Close ${earlier.day ? dayName(earlier.day) : "that day"}` : "Close the day"}</button>
           <p className="muted">Needs signal. Attendants on shift keep working their pumps: their part and their cash are not affected.</p>
         </>)}
         {today && today.recent.length > 0 && (

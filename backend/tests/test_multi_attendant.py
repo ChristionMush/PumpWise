@@ -670,3 +670,40 @@ def test_the_day_close_ends_the_trading_day_at_about_21_00():
     losses = report["cash_losses"]
     assert (losses["total"], losses["milking"], losses["milking_count"]) == ("2.50", "0.50", 1)
     assert losses["by_attendant"] == [{"attendant": att_a.full_name, "amount": "2.00"}]
+
+
+def test_an_earlier_day_can_be_closed_afterwards_and_its_sales_are_re_split():
+    """The manager forgot to close 1 Oct. They enter its 21:00 dips and meters the next day: the night shift's sales
+    are split at that moment between 1 Oct and 2 Oct; nobody's litres or money change."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca, cb = client_for(att_a), client_for(att_b)
+    body = {"station": str(fc.station.pk), "started_at": "2026-10-01T16:00:00Z"}  # 18:00 in Harare
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:00:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150")}, format="json")
+    cb.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:00:00Z", "readings": readings(p2, [5, 0]), "cash": cash("7.50")}, format="json")
+
+    def sold():
+        rows = mgr.get("/api/reports/daily-sales/", {"date_from": "2026-10-01", "date_to": "2026-10-02"}).json()["days"]
+        return {d["date"]: d["litres"] for d in rows}
+
+    assert sold() == {"2026-10-01": "0.000", "2026-10-02": "105.000"}  # no close: it all lands when the shift ended
+
+    def close(meters, at="2026-10-01T19:00:00Z"):  # 21:00 on 1 Oct, entered on 2 Oct
+        return mgr.post("/api/day-close/", {"station": str(fc.station.pk), "at": at, "dips": [{"tank": str(fc.tank.pk), "litres": "5000"}],
+                                            "meters": [{"nozzle": str(n.pk), "reading": str(v)} for n, v in zip(fc.nozzles + p2, meters, strict=True)]},
+                        format="json")
+
+    above = close([120, 0, 2, 0])
+    assert above.status_code == 400 and "above the next number 100.00" in str(above.json())
+    assert close([40, 0, 2, 0], at="2030-01-01T19:00:00Z").status_code == 400  # not in the future
+    assert close([40, 0, 2, 0]).status_code == 201
+    assert sold() == {"2026-10-01": "42.000", "2026-10-02": "63.000"}
+    with db_context(tenant_id=a["tenant"].id):
+        assert Transaction.objects.filter(shift_id=sid).aggregate(s=Sum("litres"))["s"] == Decimal("105.000")
+        assert Transaction.objects.filter(shift_id=sid).aggregate(s=Sum("amount"))["s"] == Decimal("157.50")
+
+    # Reports by day: newest first, each day with its shifts as the drill-down
+    days = mgr.get("/api/reports/days/", {"date_from": "2026-10-01", "date_to": "2026-10-02", "station": str(fc.station.pk)}).json()["days"]
+    assert [(d["day"], d["closed"], d["totals"]["litres"]) for d in days] == [("2026-10-02", False, "63.000"), ("2026-10-01", True, "42.000")]
+    assert [s["shift_id"] for s in days[0]["shifts"]] == [sid] and days[0]["totals"]["grand_total"] == "157.50"

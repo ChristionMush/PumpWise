@@ -58,9 +58,11 @@ class TankReconciliationView(APIView):
 
 
 def _closed_shifts(request, with_open=False):
-    """Shifts started in the chosen dates (and stations). with_open: also shifts still running, for their finished parts."""
+    """Shifts started in the chosen trading days (21:00 to 21:00) and stations. with_open: also shifts still running,
+    for their finished parts."""
     frm, to = _dates(request, default_days=14)
-    qs = Shift.objects.select_related("station").prefetch_related("attendants__user").filter(started_at__date__gte=frm, started_at__date__lte=to)
+    start, end = tradingday.bounds(None, frm)[0], tradingday.bounds(None, to)[1]
+    qs = Shift.objects.select_related("station").prefetch_related("attendants__user").filter(started_at__gt=start, started_at__lte=end)
     if not with_open:
         qs = qs.exclude(status="open")
     ids = _stations(request)
@@ -137,6 +139,32 @@ class AccountingPackView(APIView):
         resp = HttpResponse(body, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         resp["Content-Disposition"] = f'attachment; filename="{name}"'
         return resp
+
+
+class DaysReportView(APIView):
+    """Reports by day: the daily report of every trading day in the dates (newest first, at most 31), per station;
+    each day's shifts are its drill-down."""
+
+    permission_classes = [IsOwnerOrManager]
+
+    def get(self, request):
+        from apps.stations.models import Station
+
+        from .daily import daily_report
+
+        frm, to = _dates(request, default_days=14)
+        to = min(to, tradingday.today())  # no empty days ahead
+        frm = max(frm, to - timedelta(days=30))
+        ids = _stations(request)
+        stations = Station.objects.filter(status="active")
+        if ids is not None:
+            stations = stations.filter(pk__in=ids)
+        out = []
+        day = to
+        while day >= frm:
+            out.extend(daily_report(st, day) for st in stations.order_by("name"))
+            day -= timedelta(days=1)
+        return Response({"days": out})
 
 
 class DailyReportView(APIView):

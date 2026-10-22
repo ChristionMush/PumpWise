@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, downloadFile, errorMessage } from "../api";
 import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
+import { DayReport } from "./DayReport";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
@@ -10,7 +11,7 @@ const CASH_LABEL: Record<string, string> = { ok: "ok", short: "cash difference",
 
 export default function Reports() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"sales" | "tank" | "cash" | "people">("sales");
+  const [tab, setTab] = useState<"days" | "sales" | "tank" | "cash" | "people">("days");
   const [from, setFrom] = useState(daysAgo(13));
   const [to, setTo] = useState(today());
   const [stations, setStations] = useState<{ id: string; name: string }[]>([]);
@@ -22,19 +23,23 @@ export default function Reports() {
   const data = loaded?.tab === tab ? loaded.data : null;
   useEffect(() => {
     setLoaded(null); setError(null);
-    const path = { sales: "/api/reports/daily-sales/", tank: "/api/reconciliation/tanks/", cash: "/api/reconciliation/cash/", people: "/api/reports/attendants/" }[tab];
+    const path = { days: "/api/reports/days/", sales: "/api/reports/daily-sales/", tank: "/api/reconciliation/tanks/", cash: "/api/reconciliation/cash/", people: "/api/reports/attendants/" }[tab];
     api(`${path}?date_from=${from}&date_to=${to}${station ? `&station=${station}` : ""}`).then((d) => setLoaded({ tab, data: d })).catch((e) => setError(errorMessage(e)));
   }, [tab, from, to, station]);
   return (
     <>
       <h1>Reports</h1>
-      <div className="chips">{([["sales", "Sales"], ["tank", "Fuel check"], ["cash", "Cash check"], ["people", "By attendant"]] as const).map(([k, l]) => <button key={k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="chips">{([["days", "By day"], ["sales", "Sales"], ["tank", "Fuel check"], ["cash", "Shifts: cash check"], ["people", "By attendant"]] as const).map(([k, l]) => <button key={k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
       <div className="row gap">
         {stations.length > 1 && <label>Station<select value={station} onChange={(e) => setStation(e.target.value)}><option value="">All stations</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
         <label>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></div>
       <ErrorNote message={error} />
       {user?.role === "owner" && <AccountingPack stations={stations} />}
       {!data && !error && <p className="muted center">Loading…</p>}
+      {data && tab === "days" && (data.days.length ? (<>
+        <p className="muted">Each trading day runs 21:00 to 21:00 and is named by the day it closes. Open a day's shifts for the detail.</p>
+        {data.days.map((r: any) => <DayReport key={`${r.day}-${r.station}`} r={r} />)}</>)
+        : <p className="muted center">No days in this period.</p>)}
       {data && tab === "sales" && (<>
         <section className="card">{station && <p className="muted">{stations.find((s) => s.id === station)?.name}</p>}<strong>{Number(data.totals.litres).toLocaleString()} L</strong> sold · {Object.entries(data.totals.amount_by_currency).map(([c, a]) => `${c} ${a}`).join(" · ")}
           <p className="muted">Average {Number(data.averages.avg_daily_litres).toLocaleString()} L per day</p>

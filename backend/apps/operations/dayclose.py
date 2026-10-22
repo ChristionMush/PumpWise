@@ -4,7 +4,7 @@ report, so the tanks and the meters line up exactly.
 
 * Every tank and every nozzle at the station is needed; a meter lower than its last number is refused (a typo), unless
   the meter went round.
-* A pump someone is working at that moment gets a reading on their shift at the close: their stretch is split there,
+* A pump someone was working at that moment gets a reading on their shift at the close: their stretch is split there,
   so each day gets its own litres. Their part of the shift goes on and their cash is unchanged.
 * One close per station and day. Every close is in the audit log.
 """
@@ -20,17 +20,38 @@ from apps.audit import services as audit
 from apps.stations.models import Nozzle, Tank
 
 from . import services, tradingday
-from .models import DayClose, DayCloseReading, PumpMeterReading
+from .models import DayClose, DayCloseReading, PumpMeterReading, Shift
 
 
 def _went_round(last, value, meter_max):
     return last > meter_max * Decimal("0.9") and value < meter_max * Decimal("0.1")
 
 
+def working_at(nozzle, at):
+    """The shift pumping this nozzle at that moment: it read the nozzle before, and read it again after (or is still
+    open, and on an assigned station someone is still on the pump)."""
+    starts = (PumpMeterReading.objects.filter(nozzle=nozzle, kind=PumpMeterReading.Kind.START, reading_at__lt=at)
+              .select_related("shift__station").order_by("-reading_at")[:5])
+    for r in starts:
+        shift = r.shift
+        if PumpMeterReading.objects.filter(shift=shift, nozzle=nozzle, reading_at__gt=at).exists():
+            return shift
+        if shift.status == Shift.Status.OPEN:
+            if not services.is_assigned_station(shift.station):
+                return shift
+            working = services.open_pump_assignment(nozzle.pump)
+            return shift if working is not None and working.shift_id == shift.pk else None
+    return None
+
+
 def close_day(*, user, station, dips, meters, at=None, note="", request=None):
-    """dips: [{"tank", "litres" | "dip_mm"}] for every tank; meters: [{"nozzle", "reading"}] for every nozzle."""
+    """dips: [{"tank", "litres" | "dip_mm"}] for every tank; meters: [{"nozzle", "reading"}] for every nozzle.
+    at: when the close was done; an earlier day can be closed afterwards (its sales are re-split at that moment)."""
     require(user, "tank_records", "Only a manager or the owner closes the day.")
-    at = at or timezone.now()
+    now = timezone.now()
+    at = at or now
+    if at > now + timedelta(minutes=5):
+        raise ValidationError({"detail": "A day can't be closed in the future."})
     day = tradingday.day_of_close(at)
     done = DayClose.objects.filter(station=station, day=day).first()
     if done is not None:
@@ -50,6 +71,10 @@ def close_day(*, user, station, dips, meters, at=None, note="", request=None):
         last = PumpMeterReading.objects.filter(nozzle=n, reading_at__lte=at).order_by("-reading_at", "-created_at").first()
         if last and meter_of[n.pk] < last.reading and not _went_round(last.reading, meter_of[n.pk], n.meter_max):
             problems.append(f"{n.pump.name} {n}: {meter_of[n.pk]} is below its last number {last.reading}")
+        nxt = PumpMeterReading.objects.filter(nozzle=n, reading_at__gt=at).order_by("reading_at", "created_at").first()
+        if nxt and meter_of[n.pk] > nxt.reading and not _went_round(meter_of[n.pk], nxt.reading, n.meter_max):  # closing an earlier day
+            problems.append(f"{n.pump.name} {n}: {meter_of[n.pk]} is above the next number {nxt.reading} "
+                            f"({timezone.localtime(nxt.reading_at):%d %b %H:%M})")
     if problems:
         raise ValidationError({"detail": "Check these meter numbers: " + "; ".join(problems) + "."})
 
@@ -63,13 +88,16 @@ def close_day(*, user, station, dips, meters, at=None, note="", request=None):
         split = set()
         for n in nozzles:
             DayCloseReading.objects.create(tenant_id=station.tenant_id, day_close=close, nozzle=n, reading=meter_of[n.pk])
-            working = services.open_pump_assignment(n.pump)
-            if working is not None:  # someone is on this pump: their stretch is split at the close
-                services._record_reading(working.shift, n, PumpMeterReading.Kind.CHECKPOINT, meter_of[n.pk], at, user)
-                split.add(working.shift)
+            shift = working_at(n, at)
+            if shift is not None:  # someone was pumping through the close: their stretch is split there
+                services._record_reading(shift, n, PumpMeterReading.Kind.CHECKPOINT, meter_of[n.pk], at, user)
+                split.add(shift)
         for shift in split:
             shift.save()
-            services.update_sales_so_far(shift)
+            if shift.status == Shift.Status.OPEN:
+                services.update_sales_so_far(shift)
+            else:  # an earlier day closed afterwards: rebuild the shift's sales, same litres and money, split at the close
+                services.compute_transactions(shift)
         from .rollups import refresh_daily
 
         for d in (day, day + timedelta(days=1)):  # the sales either side of the close

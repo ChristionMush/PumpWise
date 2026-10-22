@@ -143,14 +143,16 @@ def test_the_monthly_accounting_pack_has_every_sheet_with_the_months_numbers():
     res = owner.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"})
     assert res.status_code == 200 and "spreadsheetml" in res["Content-Type"] and "2026-10" in res["Content-Disposition"]
     wb = load_workbook(io.BytesIO(res.content))
-    assert wb.sheetnames == ["Sales", "Takings", "Cash differences", "Deliveries", "Stock", "Prices"]
+    assert wb.sheetnames == ["Daily", "Sales", "Takings", "Cash differences", "Deliveries", "Stock", "Prices"]
 
     def first(name):
         return next(wb[name].iter_rows(min_row=4, values_only=True))
 
+    # the trading day: litres, sales, grand total by payment type, cash losses ($10 short is the attendant's), the dip
+    assert first("Daily")[1:] == ("not closed", "", 100.0, 150.0, 140.0, 140.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 8000.0)
     assert first("Sales")[1:] == ("Petrol", 100.0, 1.5, 150.0, "USD")
     assert first("Takings")[1:] == ("Cash", "USD", 140.0, 1.0, 140.0)
-    assert first("Cash differences")[3:] == (150.0, 140.0, -10.0, "Short")
+    assert first("Cash differences")[4:] == (150.0, 140.0, -10.0, "Short")
     assert first("Deliveries")[1:6] == ("Tank 1", "Petrol", "Zuva", "DN-7", 1000.0)
     assert first("Stock")[1:] == ("Tank 1", "Petrol", 8000.0, 1000.0, 100.0, 8900.0, 0.0, "OK")
     assert first("Prices")[:3] == ("Petrol", "USD", 1.5)

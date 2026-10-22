@@ -134,6 +134,36 @@ describe("day close", () => {
       station: "s1", note: "", dips: [{ tank: "k1", litres: "5400" }], meters: [{ nozzle: "n1", reading: "925100.5" }],
     }));
   });
+
+  it("closes an earlier day afterwards, at the time it was done, so its figures are recalculated", async () => {
+    signedIn();
+    const tank = { id: "k1", name: "Petrol Tank", fuel_code: "PETROL", capacity_litres: "15030", has_calibration: true, last_litres: "5000" };
+    const pump = { id: "p1", name: "4A", nozzles: [{ id: "n1", number: 1, label: "Petrol", meter_max: "99999999.99", last_reading: "924759.36", fuel_type: "f1", fuel_code: "PETROL" }] };
+    const station = { id: "s1", name: "Chigwende", pricing_currency: "USD", open_shift_id: null, pumps: [pump], prices: [], tanks: [tank] };
+    const closed = { day: "2026-10-22", closed_at: "2026-10-22T19:05:00Z", closed_by: "Justice" };
+    const status = [{ station: "s1", day: "2026-10-22", closed, recent: [{ id: "c1", ...closed }] }];
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: manager, tenant } }, "GET /api/shifts/prefill/": { body: { stations: [station] } },
+      "GET /api/day-close/": { body: status }, "POST /api/day-close/": { status: 201, body: status[0] },
+    });
+    renderApp("/dip");
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Close the day" });
+    expect(within(form).queryByLabelText(/4A · Petrol/)).not.toBeInTheDocument(); // today is closed
+    await user.click(within(form).getByRole("button", { name: "Close an earlier day" }));
+    const day = within(form).getByLabelText("Day to close");
+    await user.clear(day); await user.type(day, "2026-10-20");
+    const time = within(form).getByLabelText("Time of the close");
+    await user.clear(time); await user.type(time, "21:15");
+    expect(within(form).getByLabelText(/4A · Petrol/)).not.toHaveTextContent(/last 924759/); // today's number would mislead
+    await user.type(within(form).getByLabelText("Dip (mm)"), "1290");
+    await user.type(within(form).getByLabelText(/4A · Petrol/), "924000");
+    await user.click(within(form).getByRole("button", { name: /^Close Tue/ }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.path === "/api/day-close/")?.body).toEqual({
+      station: "s1", note: "", at: new Date("2026-10-20T21:15").toISOString(), dips: [{ tank: "k1", dip_mm: "1290" }], meters: [{ nozzle: "n1", reading: "924000" }],
+    }));
+    expect(await screen.findByText(/Tue, 20 Oct is closed\. Its sales, fuel check and report are recalculated\.|20 Oct.* is closed/)).toBeInTheDocument();
+  });
 });
 
 describe("daily report on the Today dashboard", () => {

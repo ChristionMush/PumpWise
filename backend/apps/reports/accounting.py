@@ -76,6 +76,31 @@ def build_pack(station, year, month):
     wb = Workbook()
     wb.remove(wb.active)
 
+    # Daily: one row per trading day (21:00 to 21:00, named by the closing day), the same as the daily report
+    from .daily import daily_report
+
+    fuels = list(dict.fromkeys(Tank.objects.filter(station=station).select_related("fuel_type").order_by("fuel_type__name")
+                              .values_list("fuel_type__name", flat=True)))
+    rows, sums = [], {}
+    day = first
+    while day <= min(last, cal.today()):
+        r = daily_report(station, day)
+        paid = {h["payment_type"]: Decimal(h["amount"]) for h in r["handed_in"]}
+        dips = {f["fuel"]: float(Decimal(f["litres"])) for f in r["dips"]}
+        values = [float(Decimal(r["totals"]["litres"])), float(Decimal(r["totals"]["amount"])), float(Decimal(r["totals"]["grand_total"])),
+                  *(float(paid.get(k, 0)) for k in ("cash", "card", "mobile_money", "credit")),
+                  float(Decimal(r["cash_losses"]["total"])), float(Decimal(r["cash_losses"]["attendants"])), float(Decimal(r["cash_losses"]["milking"]))]
+        for i, v in enumerate(values):
+            sums[i] = sums.get(i, 0.0) + v
+        closed = _local(r["closed_at"]) if r["closed"] else "not closed"
+        rows.append([day, closed, r["closed_by"] or "", *values, *(dips.get(f) for f in fuels)])
+        day += timedelta(days=1)
+    if rows:
+        rows.append(["Month total", "", "", *(round(sums[i], 3 if i == 0 else 2) for i in range(len(sums))), *(None for _ in fuels)])
+    _sheet(wb, "Daily", station, period, ["Date", "Closed at", "Closed by", "Litres sold", f"Sales ({currency})", "Grand total", "Cash", "Swipe", "EcoCash",
+                                          "Inter Company Credit (owed)", "Cash losses total", "Attendant losses ($1 and above)", "Milking errors (under $1)",
+                                          *(f"Dip {f} (L)" for f in fuels)], rows)
+
     # Sales: per day (local time) and fuel, from the meter readings (the same as the Sales report)
     by_day = {}
     for t in Transaction.objects.filter(station=station, occurred_at__gt=start, occurred_at__lte=end).select_related("fuel_type"):
@@ -121,10 +146,10 @@ def build_pack(station, year, month):
                                                                           "submitted": c["submitted_total"], "cash_difference": c["cash_difference"], "status": c["status"]}]
         for p in people:
             diff = Decimal(p.get("cash_difference") or 0)
-            rows.append([_local(s.started_at), _local(s.ended_at), p["name"], float(Decimal(p.get("expected") or 0)), float(Decimal(p["submitted"])), float(diff),
+            rows.append([cal.day_of(s.ended_at), _local(s.started_at), _local(s.ended_at), p["name"], float(Decimal(p.get("expected") or 0)), float(Decimal(p["submitted"])), float(diff),
                          {"ok": "OK", "short": "Short", "over": "Over", "incomplete": "Missing exchange rate"}.get(p.get("status"), p.get("status") or "")])
             fills.append(LOSS_FILL if p.get("status") == "short" else GAIN_FILL if p.get("status") == "over" else None)
-    _sheet(wb, "Cash differences", station, period, ["Shift started", "Shift ended", "Attendant", f"Expected ({currency})", f"Handed in ({currency})", "Difference", "Result"],
+    _sheet(wb, "Cash differences", station, period, ["Day", "Shift started", "Shift ended", "Attendant", f"Expected ({currency})", f"Handed in ({currency})", "Difference", "Result"],
            rows, fills)
 
     # Deliveries (purchases)
