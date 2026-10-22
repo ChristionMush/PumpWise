@@ -102,6 +102,13 @@ class DeliveryInput(serializers.Serializer):
     delivered_at = serializers.DateTimeField(required=False)
     supplier = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
     note_number = serializers.CharField(max_length=60, required=False, allow_blank=True, default="")
+    fuel_code = serializers.CharField(max_length=20, required=False, allow_blank=True)  # the fuel the manager says is arriving
+
+    def validate(self, attrs):
+        fuel = (attrs.get("fuel_code") or "").strip().upper()
+        if fuel and attrs["tank"].fuel_type.code.upper() != fuel:
+            raise serializers.ValidationError({"tank": f"{attrs['tank'].name} holds {attrs['tank'].fuel_type.name}, not {fuel}. Choose a {fuel} tank."})
+        return attrs
 
 
 class ReadingSerializer(serializers.ModelSerializer):

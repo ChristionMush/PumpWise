@@ -43,7 +43,7 @@ MAX_METER_ROWS = 5000  # about a year of one busy station; larger histories go i
 MAX_ERRORS = 50
 PAYMENT_TYPES = {
     "cash": "cash", "mobile_money": "mobile_money", "mobile money": "mobile_money", "ecocash": "mobile_money",
-    "card": "card", "swipe": "card", "card / swipe": "card", "credit": "credit", "coupon": "credit", "credit / coupon": "credit",
+    "card": "card", "swipe": "card", "card / swipe": "card", "credit": "credit", "coupon": "credit", "credit / coupon": "credit", "intercompany": "credit", "intercompany issue": "credit",
 }
 DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%d/%m/%y")
 TIME_FORMATS = ("%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M%p", "%I %p", "%I%p")

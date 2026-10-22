@@ -49,7 +49,7 @@ export default function Reports() {
         <section key={r.shift_id} className={`card ${r.flagged ? "bad" : ""}`}><div className="row between"><strong>{r.station} · {(r.attendants?.length ? r.attendants : [r.attendant]).join(", ")}</strong><Badge kind={r.status === "ok" ? "active" : "suspended"}>{CASH_LABEL[r.status] ?? r.status}</Badge></div>
           <p className="muted">{new Date(r.started_at).toLocaleDateString()}</p>
           <p>Expected {r.expected} · handed in {r.submitted_total} {r.currency} · cash difference <strong>{r.variance}</strong></p>
-          <p className="muted">{r.by_payment_type.map((l: any) => `${l.payment_type.replace("_", " ")} ${l.currency} ${l.amount}`).join(" · ")}</p>
+          <p className="muted">{r.by_payment_type.map((l: any) => `${l.payment_type === "credit" ? "intercompany issue" : l.payment_type.replace("_", " ")} ${l.currency} ${l.amount}`).join(" · ")}</p>
           {r.by_attendant?.length > 1 || r.per_attendant_expected ? (
             <ul className="plain">{r.by_attendant.map((p: any) => (
               <li key={p.user}>{p.name}: handed in {p.submitted}{r.per_attendant_expected ? ` · expected ${p.expected} · cash difference ${p.cash_difference}` : ""}

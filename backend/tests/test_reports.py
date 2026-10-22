@@ -159,3 +159,28 @@ def test_the_monthly_accounting_pack_has_every_sheet_with_the_months_numbers():
         assert client_for(other).get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"}).status_code == 403
     assert owner.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "October"}).status_code == 400
     assert owner.get("/api/reports/accounting-pack/", {"month": "2026-10"}).status_code == 400
+
+
+def test_a_delivery_must_go_into_a_tank_of_the_fuel_received():
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"])
+    owner = client_for(a[Role.OWNER])
+    body = {"tank": str(fc.tank.pk), "litres": "1000", "supplier": "Zuva"}
+    wrong = owner.post("/api/deliveries/", {**body, "fuel_code": "DIESEL"}, format="json")
+    assert wrong.status_code == 400 and "not DIESEL" in str(wrong.json())
+    assert owner.post("/api/deliveries/", {**body, "fuel_code": "PETROL"}, format="json").status_code == 201
+
+
+def test_intercompany_issues_are_owed_to_the_business_not_money_received():
+    import io
+
+    from openpyxl import load_workbook
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [100, 0], started_at=at(2026, 10, 1, 5), ended_at=at(2026, 10, 1, 15),
+              cash=[("cash", "USD", 100), ("credit", "USD", 50)])  # 150 expected: 100 in cash, 50 issued to another company
+    res = client_for(a[Role.OWNER]).get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"})
+    rows = {r[0]: r[5] for r in load_workbook(io.BytesIO(res.content))["Takings"].iter_rows(min_row=4, values_only=True) if isinstance(r[0], str)}
+    assert rows["Money received"] == 100.0 and rows["Total handed in"] == 150.0
+    assert [v for k, v in rows.items() if k.startswith("Owed to")] == [50.0]

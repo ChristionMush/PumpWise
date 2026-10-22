@@ -9,7 +9,7 @@ export default function Dip() {
   const [tankId, setTankId] = useState("");
   const [litres, setLitres] = useState("");
   const [dipMm, setDipMm] = useState("");
-  const [delivered, setDelivered] = useState({ litres: "", supplier: "", note: "" });
+  const [delivered, setDelivered] = useState({ fuel: "", tank: "", litres: "", supplier: "", note: "" });
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,11 +25,16 @@ export default function Dip() {
     await enqueue("tank_dip", { client_id: uuid(), tank: tankId, at: new Date().toISOString(), ...(litres ? { litres } : {}), ...(dipMm ? { dip_mm: dipMm } : {}) });
     setLitres(""); setDipMm(""); setError(null); setMsg("Dip saved.");
   };
+  const fuels = [...new Set(tanks.map((t) => t.fuel_code))];
+  const fuelTanks = tanks.filter((t) => t.fuel_code === delivered.fuel);
+  const deliveryTank = fuelTanks.length === 1 ? fuelTanks[0].id : delivered.tank;
   const saveDelivery = async (e: FormEvent) => {
     e.preventDefault();
+    if (!delivered.fuel) return setError("Choose the fuel being received.");
+    if (!deliveryTank) return setError("Choose the tank the fuel goes into.");
     if (!delivered.litres) return setError("Enter the litres received.");
-    await enqueue("delivery", { client_id: uuid(), tank: tankId, litres: delivered.litres, delivered_at: new Date().toISOString(), supplier: delivered.supplier, note_number: delivered.note });
-    setDelivered({ litres: "", supplier: "", note: "" }); setError(null); setMsg("Delivery saved.");
+    await enqueue("delivery", { client_id: uuid(), tank: deliveryTank, fuel_code: delivered.fuel, litres: delivered.litres, delivered_at: new Date().toISOString(), supplier: delivered.supplier, note_number: delivered.note });
+    setDelivered({ fuel: "", tank: "", litres: "", supplier: "", note: "" }); setError(null); setMsg("Delivery saved.");
   };
 
   return (
@@ -41,6 +46,13 @@ export default function Dip() {
         <label>or litres<input inputMode="decimal" value={litres} onChange={(e) => setLitres(e.target.value)} /></label>
         <button className="btn primary">Save dip</button></form>
       <form onSubmit={saveDelivery} className="card form"><h2>Fuel delivery received</h2>
+        <label>Fuel received<select value={delivered.fuel} onChange={(e) => setDelivered({ ...delivered, fuel: e.target.value, tank: "" })}>
+          <option value="">Choose the fuel</option>{fuels.map((f) => <option key={f} value={f}>{f}</option>)}</select></label>
+        {fuelTanks.length > 1 && (
+          <label>Into tank<select value={delivered.tank} onChange={(e) => setDelivered({ ...delivered, tank: e.target.value })}>
+            <option value="">Choose the tank</option>{fuelTanks.map((t) => <option key={t.id} value={t.id}>{t.station} · {t.name}</option>)}</select></label>
+        )}
+        {fuelTanks.length === 1 && <p className="muted">Goes into {fuelTanks[0].station} · {fuelTanks[0].name}.</p>}
         <label>Litres received<input inputMode="decimal" value={delivered.litres} onChange={(e) => setDelivered({ ...delivered, litres: e.target.value })} /></label>
         <label>Supplier<input value={delivered.supplier} onChange={(e) => setDelivered({ ...delivered, supplier: e.target.value })} /></label>
         <label>Delivery note no.<input value={delivered.note} onChange={(e) => setDelivered({ ...delivered, note: e.target.value })} /></label>

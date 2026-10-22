@@ -103,7 +103,9 @@ function Stages({ current }: { current: 0 | 1 | 2 }) {
   );
 }
 
-const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["card", "Card / swipe"], ["credit", "Credit / coupon"]] as const;
+// "credit" is fuel issued to another company on account: it counts towards what the attendant hands in, and is owed by
+// that company to the business (not cash received). Other currencies are switched off for now.
+const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["card", "Card / swipe"], ["credit", "Intercompany issue"]] as const;
 const money = (n: number) => n.toFixed(2);
 
 export default function Shift() {
@@ -112,7 +114,6 @@ export default function Shift() {
   const [active, setActive] = useState<Active | null>(null);
   const [nums, setNums] = useState<Record<string, string>>({});
   const [cash, setCash] = useState<Record<string, string>>({});
-  const [other, setOther] = useState({ currency: "ZWG", amount: "", rate: "" });
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -194,7 +195,6 @@ export default function Shift() {
   const cashLines = () => {
     const cur = station!.pricing_currency;
     const lines = TYPES.filter(([t]) => cash[t]).map(([t]) => ({ payment_type: t, currency: cur, amount: cash[t] }));
-    if (other.amount) lines.push({ payment_type: "cash", currency: other.currency.toUpperCase(), amount: other.amount });
     return lines;
   };
 
@@ -208,7 +208,6 @@ export default function Shift() {
   const rows = active ? nozzles.filter((n) => n.id in active.starts) : [];
   const handed = [
     ...TYPES.map(([t]) => ({ amount: Number(cash[t] || 0), rate: 1 })),
-    { amount: Number(other.amount || 0), rate: Number(other.rate || 0) },
   ];
   const calc = active && station && !active.member ? expectedVsHanded(
     rows.filter((n) => nums[n.id]).map((n) => ({ fuel_type: n.fuel_type, start: active.starts[n.id], end: Number(nums[n.id]), meter_max: Number(n.meter_max) })),
@@ -249,7 +248,7 @@ export default function Shift() {
     if (!cashLines().length) return setError("Enter the cash you are handing in.");
     await enqueue("shift_cash", { shift_id: shiftId, cash: cashLines(), at: new Date().toISOString() });
     await kvSet("cashDue", null);
-    setCashDue(null); setCash({}); setOther({ currency: "ZWG", amount: "", rate: "" }); setError(null);
+    setCashDue(null); setCash({}); setError(null);
     setSaved("Your cash is saved. Your manager approves your end of shift before your next shift.");
   };
 
@@ -293,9 +292,6 @@ export default function Shift() {
           {TYPES.map(([t, label]) => (
             <label key={t}>{label}<input inputMode="decimal" value={cash[t] ?? ""} onChange={(e) => setCash({ ...cash, [t]: e.target.value })} /></label>
           ))}
-          <div className="row gap"><input aria-label="Other currency" style={{ width: 80 }} value={other.currency} onChange={(e) => setOther({ ...other, currency: e.target.value })} />
-            <input aria-label="Other amount" inputMode="decimal" placeholder="Amount in other currency" value={other.amount} onChange={(e) => setOther({ ...other, amount: e.target.value })} />
-            <input aria-label="Rate" inputMode="decimal" style={{ width: 90 }} placeholder={`rate→${station.pricing_currency}`} value={other.rate} onChange={(e) => setOther({ ...other, rate: e.target.value })} /></div>
           {expected != null && (
             <div className={`summary ${Math.abs(handedIn - expected) < 1 ? "ok" : "off"}`} aria-live="polite">
               <div>Expected <strong>{money(expected)}</strong></div><div>Handed in <strong>{money(handedIn)}</strong></div>
@@ -305,6 +301,7 @@ export default function Shift() {
         </section>
         <ErrorNote message={error} />
         <button className="btn primary big" onClick={() => void handInCash(due?.shift_id ?? cashDue!.shift_id)}>Hand in my cash</button>
+        <p className="muted">Sends your cash. Your manager then approves your end of shift; you can start your next shift after that.</p>
       </>
     );
   }
@@ -348,15 +345,16 @@ export default function Shift() {
           <input inputMode="decimal" value={nums[n.id] ?? ""} placeholder={active ? "Meter number now" : "Meter number"} onChange={(e) => setNums({ ...nums, [n.id]: e.target.value.replace(",", ".") })} />
         </label>
       ))}
+      {active && assigned && !active.member && (<>
+        <button className="btn big" onClick={() => void closeMeters()}>Close my meters (count my cash after)</button>
+        <p className="muted">At the shift change: closes your meters now so your pumps pass to the next attendant and they can start. You count your cash next and hand it in on the screen that follows.</p>
+      </>)}
       {active && (
         <section className="card form">
           <h2>{active.member ? "My cash" : "Handed in"} ({station.pricing_currency})</h2>
           {TYPES.map(([t, label]) => (
             <label key={t}>{label}<input inputMode="decimal" value={cash[t] ?? ""} onChange={(e) => setCash({ ...cash, [t]: e.target.value })} /></label>
           ))}
-          <div className="row gap"><input aria-label="Other currency" style={{ width: 80 }} value={other.currency} onChange={(e) => setOther({ ...other, currency: e.target.value })} />
-            <input aria-label="Other amount" inputMode="decimal" placeholder="Amount in other currency" value={other.amount} onChange={(e) => setOther({ ...other, amount: e.target.value })} />
-            <input aria-label="Rate" inputMode="decimal" style={{ width: 90 }} placeholder={`rate→${station.pricing_currency}`} value={other.rate} onChange={(e) => setOther({ ...other, rate: e.target.value })} /></div>
           {calc && (
             <div className={`summary ${Math.abs(calc.variance) < 1 ? "ok" : "off"}`} aria-live="polite">
               <div>Expected <strong>{money(calc.expected)}</strong></div><div>Handed in <strong>{money(calc.submitted)}</strong></div>
@@ -367,10 +365,9 @@ export default function Shift() {
       )}
       <ErrorNote message={error} />
       {!noPumps && !busy && <button className="btn primary big" onClick={() => void (active ? end() : start())}>{active ? (active.member ? "Hand in my cash" : "End shift") : "Start shift"}</button>}
-      {active && assigned && !active.member && (
-        <button className="btn big" onClick={() => void closeMeters()}>Close my meters (count my cash after)</button>
-      )}
-      {active && assigned && <p className="muted">Ending hands your pumps to the next attendant. The shift goes on for the others. At the shift change you can close your meters first, so the next attendant can start, and hand in your cash after counting it.</p>}
+      {active && !active.member && <p className="muted">{assigned
+        ? "Sends your meters and your cash together: your pumps pass to the next attendant and your manager approves your end of shift."
+        : "Sends your meters and your cash together. Your manager approves your end of shift before your next one."}</p>}
       {active && station.attendants_mode === "multiple" && !assigned && <button className="btn" onClick={() => void leave()}>Leave the shift</button>}
     </>
   );

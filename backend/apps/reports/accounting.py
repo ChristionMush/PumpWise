@@ -29,7 +29,8 @@ HEAD_FILL = PatternFill("solid", fgColor="166534")
 GAIN_FILL = PatternFill("solid", fgColor="DCFCE7")
 LOSS_FILL = PatternFill("solid", fgColor="FEE4E2")
 Q2, Q3 = Decimal("0.01"), Decimal("0.001")
-PAYMENT_LABEL = {"cash": "Cash", "mobile_money": "Mobile money", "card": "Card", "credit": "Credit"}
+PAYMENT_LABEL = {"cash": "Cash", "mobile_money": "Mobile money", "card": "Card", "credit": "Intercompany issue (owed by the other company)"}
+INTERCOMPANY = "credit"  # fuel issued to another company on account: not money received, money owed to the business
 
 
 def month_bounds(year, month):
@@ -93,15 +94,20 @@ def build_pack(station, year, month):
         when = c.part.cash_submitted_at if c.part_id and c.part.cash_submitted_at else c.created_at
         key = (timezone.localdate(when), c.payment_type, c.currency)
         takings[key] = takings.get(key, Decimal(0)) + c.amount
-    rows, total = [], Decimal(0)
+    rows, received, owed = [], Decimal(0), Decimal(0)
     for (day, kind, cur), amount in sorted(takings.items()):
         rate = rate_at(cur, currency, local_day_bounds(day)[1] - timedelta(seconds=1))
         converted = (amount * rate).quantize(Q2) if rate is not None else None
-        total += converted or 0
+        if kind == INTERCOMPANY:
+            owed += converted or 0
+        else:
+            received += converted or 0
         rows.append([day, PAYMENT_LABEL.get(kind, kind), cur, float(amount.quantize(Q2)), float(rate) if rate is not None else "no rate set",
                      float(converted) if converted is not None else None])
     if rows:
-        rows.append(["Total", "", "", None, "", float(total)])
+        rows.append(["Money received", "", "", None, "", float(received)])
+        rows.append([f"Owed to {station.tenant.name} (intercompany issues)", "", "", None, "", float(owed)])
+        rows.append(["Total handed in", "", "", None, "", float(received + owed)])
     _sheet(wb, "Takings", station, period, ["Date", "Payment type", "Currency", "Amount", "Rate", f"Amount in {currency}"], rows)
 
     # Cash differences: per closed shift (ended in the month) and attendant

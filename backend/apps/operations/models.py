@@ -206,7 +206,7 @@ class CashSubmission(TenantOwnedModel):
         CASH = "cash", "Cash"
         MOBILE_MONEY = "mobile_money", "Mobile money (e.g. EcoCash)"
         CARD = "card", "Card / swipe"
-        CREDIT = "credit", "Credit / coupon"
+        CREDIT = "credit", "Intercompany issue"  # fuel issued to another company on account: owed by that company
 
     shift = models.ForeignKey(Shift, on_delete=models.PROTECT, related_name="cash")
     attendant = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")  # who handed it in

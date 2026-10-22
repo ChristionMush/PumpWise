@@ -91,3 +91,22 @@ describe("owner edits tanks, pumps and nozzles", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   });
 });
+
+describe("fuel delivery", () => {
+  it("asks which fuel is arriving and sends it with the tank of that fuel", async () => {
+    signedIn();
+    const tank = (id: string, name: string, fuel_code: string) => ({ id, name, fuel_code, capacity_litres: "15030", has_calibration: true, last_litres: "5000" });
+    const station = { id: "s1", name: "Chigwende", pricing_currency: "USD", open_shift_id: null, pumps: [], prices: [], tanks: [tank("k1", "Petrol Tank", "PETROL"), tank("k2", "Diesel Tank", "DIESEL")] };
+    const applyAll = (body: any) => ({ body: { results: body.ops.map((o: any) => ({ op_id: o.op_id, status: "applied" })) } });
+    const { calls } = mockApi({ "GET /api/auth/me/": { body: { user: manager, tenant } }, "GET /api/shifts/prefill/": { body: { stations: [station] } }, "POST /api/sync/": applyAll });
+    renderApp("/dip");
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Fuel received"), "DIESEL");
+    expect(screen.getByText(/Goes into Chigwende · Diesel Tank/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Litres received"), "10000");
+    await user.click(screen.getByRole("button", { name: "Save delivery" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/sync/")).toBe(true));
+    const op = calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops).find((o: any) => o.kind === "delivery");
+    expect([op.payload.tank, op.payload.fuel_code, op.payload.litres]).toEqual(["k2", "DIESEL", "10000"]);
+  });
+});

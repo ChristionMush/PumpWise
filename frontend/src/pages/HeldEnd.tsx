@@ -12,7 +12,7 @@ export interface HeldStage {
   undo: UndoInfo | null; can_fix: { cash: boolean; meters: boolean };
 }
 
-const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["card", "Card / swipe"], ["credit", "Credit / coupon"]] as const;
+const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["card", "Card / swipe"], ["credit", "Intercompany issue"]] as const;
 const LABEL: Record<string, string> = Object.fromEntries(TYPES);
 const time = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
 
