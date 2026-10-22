@@ -51,4 +51,20 @@ describe("reports", () => {
     expect(total.closest("section.card")).toHaveClass("good");
     expect(total.closest("section.card")).toHaveTextContent(/4[ ,.  ]?843 \+ 0 − 707 − 4[ ,.  ]?214 = -78 L/); // its own sum
   });
+
+  it("shows the accounting pack to the owner only", async () => {
+    signedIn();
+    mockApi({ ...me, "GET /api/reports/daily-sales/": { body: sales } });
+    renderApp("/reports");
+    expect(await screen.findByText(/Accounting pack \(Excel\)/)).toBeInTheDocument();
+  });
+
+  it("does not show the accounting pack to a manager", async () => {
+    signedIn();
+    const manager = { ...ownerUser, id: "m", role: "manager", full_name: "Justice" };
+    mockApi({ "GET /api/auth/me/": { body: { user: manager, tenant: { id: "t1", name: "Msasa Fuel", slug: "m", status: "active" } } }, "GET /api/reports/daily-sales/": { body: sales } });
+    renderApp("/reports");
+    expect(await screen.findByText("Average 100 L per day")).toBeInTheDocument();
+    expect(screen.queryByText(/Accounting pack/)).not.toBeInTheDocument();
+  });
 });

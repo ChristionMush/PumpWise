@@ -133,14 +133,14 @@ def test_the_monthly_accounting_pack_has_every_sheet_with_the_months_numbers():
 
     a, _ = two_tenants()
     fc = make_forecourt(a["tenant"], price="1.50")
-    mgr = client_for(a[Role.MANAGER])
+    owner = client_for(a[Role.OWNER])
     dip(a["tenant"], a[Role.OWNER], fc, 8000, at(2026, 10, 1, 4))
     run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [100, 0], started_at=at(2026, 10, 1, 5), ended_at=at(2026, 10, 1, 15), cash=[("cash", "USD", 140)])
     with db_context(tenant_id=a["tenant"].id):
         services.record_delivery(user=a[Role.OWNER], tank=fc.tank, litres=Decimal(1000), delivered_at=at(2026, 10, 1, 16), supplier="Zuva", note_number="DN-7")
     dip(a["tenant"], a[Role.OWNER], fc, 8900, at(2026, 10, 1, 20))  # 8000 - 100 sold + 1000 delivered: balances
 
-    res = mgr.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"})
+    res = owner.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"})
     assert res.status_code == 200 and "spreadsheetml" in res["Content-Type"] and "2026-10" in res["Content-Disposition"]
     wb = load_workbook(io.BytesIO(res.content))
     assert wb.sheetnames == ["Sales", "Takings", "Cash differences", "Deliveries", "Stock", "Prices"]
@@ -155,6 +155,7 @@ def test_the_monthly_accounting_pack_has_every_sheet_with_the_months_numbers():
     assert first("Stock")[1:] == ("Tank 1", "Petrol", 8000.0, 1000.0, 100.0, 8900.0, 0.0, "OK")
     assert first("Prices")[:3] == ("Petrol", "USD", 1.5)
 
-    assert client_for(a[Role.ATTENDANT]).get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"}).status_code == 403
-    assert mgr.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "October"}).status_code == 400
-    assert mgr.get("/api/reports/accounting-pack/", {"month": "2026-10"}).status_code == 400
+    for other in (a[Role.MANAGER], a[Role.ATTENDANT]):  # the owner's only
+        assert client_for(other).get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"}).status_code == 403
+    assert owner.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "October"}).status_code == 400
+    assert owner.get("/api/reports/accounting-pack/", {"month": "2026-10"}).status_code == 400

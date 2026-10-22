@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, downloadFile, errorMessage } from "../api";
+import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -8,6 +9,7 @@ const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toISOString().sl
 const CASH_LABEL: Record<string, string> = { ok: "ok", short: "cash difference", over: "cash difference", incomplete: "rate missing", open: "open" };
 
 export default function Reports() {
+  const { user } = useAuth();
   const [tab, setTab] = useState<"sales" | "tank" | "cash" | "people">("sales");
   const [from, setFrom] = useState(daysAgo(13));
   const [to, setTo] = useState(today());
@@ -31,7 +33,7 @@ export default function Reports() {
         {stations.length > 1 && <label>Station<select value={station} onChange={(e) => setStation(e.target.value)}><option value="">All stations</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
         <label>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></div>
       <ErrorNote message={error} />
-      <AccountingPack stations={stations} />
+      {user?.role === "owner" && <AccountingPack stations={stations} />}
       {!data && !error && <p className="muted center">Loading…</p>}
       {data && tab === "sales" && (<>
         <section className="card">{station && <p className="muted">{stations.find((s) => s.id === station)?.name}</p>}<strong>{Number(data.totals.litres).toLocaleString()} L</strong> sold · {Object.entries(data.totals.amount_by_currency).map(([c, a]) => `${c} ${a}`).join(" · ")}
@@ -74,7 +76,7 @@ export default function Reports() {
   );
 }
 
-/** The monthly accounting pack: one Excel workbook per station and month (sales, takings, cash differences, deliveries,
+/** Owner only: the monthly accounting pack, one Excel workbook per station and month (sales, takings, cash differences, deliveries,
  * stock and prices), for the bookkeeper. */
 function AccountingPack({ stations }: { stations: { id: string; name: string }[] }) {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));

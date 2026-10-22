@@ -6,7 +6,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsOwnerOrManager, TankRecords
+from apps.accounts.permissions import IsOwner, IsOwnerOrManager, TankRecords
 from apps.operations.models import Shift
 from apps.stations.access import visible_station_ids
 
@@ -107,10 +107,9 @@ class TankHistoryView(APIView):
 
 
 class AccountingPackView(APIView):
-    """Owner and managers (their stations): the monthly accounting pack, one Excel workbook per station and month.
-    ?station=<id>&month=2026-10"""
+    """Owner only: the monthly accounting pack, one Excel workbook per station and month. ?station=<id>&month=2026-10"""
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwner]
 
     def get(self, request):
         from django.http import HttpResponse
