@@ -34,6 +34,7 @@ TWO = Decimal("0.01")
 THREE = Decimal("0.001")
 APPROVAL = ShiftAttendant.Approval
 HELD = (APPROVAL.PENDING, APPROVAL.SENT_BACK)
+CASH_DUE = APPROVAL.CASH_DUE  # assigned pumps: meters closed at the shift change, cash counted and handed in after
 
 
 class Conflict(Exception):
@@ -138,8 +139,17 @@ def held_end(user):
             .order_by("-cash_submitted_at").first())
 
 
+def cash_due_part(user):
+    """This attendant closed their meters but has not handed in their cash yet (at any station), if so."""
+    return ShiftAttendant.objects.filter(user=user, approval=CASH_DUE).select_related("shift__station", "user").order_by("-left_at").first()
+
+
 def require_cleared(person):
-    """No new shift for someone whose last end of shift is not approved yet."""
+    """No new shift for someone whose last end of shift is not approved yet, or whose cash is not handed in yet."""
+    due = cash_due_part(person)
+    if due is not None:
+        raise ValidationError({"detail": f"{person.full_name} closed their meters at {due.shift.station.name} but has not handed in their cash yet. "
+                                         "Hand in the cash first."})
     row = held_end(person)
     if row is not None:
         what = "was sent back to fix" if row.approval == APPROVAL.SENT_BACK else "is waiting for the manager's approval"
@@ -544,9 +554,10 @@ def _start_on_my_pumps(*, user, station, readings, shift_id, started_at, attenda
     return shift
 
 
-def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request):
+def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request, cash_later=False):
     """Assigned pumps: one attendant ends their part of the shift. The meter numbers of their pumps close their
-    periods (and pass the pumps on), their cash is theirs, and they leave the shift. The last person closes it."""
+    periods (and pass the pumps on), their cash is theirs, and they leave the shift. The last person closes it.
+    cash_later: only the meters now (the shift change goes on); the cash follows once it is counted."""
     person = who or (user if attendant_row(shift, user) else None)
     if person is None:
         raise ValidationError({"user": "Choose whose part of the shift ends."})
@@ -554,6 +565,11 @@ def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request)
         raise PermissionDenied("You can only end your own part of the shift.")
     if _finished_part(shift, person):  # a resend: only the cash can still be corrected
         submit_cash(user=user, shift=shift, cash=cash, who=person, at=ended_at, request=request)
+        return
+    mine = attendant_row(shift, person)
+    if mine and mine.approval == CASH_DUE:  # meters already closed: this brings the cash (or repeats the meters)
+        if cash:
+            submit_cash(user=user, shift=shift, cash=cash, who=person, at=ended_at, request=request, part=mine)
         return
     holding = list(PumpAssignment.objects.filter(shift=shift, user=person, ended_at__isnull=True).select_related("pump__assigned_to"))
     held = {a.pump_id for a in holding}
@@ -582,14 +598,18 @@ def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request)
             PumpAssignment.objects.create(tenant_id=shift.tenant_id, shift=shift, pump=a.pump, user=incoming, started_at=ended_at)
             passed.append(f"{a.pump.name} to {incoming.full_name}")
     shift.save()
-    submit_cash(user=user, shift=shift, cash=cash, who=person, at=ended_at, request=request)
+    if not cash_later:
+        submit_cash(user=user, shift=shift, cash=cash, who=person, at=ended_at, request=request)
     row = attendant_row(shift, person)
     if row.left_at is None:
         row.left_at = ended_at
-        row.save(update_fields=["left_at", "updated_at"])
+        if cash_later:
+            row.approval = CASH_DUE
+        row.save(update_fields=["left_at", "approval", "updated_at"])
         _ensure_lead(shift)
     audit.log("shift_part_ended", actor=user, obj=shift, request=request,
-              changes={"who": person.full_name, "pumps": [a.pump.name for a in holding], "last": last, **({"passed_on": passed} if passed else {})})
+              changes={"who": person.full_name, "pumps": [a.pump.name for a in holding], "last": last, **({"passed_on": passed} if passed else {}),
+                       **({"cash": "to hand in after counting"} if cash_later else {})})
     if last:
         shift.close_requested_at = shift.close_requested_at or ended_at
         shift.closed_by = user
@@ -678,6 +698,10 @@ def submit_cash(*, user, shift, cash, who=None, at=None, request=None, part=None
     if changes:
         audit.log("cash_corrected", actor=user, obj=shift, changes={"who": who.full_name, **changes}, request=request)
     maybe_close(shift)
+    if not handed_in and shift.status != Shift.Status.OPEN:  # cash counted after the shift closed: its cash check is rebuilt
+        from .rollups import on_shift_closed  # rollups import this module, so import here
+
+        on_shift_closed(shift)
     return row
 
 
@@ -726,18 +750,23 @@ def _close(shift):
     on_shift_closed(shift)
 
 
-def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close=None, who=None, request=None):
+def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close=None, who=None, request=None, cash_later=False):
     """'End of my shift' from a phone: end meter numbers (anyone on the shift), the sender's cash, and, for the lead or a
-    manager, a request to close. Re-sending corrects an unreviewed shift."""
+    manager, a request to close. Re-sending corrects an unreviewed shift. Assigned pumps: cash_later closes the meters now
+    (the pumps pass on at once) and the cash is handed in after it is counted."""
     _require_not_reviewed(shift)
     ended_at = ended_at or timezone.now()
-    if is_assigned_station(shift.station) and shift.status == Shift.Status.OPEN:
+    due = attendant_row(shift, who or user)
+    if is_assigned_station(shift.station) and (shift.status == Shift.Status.OPEN or (due and due.approval == CASH_DUE)):
         if not (can(user, "manage_shift") or attendant_row(shift, user)):
             raise PermissionDenied("This is not your shift.")
         with db_tx.atomic():
-            _end_my_part(user=user, shift=shift, readings=readings, cash=cash, ended_at=ended_at, strict=strict, who=who, request=request)
+            _end_my_part(user=user, shift=shift, readings=readings, cash=cash, ended_at=ended_at, strict=strict, who=who, request=request,
+                         cash_later=cash_later)
         shift.refresh_from_db()
         return shift
+    if cash_later:
+        raise ValidationError({"detail": "Closing the meters first and handing in the cash after is for assigned pumps."})
     require_on_shift(user, shift)
     was_closed = shift.status != Shift.Status.OPEN
     end_readings = _readings_for_end(shift, readings, strict)
@@ -879,8 +908,11 @@ def phone_stage(user, station):
     {"stage": "held", ...}: their last end of shift waits for a manager or was sent back to fix (no new shift until it
     is approved), or the owner allowed them to change something they handed in (see approvals.end_stage)."""
     if user.role == Role.ATTENDANT:
-        from .approvals import end_stage, fix_grant  # approvals builds on this module
+        from .approvals import end_stage, end_summary, fix_grant  # approvals builds on this module
 
+        if (due := cash_due_part(user)) is not None and due.shift.station_id == station.pk:
+            # meters closed at the shift change: count the cash against what the meters say and hand it in
+            return {"stage": "cash_due", "shift_id": str(due.shift_id), "end_id": str(due.pk), "ended_at": due.left_at, **end_summary(due)}
         if (held := held_end(user)) is not None:
             return end_stage(held)
         stage = _shift_stage(user, station)

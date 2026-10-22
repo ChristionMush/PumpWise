@@ -46,6 +46,7 @@ class ShiftEndInput(serializers.Serializer):
     cash = CashInput(many=True, required=False, default=list)
     close = serializers.BooleanField(required=False, allow_null=True, default=None)
     user = serializers.UUIDField(required=False, allow_null=True)  # lead/manager handing in for someone
+    cash_later = serializers.BooleanField(required=False, default=False)  # assigned pumps: close the meters now, cash after
 
 
 class CashInputOnly(serializers.Serializer):

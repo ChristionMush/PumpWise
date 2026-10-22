@@ -102,7 +102,14 @@ def do_shift_end(user, shift, data, strict=False, request=None):
     return _conflict_as_400(
         services.end_shift, user=user, shift=shift, readings=data["readings"], cash=data["cash"], ended_at=data.get("ended_at"),
         strict=strict, close=data.get("close"), who=_user(data.get("user"), user.tenant_id), request=request,
+        cash_later=data.get("cash_later", False),
     )
+
+
+def _cash_due_here(user, shift):
+    """This attendant closed their meters on this shift and still owes their cash."""
+    row = services.attendant_row(shift, user)
+    return bool(row and row.approval == services.CASH_DUE)
 
 
 def _resolve_shift(user, shift_id):
@@ -315,7 +322,8 @@ class ShiftCashView(APIView):
         shift = _get_shift(request, pk)
         data = CashInputOnly(data=request.data)
         data.is_valid(raise_exception=True)
-        services.require_on_shift(request.user, shift)
+        if not _cash_due_here(request.user, shift):
+            services.require_on_shift(request.user, shift)
         who = _user(data.validated_data.get("user"), request.user.tenant_id)
         _conflict_as_400(services.submit_cash, user=request.user, shift=shift, cash=data.validated_data["cash"], who=who, request=request)
         shift.refresh_from_db()
@@ -542,7 +550,8 @@ def _apply(user, kind, p):
         _conflict_as_400(services.leave_shift, user=user, shift=shift, who=_user(d.get("user"), user.tenant_id), at=d.get("at"))
     elif kind == "shift_cash":
         d = _valid(CashInputOnly, p)
-        services.require_on_shift(user, shift)
+        if not _cash_due_here(user, shift):  # meters closed first: the cash is handed in after leaving the pumps
+            services.require_on_shift(user, shift)
         _conflict_as_400(services.submit_cash, user=user, shift=shift, cash=d["cash"], who=_user(d.get("user"), user.tenant_id), at=d.get("at"))
     elif kind == "shift_close":
         d = _valid(PersonInput, p)
@@ -654,7 +663,7 @@ class ShiftEndListView(APIView):
 
     def get(self, request):
         wanted = request.query_params.get("status")
-        status_filter = wanted if wanted in (ShiftAttendant.Approval.PENDING, ShiftAttendant.Approval.SENT_BACK) else None
+        status_filter = wanted if wanted in (ShiftAttendant.Approval.PENDING, ShiftAttendant.Approval.SENT_BACK, ShiftAttendant.Approval.CASH_DUE) else None
         return Response([approvals.end_card(r) for r in approvals.ends_for(request.user, status_filter)[:200]])
 
 

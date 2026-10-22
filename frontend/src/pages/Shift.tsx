@@ -23,12 +23,17 @@ export interface StationInfo {
   busy_shift?: { people: string[] } | null; // one-attendant station: someone else's shift is still being worked
 }
 /** start: no shift yet · on_shift: started, the end screen is next · done: their part of an open shift is over ·
- *  held: their last end waits for the manager (no new shift until approved), was sent back, or may be changed. */
+ *  held: their last end waits for the manager (no new shift until approved), was sent back, or may be changed ·
+ *  cash_due: assigned pumps, meters closed at the shift change, the cash is counted and handed in next. */
 export type Stage =
   | { stage: "start" }
   | HeldStage
+  | { stage: "cash_due"; shift_id: string; end_id: string; ended_at: string; expected: string | null; currency: string;
+      meters: { nozzle: string; pump: string; label: string; start: string | null; end: string | null; litres: string | null; amount: string | null }[] }
   | { stage: "on_shift"; shift: { id: string; started_at: string; member: boolean; starts: Record<string, string> } }
   | { stage: "done"; shift_id: string; ended_at: string };
+/** Meters closed on this phone, cash still to hand in (known before the server answers, so it works offline). */
+interface CashDue { shift_id: string; station_id: string; expected: number | null; meters: { name: string; start: number; end: string }[] }
 /** The shift this phone is working. `member`: joined someone else's shift (hands in cash only; the lead enters meters). */
 export interface Active { id: string; station_id: string; started_at: string; starts: Record<string, number>; member?: boolean }
 
@@ -113,6 +118,7 @@ export default function Shift() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [waiting, setWaiting] = useState(false);
+  const [cashDue, setCashDue] = useState<CashDue | null>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -127,6 +133,11 @@ export default function Shift() {
       const a = settled.active;
       await kvSet("activeShift", a);
       setActive(a); setWaiting(settled.waiting);
+      // meters closed, cash still to hand in: this phone's note stands until the server has it, then the server's stage wins
+      const due = await kvGet<CashDue>("cashDue");
+      const queued = (await allOps()).length > 0;
+      if (due && fresh && !queued && !st.some((s) => s.my_stage?.stage === "cash_due")) await kvSet("cashDue", null);
+      else setCashDue(due ?? null);
       setStationId(a?.station_id ?? st[0]?.id ?? "");
       // prefill with the last numbers; never for a pump still with someone else (entering its numbers takes it over)
       if (!a && st[0]) setNums(Object.fromEntries(st[0].pumps.filter((p) => !p.in_use_by).flatMap((p) => p.nozzles.map((n) => [n.id, n.last_reading ?? ""]))));
@@ -219,6 +230,29 @@ export default function Shift() {
         : "It is safe on this phone and will sync when there is signal. Your manager approves it before your next shift.");
   };
 
+  // Assigned pumps, at the shift change: close the meters now so the pumps pass on and the dip and the next shift can go
+  // ahead; count the cash after and hand it in against what the meters say.
+  const closeMeters = async () => {
+    if (!active || !station) return;
+    const missing = rows.filter((n) => !nums[n.id]);
+    if (missing.length) return setError(`Enter the end number for ${missing.length} more nozzle${missing.length > 1 ? "s" : ""}.`);
+    const due: CashDue = { shift_id: active.id, station_id: active.station_id, expected: calc ? calc.expected : null,
+      meters: rows.map((n) => ({ name: `${n.pump.name} · ${n.label}`, start: active.starts[n.id], end: nums[n.id] })) };
+    await enqueue("shift_end", { shift_id: active.id, ended_at: new Date().toISOString(), readings: rows.map((n) => ({ nozzle: n.id, reading: nums[n.id] })), cash: [], cash_later: true });
+    await kvSet("cashDue", due);
+    await kvSet("lastEnded", { station_id: active.station_id, at: new Date().toISOString() });
+    await kvSet("activeShift", null);
+    setActive(null); setCashDue(due); setNums({}); setError(null);
+  };
+
+  const handInCash = async (shiftId: string) => {
+    if (!cashLines().length) return setError("Enter the cash you are handing in.");
+    await enqueue("shift_cash", { shift_id: shiftId, cash: cashLines(), at: new Date().toISOString() });
+    await kvSet("cashDue", null);
+    setCashDue(null); setCash({}); setOther({ currency: "ZWG", amount: "", rate: "" }); setError(null);
+    setSaved("Your cash is saved. Your manager approves your end of shift before your next shift.");
+  };
+
   const leave = async () => {
     if (!active) return;
     await enqueue("shift_leave", { shift_id: active.id, at: new Date().toISOString() });
@@ -239,6 +273,41 @@ export default function Shift() {
   }
 
   const stage = station.my_stage;
+  const due = !active ? (stage?.stage === "cash_due" ? stage : null) : null;
+  if (!active && (due || cashDue)) {
+    const expected = due?.expected != null ? Number(due.expected) : cashDue?.expected ?? null;
+    const handedIn = handed.reduce((sum, h) => sum + h.amount * h.rate, 0);
+    return (
+      <>
+        <Stages current={1} />
+        <h1>Hand in my cash</h1>
+        <p className="muted">Your meters are closed and your pumps have passed on. Count your cash and hand it in against what your meters say.</p>
+        <section className="card">
+          <h2>Your meters</h2>
+          {due ? due.meters.map((m) => (
+            <p key={m.nozzle}>{m.pump} · {m.label}: {m.start} → {m.end} = <strong>{m.litres ? Number(m.litres).toLocaleString() : "?"} L</strong>{m.amount ? ` · ${station.pricing_currency} ${m.amount}` : ""}</p>
+          )) : cashDue!.meters.map((m) => <p key={m.name}>{m.name}: {m.start} → {m.end}</p>)}
+        </section>
+        <section className="card form">
+          <h2>Handed in ({station.pricing_currency})</h2>
+          {TYPES.map(([t, label]) => (
+            <label key={t}>{label}<input inputMode="decimal" value={cash[t] ?? ""} onChange={(e) => setCash({ ...cash, [t]: e.target.value })} /></label>
+          ))}
+          <div className="row gap"><input aria-label="Other currency" style={{ width: 80 }} value={other.currency} onChange={(e) => setOther({ ...other, currency: e.target.value })} />
+            <input aria-label="Other amount" inputMode="decimal" placeholder="Amount in other currency" value={other.amount} onChange={(e) => setOther({ ...other, amount: e.target.value })} />
+            <input aria-label="Rate" inputMode="decimal" style={{ width: 90 }} placeholder={`rate→${station.pricing_currency}`} value={other.rate} onChange={(e) => setOther({ ...other, rate: e.target.value })} /></div>
+          {expected != null && (
+            <div className={`summary ${Math.abs(handedIn - expected) < 1 ? "ok" : "off"}`} aria-live="polite">
+              <div>Expected <strong>{money(expected)}</strong></div><div>Handed in <strong>{money(handedIn)}</strong></div>
+              <div>Difference <strong>{money(handedIn - expected)}</strong></div>
+            </div>
+          )}
+        </section>
+        <ErrorNote message={error} />
+        <button className="btn primary big" onClick={() => void handInCash(due?.shift_id ?? cashDue!.shift_id)}>Hand in my cash</button>
+      </>
+    );
+  }
   if (!active && waiting) return (
     <section className="card"><Stages current={2} /><h1>Shift ended</h1>
       <p>Your end of shift is saved on this phone and will be sent when there is signal.</p></section>
@@ -298,7 +367,10 @@ export default function Shift() {
       )}
       <ErrorNote message={error} />
       {!noPumps && !busy && <button className="btn primary big" onClick={() => void (active ? end() : start())}>{active ? (active.member ? "Hand in my cash" : "End shift") : "Start shift"}</button>}
-      {active && assigned && <p className="muted">Ending hands your pumps to the next attendant. The shift goes on for the others.</p>}
+      {active && assigned && !active.member && (
+        <button className="btn big" onClick={() => void closeMeters()}>Close my meters (count my cash after)</button>
+      )}
+      {active && assigned && <p className="muted">Ending hands your pumps to the next attendant. The shift goes on for the others. At the shift change you can close your meters first, so the next attendant can start, and hand in your cash after counting it.</p>}
       {active && station.attendants_mode === "multiple" && !assigned && <button className="btn" onClick={() => void leave()}>Leave the shift</button>}
     </>
   );

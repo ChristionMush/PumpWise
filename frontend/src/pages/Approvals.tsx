@@ -5,7 +5,8 @@ import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
 import { EndDetails, type HeldStage } from "./HeldEnd";
 
-type End = Omit<HeldStage, "stage" | "end_id" | "can_fix"> & { id: string; shift_started_at: string };
+// cash_due: meters closed at the shift change, the attendant is still counting their cash (nothing to approve yet)
+type End = Omit<HeldStage, "stage" | "end_id" | "can_fix" | "status"> & { id: string; shift_started_at: string; status: HeldStage["status"] | "cash_due" };
 interface Undo { id: string; kind_label: string; reason: string; person: string; station: string; requested_by: string; created_at: string; end: End }
 interface LogRow { at: string; action: string; what: string; by: string; station: string }
 
@@ -34,6 +35,7 @@ export default function Approvals() {
   };
   const waiting = (ends ?? []).filter((e) => e.status === "pending");
   const sentBack = (ends ?? []).filter((e) => e.status === "sent_back");
+  const cashDue = (ends ?? []).filter((e) => e.status === "cash_due");
   return (
     <>
       <h1>Approvals</h1>
@@ -73,6 +75,9 @@ export default function Approvals() {
           )}
         </section>
       ))}
+      {cashDue.length > 0 && (<>
+        <h2>Meters closed, cash not handed in yet</h2>
+        {cashDue.map((e) => <p key={e.id} className="card">{e.person} · {e.station}: closed their meters at {time(e.ended_at)} and is counting their cash. Expected {e.expected ?? "?"}.</p>)}</>)}
       {sentBack.length > 0 && (<>
         <h2>Sent back, waiting for the attendant</h2>
         {sentBack.map((e) => <p key={e.id} className="card">{e.person} · {e.station}: {e.note}</p>)}</>)}

@@ -131,6 +131,28 @@ describe("assigned pumps", () => {
     expect(body.readings).toEqual([{ nozzle: "n1", reading: "1000.00" }, { nozzle: "n2", reading: "1010" }]); // last number kept unless changed
   });
 
+  it("closes the meters first at the shift change, then hands in the cash against what the meters say", async () => {
+    const onShift = { ...assigned, my_stage: { stage: "on_shift", shift: { id: "sh9", started_at: "2026-10-18T06:00:00Z", member: false, starts: { n1: "1000.00", n2: "500.00" } } } };
+    const { calls } = mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [onShift] } }, "POST /api/sync/": applyAll });
+    renderApp("/");
+    const user = userEvent.setup();
+    expect(await screen.findByRole("heading", { name: "End my part of the shift" })).toBeInTheDocument();
+    const [petrol, diesel] = screen.getAllByPlaceholderText("Meter number now");
+    await user.type(petrol, "1100");
+    await user.type(diesel, "500");
+    await user.click(screen.getByRole("button", { name: "Close my meters (count my cash after)" }));
+    expect(await screen.findByRole("heading", { name: "Hand in my cash" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Cash"), "200");
+    expect(screen.getByText("Expected").parentElement).toHaveTextContent("200.00"); // 100 L x 2.00, from the closed meters
+    expect(screen.getByText("Difference").parentElement).toHaveTextContent("0.00");
+    await user.click(screen.getByRole("button", { name: "Hand in my cash" }));
+    expect(await screen.findByText(/Your cash is saved/)).toBeInTheDocument();
+    await waitFor(() => expect(calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops).length).toBe(2));
+    const [meters, money] = calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops);
+    expect([meters.kind, meters.payload.cash_later, meters.payload.cash]).toEqual(["shift_end", true, []]);
+    expect([money.kind, money.payload.shift_id, money.payload.cash]).toEqual(["shift_cash", "sh9", [{ payment_type: "cash", currency: "USD", amount: "200" }]]);
+  });
+
   it("warns an attendant that a pump is still with the outgoing attendant and does not take it over by itself", async () => {
     const second = { id: "pu2", name: "Pump 2", nozzles: [nozzle("n3"), nozzle("n4", "d", "DIESEL")], in_use_by: "Rudo" };
     const { calls } = mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [{ ...assigned, pumps: [myPump, second] }] } }, "POST /api/sync/": applyAll });

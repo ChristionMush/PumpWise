@@ -586,3 +586,36 @@ def test_a_start_that_reaches_the_server_late_keeps_the_persons_litres():
         mine = Transaction.objects.filter(shift_id=sid, attendant=att_a).aggregate(s=Sum("litres"))["s"]
         assert mine == Decimal("50.000")
         assert not Transaction.objects.filter(shift_id=sid, attendant__isnull=True, litres__gt=0).exists()
+
+
+def test_close_my_meters_first_then_hand_in_the_cash_after_counting():
+    """At the shift change the outgoing attendant closes their meters (their pumps pass on at once), then counts and
+    hands in their cash against what the meters say. Until the cash is in they cannot start another shift."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca, cb = client_for(att_a), client_for(att_b)
+    body = {"station": str(fc.station.pk), "started_at": T0}
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+
+    closed = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_SWAP, "readings": readings(fc.nozzles, [50, 0]), "cash_later": True}, format="json")
+    assert closed.status_code == 200 and closed.json()["status"] == "open", closed.content
+    stage = ca.get("/api/shifts/prefill/").json()["stations"][0]["my_stage"]
+    assert stage["stage"] == "cash_due" and stage["expected"] == "75.00" and [m["litres"] for m in stage["meters"]][0] == "50.000"
+    refused = ca.post("/api/shifts/start/", {**body, "started_at": T_END, "readings": readings(fc.nozzles, [50, 0])}, format="json")
+    assert refused.status_code == 400 and "not handed in their cash" in str(refused.json())
+    waiting = {e["person"]: e["status"] for e in mgr.get("/api/shift-ends/").json()}
+    assert waiting[att_a.full_name] == "cash_due"
+    end_id = stage["end_id"]
+    assert mgr.post(f"/api/shift-ends/{end_id}/approve/").status_code == 400  # nothing to approve until the cash is in
+
+    handed = ca.post(f"/api/shifts/{sid}/cash/", {"cash": cash("75")}, format="json")
+    assert handed.status_code == 200, handed.content
+    assert ca.get("/api/shifts/prefill/").json()["stations"][0]["my_stage"]["stage"] == "held"  # now with the manager
+    assert mgr.post(f"/api/shift-ends/{end_id}/approve/").status_code == 200
+
+    # the last one out closes their meters: the shift closes, and their cash still lands on it afterwards
+    last = cb.post(f"/api/shifts/{sid}/end/", {"ended_at": T_END, "readings": readings(p2, [20, 0]), "cash_later": True}, format="json").json()
+    assert last["status"] == "closed"
+    assert cb.post(f"/api/shifts/{sid}/cash/", {"cash": cash("30")}, format="json").status_code == 200
+    people = {p["name"]: p for p in mgr.get(f"/api/shifts/{sid}/").json()["summary"]["by_attendant"]}
+    assert (people["Second Attendant"]["expected"], people["Second Attendant"]["submitted"]) == ("30.00", "30.00")

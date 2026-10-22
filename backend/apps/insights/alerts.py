@@ -61,6 +61,8 @@ def evaluate_tenant(tenant_id, now=None):
     # Cash alerts looked at in this run: one that is no longer wanted has cleared (the numbers were corrected).
     checked = set()
     for s in Shift.objects.filter(status__in=["closed", "reviewed"], ended_at__gte=now - timedelta(days=LOOKBACK_DAYS)).select_related("station"):
+        if ShiftAttendant.objects.filter(shift=s, approval=ShiftAttendant.Approval.CASH_DUE).exists():
+            continue  # someone closed their meters and is still counting their cash: judge the cash once it is in
         checked.add(f"cash:{s.pk}")
         c = cash_summary(s)
         if c["flagged"]:

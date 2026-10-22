@@ -142,9 +142,10 @@ def fix_grant(user):
 
 
 def ends_for(user, status=None):
-    """Ends waiting for a manager (and those sent back) at the stations this manager runs; the owner sees all."""
+    """Ends waiting for a manager, those sent back, and meters closed with the cash still to come, at the stations this
+    manager runs; the owner sees all."""
     qs = scope(ShiftAttendant.objects.select_related("shift__station", "user", "approval_by"), user, "shift__station_id")
-    return qs.filter(approval__in=[status] if status else list(services.HELD)).order_by("cash_submitted_at")
+    return qs.filter(approval__in=[status] if status else [*services.HELD, services.CASH_DUE]).order_by("cash_submitted_at", "left_at")
 
 
 def get_end(user, pk):

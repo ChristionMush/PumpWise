@@ -54,6 +54,7 @@ class ShiftAttendant(TenantOwnedModel):
         PENDING = "pending", "Waiting for the manager"
         APPROVED = "approved", "Approved"
         SENT_BACK = "sent_back", "Sent back to fix"
+        CASH_DUE = "cash_due", "Meters closed, cash to hand in"
 
     shift = models.ForeignKey(Shift, on_delete=models.PROTECT, related_name="attendants")
     user = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="+")
