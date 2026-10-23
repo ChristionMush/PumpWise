@@ -181,9 +181,18 @@ describe("daily report on the Today dashboard", () => {
       handed_in: [{ payment_type: "cash", label: "Cash", amount: "3190.92" }, { payment_type: "card", label: "Swipe", amount: "0.00" }, { payment_type: "mobile_money", label: "EcoCash", amount: "0.00" }, { payment_type: "credit", label: "Inter Company Credit", amount: "200.00" }],
       people: [{ attendant: "Latifah Taibu", shift_id: "sh1", shift_started_at: "2026-10-22T11:10:00Z", litres: "341.000", amount: "699.05" }],
     };
-    mockApi({ "GET /api/auth/me/": { body: { user: ownerUser, tenant } }, "GET /api/dashboard/": { body: DASH }, "GET /api/prices/announcements/": { body: { announcements: [] } }, "GET /api/reports/daily/": { body: [report] } });
+    mockApi({ "GET /api/auth/me/": { body: { user: ownerUser, tenant } }, "GET /api/dashboard/": { body: DASH }, "GET /api/prices/announcements/": { body: { announcements: [] } }, "GET /api/reports/daily/": { body: [report, { ...report, station: "s2", station_name: "Eastview" }] } });
     renderApp("/");
     const card = await screen.findByRole("region", { name: "Daily report Chigwende" });
+    // at the top of the page: the owner sees there are two station reports, one below the other
+    expect(screen.getByRole("heading", { name: "Latest closing report" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Station reports")).toHaveTextContent("2 station reports: Chigwende · Eastview ↓");
+    expect(card).toHaveTextContent("Station 1 of 2");
+    expect(within(card).getByRole("link", { name: "Next: Eastview report below ↓" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Daily report Eastview" })).toHaveTextContent("Station 2 of 2");
+    expect(within(card).getAllByRole("heading", { level: 3 }).map((h) => h.textContent?.replace(/ \(.*/, "").replace(/Dips.*/, "Dips"))).toEqual(
+      ["Money", "Cash losses", "Dips", "Sold", "Fuel check", "Pumps", "Attendants"]); // headings, no dropdowns
+    expect(card.querySelector("details")).toBeNull();
     expect(card).toHaveTextContent(/closed .* by Justice/);
     expect(card).toHaveTextContent(/Date: Thursday,? 22 October 2026|Date: Thursday,? October 22,? 2026/);
     const total = within(card).getByRole("table", { name: "Grand total" });

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { Badge, ErrorNote } from "../components";
-import { DayReport } from "./DayReport";
+import { DayReport, jumpToReport } from "./DayReport";
 
 const amt = (o: Record<string, string>) => Object.entries(o).map(([c, a]) => `${c} ${Number(a).toLocaleString(undefined, { minimumFractionDigits: 2 })}`).join(" · ") || "—";
 
@@ -21,14 +21,15 @@ export default function Dashboard() {
   const t = d.totals;
   return (
     <>
-      <div className="row between"><h1>Today</h1><span className="muted" data-testid="updated">Updated {new Date(d.as_of).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
+      <h1>Today</h1>
+      <DailyReports />
+      <div className="row between"><h2>Right now</h2><span className="muted" data-testid="updated">Updated {new Date(d.as_of).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
       <div className="grid">
         <div className="card stat"><span className="muted">Sold today</span><strong>{Number(t.today_litres).toLocaleString()} L</strong><span>{amt(t.today_amount_by_currency)}</span></div>
         <div className="card stat"><span className="muted">Next refill by</span><strong>{d.next_refill?.refill_by ?? "—"}</strong><span>{d.next_refill?.tank ?? "No forecast yet"}</span></div>
         <Link to="/alerts" className={`card stat ${t.open_alerts ? "bad" : ""}`}><span className="muted">Needs attention</span><strong>{t.open_alerts}</strong><span>{Number(t.unexplained_loss_7d) > 0 ? `${Number(t.unexplained_loss_7d).toFixed(0)} L unexplained (7 days)` : "No fuel loss flagged"}</span></Link>
         <Link to="/reports" className={`card stat ${t.flagged_cash_shifts_7d ? "bad" : ""}`}><span className="muted">Cash differences (7 days)</span><strong>{t.flagged_cash_shifts_7d}</strong><span>{t.open_shifts} shift{t.open_shifts === 1 ? "" : "s"} open now</span></Link>
       </div>
-      <DailyReports />
       {d.stations.map((s: any) => (
         <section key={s.id} className="card"><h2>{s.name}</h2>
           <p>{Number(s.today.litres).toLocaleString()} L · {amt(s.today.amount_by_currency)}</p>
@@ -44,18 +45,25 @@ export default function Dashboard() {
   );
 }
 
-/** The daily report per station: the trading day 21:00 to 21:00, named by the day it closes, from the manager's day
- * close. Shows the last closed day; the shifts and attendants are the deep dive. */
+/** The latest closing report per station, at the top of the page: the trading day 21:00 to 21:00, named by the day it
+ * closes, from the manager's day close. With several stations, a line at the top lists them and each report points to
+ * the next one below. */
 function DailyReports() {
   const [reports, setReports] = useState<any[] | null>(null);
   const [picked, setPicked] = useState("");
   useEffect(() => { void api<any[]>(`/api/reports/daily/${picked ? `?day=${picked}` : ""}`).then(setReports).catch(() => setReports([])); }, [picked]);
   if (!reports?.length) return null;
   return (<>
-    <div className="row between"><h2>Daily report</h2>
+    <div className="row between"><h2>{picked ? "Closing report" : "Latest closing report"}</h2>
       <label className="row gap"><span className="muted">Day</span><input type="date" aria-label="Report day" value={picked || reports[0].day} onChange={(e) => setPicked(e.target.value)} /></label></div>
-    {reports.map((r) => (
-      <DayReport key={r.station} r={r} />
+    {reports.length > 1 && (
+      <p aria-label="Station reports">{reports.length} station reports: {reports.map((r, i) => (
+        <span key={r.station}>{i > 0 && " · "}<a href={`#report-${r.station}`} onClick={(e) => { e.preventDefault(); jumpToReport(r.station); }}>{r.station_name}{i > 0 ? " ↓" : ""}</a></span>
+      ))}</p>
+    )}
+    {reports.map((r, i) => (
+      <DayReport key={r.station} r={r} of={{ index: i + 1, count: reports.length }}
+        next={reports[i + 1] ? { id: reports[i + 1].station, name: reports[i + 1].station_name } : undefined} />
     ))}
   </>);
 }

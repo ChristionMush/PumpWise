@@ -25,8 +25,7 @@ describe("reports", () => {
     const day = await screen.findByRole("region", { name: "Daily report Chigwende" });
     expect(day).toHaveTextContent(/Date: Wednesday,? (21 October|October 21),? 2026/);
     expect(day).toHaveTextContent(/Grand Total\s*USD 155\D00/);
-    const user = userEvent.setup();
-    await user.click(within(day).getByText("Shifts (1)"));
+    expect(within(day).getByRole("heading", { name: "Shifts (1)" })).toBeInTheDocument(); // a heading, no dropdown
     expect(within(day).getByRole("generic", { name: "Shift Tendai" })).toHaveTextContent(/Expected USD 157\D50 · handed in 155\D00 · cash difference -2\D50/);
   });
 
