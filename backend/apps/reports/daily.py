@@ -22,6 +22,7 @@ from apps.operations.models import (
     CashSubmission,
     DayClose,
     DayCloseReading,
+    Delivery,
     PumpMeterReading,
     Shift,
     ShiftAttendant,
@@ -113,6 +114,31 @@ def cash_losses(checks):
             "milking": _s(milking, Q2), "milking_count": milking_count}
 
 
+def meter_fuel_checks(station, opening, close, cfg):
+    """The manager's own fuel check, from one day close to the next: opening dip + delivered − litres through the
+    pumps (closing meters − opening meters, at the two closes) − closing dip. It does not depend on the attendants'
+    readings, so a gap in them (pumping before anyone recorded, a missed handover) does not show up as missing fuel."""
+    if opening is None or close is None:
+        return []
+    opened = {r.nozzle_id: r.reading for r in DayCloseReading.objects.filter(day_close=opening)}
+    closed = {r.nozzle_id: r.reading for r in DayCloseReading.objects.filter(day_close=close)}
+    out = []
+    for t in Tank.objects.filter(station=station).select_related("fuel_type").order_by("name"):
+        first = TankReading.objects.filter(tank=t, day_close=opening).first()
+        last = TankReading.objects.filter(tank=t, day_close=close).first()
+        nozzles = list(Nozzle.objects.filter(tank=t))
+        if first is None or last is None or not nozzles or any(n.pk not in opened or n.pk not in closed for n in nozzles):
+            continue
+        pumped = sum((dispensed_litres(opened[n.pk], closed[n.pk], n.meter_max, []) for n in nozzles), Decimal(0))
+        delivered = Delivery.objects.filter(tank=t, delivered_at__gt=opening.closed_at, delivered_at__lte=close.closed_at).aggregate(s=Sum("litres_received"))["s"] or Decimal(0)
+        loss = first.litres + delivered - pumped - last.litres
+        limit = max(cfg.loss_threshold_litres, pumped * cfg.loss_threshold_pct / 100)
+        out.append({"tank": t.name, "fuel_code": t.fuel_type.code, "opening": _s(first.litres, Q3), "deliveries": _s(delivered, Q3),
+                    "dispensed": _s(pumped, Q3), "closing": _s(last.litres, Q3), "loss": _s(loss, Q3),
+                    "status": "loss" if loss > limit else "gain" if loss < -limit else "ok"})
+    return out
+
+
 def dips_by_fuel(station, close, end):
     """The day close dips (mm and litres) per fuel type; before the close, each tank's latest dip."""
     out = {}
@@ -175,6 +201,7 @@ def daily_report(station, day):
         r = reconcile_tank_day(t, day, cfg)
         if r["status"] != "insufficient_data":
             tanks.append({k: r[k] for k in ("tank", "fuel_code", "opening", "deliveries", "dispensed", "closing", "loss", "status")})
+    meter_checks = meter_fuel_checks(station, opening, close, cfg)
 
     # money handed in during the day (the night shift hands in after the close, so it lands on the next day)
     cash = defaultdict(Decimal)
@@ -199,6 +226,6 @@ def daily_report(station, day):
         "totals": {"litres": _s(totals["litres"], Q3), "amount": _s(totals["amount"], Q2), "handed_in": _s(sum(cash.values(), Decimal(0)), Q2),
                    "grand_total": _s(sum(cash.values(), Decimal(0)), Q2),
                    "received": _s(received, Q2), "intercompany": _s(cash.get("credit"), Q2)},
-        "fuels": fuels, "pumps": pumps, "tanks": tanks, "handed_in": handed, "people": people,
+        "fuels": fuels, "pumps": pumps, "tanks": tanks, "meter_checks": meter_checks, "handed_in": handed, "people": people,
         "cash_losses": cash_losses(checks), "dips": dips_by_fuel(station, close, end), "shifts": shift_rows(checks),
     }

@@ -182,7 +182,8 @@ describe("daily report on the Today dashboard", () => {
       dips: [{ fuel: "Petrol (Unleaded)", fuel_code: "PETROL", litres: "5240.000", tanks: [{ tank: "Petrol Tank", dip_mm: "1312.0", litres: "5240.000", at: "2026-10-22T19:12:00Z" }] }],
       fuels: [{ fuel: "Diesel", fuel_code: "DIESEL", litres: "707.000", amount: "1442.28" }, { fuel: "Petrol (Unleaded)", fuel_code: "PETROL", litres: "952.000", amount: "1951.60" }],
       pumps: [{ pump: "4A", nozzle: "Petrol", opening_meter: "924759.36", closing_meter: "925100.36", opening_from: "2026-10-21T16:37:00Z", closing_from: "close", meter_litres: "341.000", sold_litres: "341.000" }],
-      tanks: [{ tank: "Petrol Tank", fuel_code: "PETROL", opening: "6199", deliveries: "0", dispensed: "952", closing: "5240", loss: "7.000", status: "ok" }],
+      tanks: [{ tank: "Petrol Tank", fuel_code: "PETROL", opening: "2550", deliveries: "0", dispensed: "593.03", closing: "1735", loss: "221.970", status: "loss" }],
+      meter_checks: [{ tank: "Petrol Tank", fuel_code: "PETROL", opening: "2550", deliveries: "0", dispensed: "798.13", closing: "1735", loss: "16.870", status: "ok" }],
       handed_in: [{ payment_type: "cash", label: "Cash", amount: "3190.92" }, { payment_type: "card", label: "Swipe", amount: "0.00" }, { payment_type: "mobile_money", label: "EcoCash", amount: "0.00" }, { payment_type: "credit", label: "Inter Company Credit", amount: "200.00" }],
       people: [{ attendant: "Latifah Taibu", shift_id: "sh1", shift_started_at: "2026-10-22T11:10:00Z", litres: "341.000", amount: "699.05" }],
     };
@@ -210,6 +211,12 @@ describe("daily report on the Today dashboard", () => {
     const losses = within(card).getByRole("table", { name: "Cash losses" });
     expect(losses).toHaveTextContent(/Cash Losses Total\s*USD 3\D46.*Nancy Moyo\s*\$1 and above\s*USD 2\D50.*Milking errors\s*under \$1, 3\s*USD 0\D96/);
     expect(within(card).getByRole("table", { name: "Dips" })).toHaveTextContent(/Petrol \(Unleaded\)\s*5\D?240 L.*Petrol Tank\s*1\D?312 mm\s*5\D?240 L/);
+    // the manager's check from the day-close meters comes first; the attendants' readings (missing the morning) below
+    const check = within(card).getByRole("table", { name: "Fuel check" });
+    expect(within(check).getAllByRole("row").slice(2).map((row) => row.textContent)).toEqual([
+      expect.stringMatching(/^Petrol Tank · day-close meters\s*2\D?550 \+ 0 − 798 − 1\D?735\s*\+16\D9 L$/),
+      expect.stringMatching(/^Petrol Tank · attendants' readings\s*2\D?550 \+ 0 − 593 − 1\D?735\s*\+222\D0 L$/)]);
+    expect(card).toHaveTextContent(/some pumping was not recorded by an attendant/);
     expect(card).toHaveTextContent(/Latifah Taibu/);
     expect(within(card).getByRole("table", { name: "Pumps" })).toHaveTextContent(/4A · Petrol\s*924759\.36 \(attendant, .+\) → 925100\.36\s*341 L/); // no close the day before: the attendant's reading
     // the other station's report is one tap away (or a swipe), and the choice is remembered

@@ -718,3 +718,21 @@ def test_an_earlier_day_can_be_closed_afterwards_and_its_sales_are_re_split():
     days = mgr.get("/api/reports/days/", {"date_from": "2026-10-01", "date_to": "2026-10-02", "station": str(fc.station.pk)}).json()["days"]
     assert [(d["day"], d["closed"], d["totals"]["litres"]) for d in days] == [("2026-10-02", False, "63.000"), ("2026-10-01", True, "42.000")]
     assert [s["shift_id"] for s in days[0]["shifts"]] == [sid] and days[0]["totals"]["grand_total"] == "157.50"
+
+
+def test_the_manager_fuel_check_runs_from_close_meters_to_close_meters():
+    """Close to close: opening dip + delivered − litres through the pumps (meters at the two closes) − closing dip.
+    Pumping nobody recorded (before the attendants started using the system) is still counted."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+
+    def close(at, dip, meters):
+        r = mgr.post("/api/day-close/", {"station": str(fc.station.pk), "at": at, "dips": [{"tank": str(fc.tank.pk), "dip_mm": "1500", "litres": dip}],
+                                         "meters": [{"nozzle": str(n.pk), "reading": str(v)} for n, v in zip(fc.nozzles + p2, meters, strict=True)]}, format="json")
+        assert r.status_code == 201, r.content
+
+    close("2026-10-01T19:00:00Z", "5000", [0, 0, 0, 0])
+    close("2026-10-02T19:00:00Z", "4880", [100, 0, 10, 0])  # 110 L through the pumps, no attendant recorded any of it
+    report = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-02"}).json()[0]
+    [check] = report["meter_checks"]
+    assert (check["opening"], check["dispensed"], check["closing"], check["loss"], check["status"]) == ("5000.000", "110.000", "4880.000", "10.000", "ok")
+    assert mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-01"}).json()[0]["meter_checks"] == []  # no close before it

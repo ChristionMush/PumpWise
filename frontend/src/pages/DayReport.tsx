@@ -65,13 +65,26 @@ export function DayReport({ r, of }: { r: any; of?: { index: number; count: numb
         <tr className="total"><td>Total</td><td className="num">{n(r.totals.litres, 0)} L</td><td className="num">{cur} {n(r.totals.amount)}</td></tr>
       </Section>
 
-      {r.tanks.length > 0 && (
+      {(r.tanks.length > 0 || r.meter_checks?.length > 0) && (
         <Section title="Fuel check" label="Fuel check" head={["Tank", "Opening + delivered − sold − closing", "Difference"]}>
-          {r.tanks.map((t: any) => (
-            <tr key={t.tank} className={t.status === "loss" ? "warn" : undefined}><td>{t.tank}</td><td className="num">{n(t.opening, 0)} + {n(t.deliveries, 0)} − {n(t.dispensed, 0)} − {n(t.closing, 0)}</td>
+          {/* the manager's check (pump meters at the two day closes) first; the attendants' readings below it */}
+          {(r.meter_checks ?? []).map((t: any) => (
+            <tr key={`m-${t.tank}`} className={t.status === "loss" ? "warn" : undefined}><td>{t.tank} <span className="muted">· day-close meters</span></td>
+              <td className="num">{n(t.opening, 0)} + {n(t.deliveries, 0)} − {n(t.dispensed, 0)} − {n(t.closing, 0)}</td>
               <td className="num">{Number(t.loss) > 0 ? "+" : ""}{n(t.loss, 1)} L</td></tr>
           ))}
+          {r.tanks.map((t: any) => {
+            const byMeters = r.meter_checks?.some((m: any) => m.tank === t.tank);
+            return (
+              <tr key={t.tank} className={byMeters ? "sub" : t.status === "loss" ? "warn" : undefined}><td>{t.tank}{byMeters && <span className="muted"> · attendants' readings</span>}</td>
+                <td className="num">{n(t.opening, 0)} + {n(t.deliveries, 0)} − {n(t.dispensed, 0)} − {n(t.closing, 0)}</td>
+                <td className="num">{Number(t.loss) > 0 ? "+" : ""}{n(t.loss, 1)} L</td></tr>
+            );
+          })}
         </Section>
+      )}
+      {r.meter_checks?.length > 0 && r.tanks.some((t: any) => r.meter_checks.some((m: any) => m.tank === t.tank && Math.abs(Number(m.dispensed) - Number(t.dispensed)) >= 1)) && (
+        <p className="muted">The pump meters and the attendants' readings differ: some pumping was not recorded by an attendant (for example before they started on the system). The day-close meters count all of it.</p>
       )}
 
       <Section title="Pumps" label="Pumps" head={["Pump", "Opening → closing meter", "Litres"]}>
