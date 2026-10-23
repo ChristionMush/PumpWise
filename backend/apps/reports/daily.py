@@ -43,10 +43,23 @@ def shift_checks(station, start, end):
 
 
 def shift_rows(checks):
-    return [{"shift_id": str(s.pk), "started_at": s.started_at, "ended_at": s.ended_at, "status": s.status,
-             "attendants": [a["name"] for a in c["by_attendant"]], "expected": c["expected"], "handed_in": c["submitted_total"],
-             "cash_difference": c["cash_difference"], "cash_status": c["status"], "per_attendant_expected": c["per_attendant_expected"],
-             "by_attendant": c["by_attendant"], "by_pump": c["by_pump"]} for s, c in checks]
+    """Each shift's cash check. While a shift is open, people still on it have not handed in yet: they are listed as
+    waiting (with what they owe so far), and the difference counts only those who have handed in."""
+    rows = []
+    for s, c in checks:
+        waiting, handed_difference = [], Decimal(0)
+        if s.status == Shift.Status.OPEN and c["per_attendant_expected"]:
+            for a in c["by_attendant"]:
+                if a["handed_in"]:
+                    handed_difference += Decimal(a["cash_difference"])
+                else:
+                    waiting.append({"name": a["name"], "expected": a["expected"]})
+        rows.append({"shift_id": str(s.pk), "started_at": s.started_at, "ended_at": s.ended_at, "status": s.status,
+                     "attendants": [a["name"] for a in c["by_attendant"]], "expected": c["expected"], "handed_in": c["submitted_total"],
+                     "cash_difference": c["cash_difference"] if not waiting else _s(handed_difference, Q2), "waiting": waiting,
+                     "cash_status": c["status"], "per_attendant_expected": c["per_attendant_expected"],
+                     "by_attendant": c["by_attendant"], "by_pump": c["by_pump"]})
+    return rows
 
 
 def cash_losses(checks):

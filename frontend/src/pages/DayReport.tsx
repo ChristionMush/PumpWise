@@ -67,7 +67,10 @@ export function DayReport({ r, of, next }: { r: any; of?: { index: number; count
         {r.shifts.map((s: any) => (
           <div key={s.shift_id} className="card" aria-label={`Shift ${s.attendants.join(", ")}`}>
             <div className="row between"><strong>{s.attendants.join(", ") || "Not assigned"}</strong><span className="muted">{when(s.started_at)} → {s.ended_at ? when(s.ended_at) : "open"}</span></div>
-            <p>Expected {r.currency} {n(s.expected)} · handed in {n(s.handed_in)} · cash difference <strong>{n(s.cash_difference)}</strong></p>
+            {s.waiting?.length ? (<>
+              <p>Shift still open. Cash difference of those who handed in: <strong>{n(s.cash_difference)}</strong></p>
+              <p className="muted">Still to hand in: {s.waiting.map((w: any) => `${w.name} (${r.currency} ${n(w.expected ?? 0)} so far)`).join(", ")}</p>
+            </>) : <p>Expected {r.currency} {n(s.expected)} · handed in {n(s.handed_in)} · cash difference <strong>{n(s.cash_difference)}</strong></p>}
             {s.per_attendant_expected && s.by_attendant.length > 1 && <ul className="plain">{s.by_attendant.map((p: any) => <li key={p.user}>{p.name}: expected {n(p.expected ?? 0)} · handed in {n(p.submitted)} · difference {n(p.cash_difference ?? 0)}</li>)}</ul>}
             <ul className="plain muted">{s.by_pump.map((x: any) => <li key={`${x.pump_id}-${x.fuel_code}-${x.attendant}`}>{x.pump} {x.fuel_code} · {x.attendant_name}: {n(x.litres, 0)} L · {r.currency} {n(x.amount)}</li>)}</ul>
           </div>

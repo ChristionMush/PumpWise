@@ -12,7 +12,9 @@ const dayReport = {
   cash_losses: { total: "2.50", attendants: "2.50", by_attendant: [{ attendant: "Tendai", amount: "2.50" }], milking: "0.00", milking_count: 0 },
   dips: [], fuels: [{ fuel: "Petrol", fuel_code: "PETROL", litres: "105.000", amount: "157.50" }], pumps: [], tanks: [], people: [],
   shifts: [{ shift_id: "sh1", started_at: "2026-10-20T16:00:00Z", ended_at: "2026-10-21T05:00:00Z", status: "closed", attendants: ["Tendai"], expected: "157.50", handed_in: "155.00",
-    cash_difference: "-2.50", cash_status: "short", per_attendant_expected: true, by_attendant: [], by_pump: [{ pump_id: "p1", pump: "Pump 1", fuel_code: "PETROL", attendant: "u1", attendant_name: "Tendai", litres: "105.000", amount: "157.50" }] }],
+    cash_difference: "-2.50", cash_status: "short", per_attendant_expected: true, by_attendant: [], by_pump: [{ pump_id: "p1", pump: "Pump 1", fuel_code: "PETROL", attendant: "u1", attendant_name: "Tendai", litres: "105.000", amount: "157.50" }] },
+    { shift_id: "sh2", started_at: "2026-10-21T11:00:00Z", ended_at: null, status: "open", attendants: ["Rudo", "Ashok"], expected: "300.00", handed_in: "99.00",
+      cash_difference: "-1.00", waiting: [{ name: "Ashok", expected: "200.00" }], cash_status: "open", per_attendant_expected: true, by_attendant: [], by_pump: [] }],
 };
 const person = { user: "u1", name: "Tendai", shifts: 2, shared_shifts: 0, flagged_shifts: 1, litres: "80.000", sales: "120.00", handed_in: "115.00", expected: "120.00", cash_difference: "-5.00",
   pumps: [{ pump: "Pump 1", fuel_code: "PETROL", litres: "80.000", amount: "120.00" }] };
@@ -25,8 +27,10 @@ describe("reports", () => {
     const day = await screen.findByRole("region", { name: "Daily report Chigwende" });
     expect(day).toHaveTextContent(/Date: Wednesday,? (21 October|October 21),? 2026/);
     expect(day).toHaveTextContent(/Grand Total\s*USD 155\D00/);
-    expect(within(day).getByRole("heading", { name: "Shifts (1)" })).toBeInTheDocument(); // a heading, no dropdown
+    expect(within(day).getByRole("heading", { name: "Shifts (2)" })).toBeInTheDocument(); // a heading, no dropdown
     expect(within(day).getByRole("generic", { name: "Shift Tendai" })).toHaveTextContent(/Expected USD 157\D50 · handed in 155\D00 · cash difference -2\D50/);
+    // an open shift: only those who handed in count, the rest are listed as still to hand in
+    expect(within(day).getByRole("generic", { name: "Shift Rudo, Ashok" })).toHaveTextContent(/Shift still open\. Cash difference of those who handed in: -1\D00.*Still to hand in: Ashok \(USD 200\D00 so far\)/);
   });
 
 

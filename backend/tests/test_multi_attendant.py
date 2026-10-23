@@ -650,6 +650,9 @@ def test_the_day_close_ends_the_trading_day_at_about_21_00():
         assert mine == Decimal("100.000")  # 40 before the close + 60 after
     stage = ca.get("/api/shifts/prefill/").json()["stations"][0]["my_stage"]
     assert stage["expected"] == "150.00"  # 100 L at 1.50: the close did not change what they owe
+    # the shift is still open (B works on): B is waiting to hand in, and the difference counts only A, who has
+    waiting = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-02"}).json()[0]["shifts"][0]
+    assert waiting["waiting"] == [{"name": att_b.full_name, "expected": "15.00"}] and waiting["cash_difference"] == "-2.00"
     days = {d["date"]: d["litres"] for d in mgr.get("/api/reports/daily-sales/", {"date_from": "2026-10-01", "date_to": "2026-10-02"}).json()["days"]}
     assert days == {"2026-10-01": "50.000", "2026-10-02": "60.000"}  # 1 Oct: 40 (A) + 10 (B) to 21:10; 2 Oct: A's 60 after it
     # the daily report for 1 Oct: what the manager used to work out by hand at 21:00
