@@ -13,8 +13,8 @@ const dayReport = {
   dips: [], fuels: [{ fuel: "Petrol", fuel_code: "PETROL", litres: "105.000", amount: "157.50" }], pumps: [], tanks: [], people: [],
   shifts: [{ shift_id: "sh1", started_at: "2026-10-20T16:00:00Z", ended_at: "2026-10-21T05:00:00Z", status: "closed", attendants: ["Tendai"], expected: "157.50", handed_in: "155.00",
     cash_difference: "-2.50", cash_status: "short", per_attendant_expected: true, by_attendant: [], by_pump: [{ pump_id: "p1", pump: "Pump 1", fuel_code: "PETROL", attendant: "u1", attendant_name: "Tendai", litres: "105.000", amount: "157.50" }] },
-    { shift_id: "sh2", started_at: "2026-10-21T11:00:00Z", ended_at: null, status: "open", attendants: ["Rudo", "Ashok"], expected: "300.00", handed_in: "99.00",
-      cash_difference: "-1.00", waiting: [{ name: "Ashok", expected: "200.00" }], cash_status: "open", per_attendant_expected: true, by_attendant: [], by_pump: [] }],
+    { shift_id: "sh2", started_at: "2026-10-21T11:00:00Z", ended_at: "2026-10-21T16:30:00Z", status: "open", attendants: ["Rudo"], expected: "100.00", handed_in: "99.00",
+      cash_difference: "-1.00", waiting: [{ name: "Ashok", expected: "200.00" }], people: [] }],
 };
 const person = { user: "u1", name: "Tendai", shifts: 2, shared_shifts: 0, flagged_shifts: 1, litres: "80.000", sales: "120.00", handed_in: "115.00", expected: "120.00", cash_difference: "-5.00",
   pumps: [{ pump: "Pump 1", fuel_code: "PETROL", litres: "80.000", amount: "120.00" }] };
@@ -31,8 +31,9 @@ describe("reports", () => {
     expect(shifts).toHaveTextContent("Shifts (2)"); // a heading row, no dropdown
     expect(within(shifts).getByRole("row", { name: "Shift Tendai" })).toHaveTextContent(/157\D50 \/ 155\D00\s*-2\D50/);
     // an open shift: only those who handed in count, the rest are listed as still to hand in
-    expect(within(shifts).getByRole("row", { name: "Shift Rudo, Ashok" })).toHaveTextContent(/still open\s*those who handed in\s*-1\D00/);
-    expect(shifts).toHaveTextContent(/Still to hand in: Ashok\s*USD 200\D00 so far/);
+    // a long-running shift (assigned pumps): each attendant's own turn, like any other shift; who still owes is listed
+    expect(within(shifts).getByRole("row", { name: "Shift Rudo" })).toHaveTextContent(/100\D00 \/ 99\D00\s*-1\D00/);
+    expect(shifts).toHaveTextContent(/Meters closed, cash not in yet: Ashok\s*owes USD 200\D00/);
   });
 
 

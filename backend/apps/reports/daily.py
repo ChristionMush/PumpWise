@@ -5,7 +5,7 @@
 * Tanks: the fuel check from the opening dip to the closing dip.
 * Grand total: everything handed in during the day, broken down by cash, swipe, EcoCash and intercompany credit
   (intercompany issues are owed by the other company).
-* Cash losses: each attendant's shortage on each shift handed in during the day. $1.00 and above is the attendant's
+* Cash losses: each attendant's shortage on each turn handed in during the day. $1.00 and above is the attendant's
   loss; under $1.00 is a milking error (change, rounding, a drip of fuel), totalled separately.
 * Dips: the day close dips in mm and litres, per fuel type.
 * Deep dive: each attendant's litres and money within the day, with the shift they belong to.
@@ -14,10 +14,20 @@ from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
-from apps.operations.models import CashSubmission, DayClose, DayCloseReading, PumpMeterReading, Shift, TankReading, Transaction
+from apps.operations.approvals import end_summary
+from apps.operations.models import (
+    CashSubmission,
+    DayClose,
+    DayCloseReading,
+    PumpMeterReading,
+    Shift,
+    ShiftAttendant,
+    TankReading,
+    Transaction,
+)
 from apps.operations.services import dispensed_litres
 from apps.operations.tradingday import Calendar
 from apps.stations.models import Nozzle, Tank
@@ -36,45 +46,60 @@ def _s(v, q):
 
 
 def shift_checks(station, start, end):
-    """The shifts whose cash was handed in during the day, each with its cash check: the day's drill-down."""
-    shifts = (Shift.objects.filter(station=station, attendants__cash_submitted_at__gt=start, attendants__cash_submitted_at__lte=end)
-              .distinct().select_related("station").order_by("started_at"))
-    return [(shift, cash_summary(shift)) for shift in shifts]
+    """The day's drill-down, built from each attendant's own turn (their meters, what they owe and what they handed
+    in), not the whole shift: on assigned pumps a shift can stay open for days while people come and go. A turn
+    belongs to the day it was handed in; one whose meters were closed in the day but whose cash is not in yet is
+    listed as still to hand in. Grouped by shift."""
+    parts = (ShiftAttendant.objects.filter(shift__station=station)
+             .filter(Q(cash_submitted_at__gt=start, cash_submitted_at__lte=end) | Q(cash_submitted_at__isnull=True, left_at__gt=start, left_at__lte=end))
+             .select_related("shift__station", "user").order_by("joined_at"))
+    by_shift = {}
+    for part in parts:
+        by_shift.setdefault(part.shift, []).append((part, end_summary(part)))
+    out = []
+    for shift, turns in by_shift.items():
+        shared = any(p.cash_submitted_at and e["expected"] is None for p, e in turns)  # pumps not assigned: no per-person amount
+        out.append((shift, turns, cash_summary(shift) if shared and shift.status != Shift.Status.OPEN else None))
+    return out
 
 
 def shift_rows(checks):
-    """Each shift's cash check. While a shift is open, people still on it have not handed in yet: they are listed as
-    waiting (with what they owe so far), and the difference counts only those who have handed in."""
+    """One line per shift for the turns handed in during the day (expected, handed in, difference), and the turns
+    still to hand in listed below it."""
     rows = []
-    for s, c in checks:
-        waiting, handed_difference = [], Decimal(0)
-        if s.status == Shift.Status.OPEN and c["per_attendant_expected"]:
-            for a in c["by_attendant"]:
-                if a["handed_in"]:
-                    handed_difference += Decimal(a["cash_difference"])
-                else:
-                    waiting.append({"name": a["name"], "expected": a["expected"]})
-        rows.append({"shift_id": str(s.pk), "started_at": s.started_at, "ended_at": s.ended_at, "status": s.status,
-                     "attendants": [a["name"] for a in c["by_attendant"]], "expected": c["expected"], "handed_in": c["submitted_total"],
-                     "cash_difference": c["cash_difference"] if not waiting else _s(handed_difference, Q2), "waiting": waiting,
-                     "cash_status": c["status"], "per_attendant_expected": c["per_attendant_expected"],
-                     "by_attendant": c["by_attendant"], "by_pump": c["by_pump"]})
+    for shift, turns, whole in checks:
+        handed = [(p, e) for p, e in turns if p.cash_submitted_at]
+        waiting = [{"name": p.user.full_name, "expected": e["expected"]} for p, e in turns if not p.cash_submitted_at]
+        if whole is not None:  # shared pumps: the shift's own cash check, once it is closed
+            expected, paid, difference = whole["expected"], whole["submitted_total"], whole["cash_difference"]
+        elif handed and all(e["expected"] is not None for _, e in handed):
+            expected = _s(sum((Decimal(e["expected"]) for _, e in handed), Decimal(0)), Q2)
+            paid = _s(sum((Decimal(e["handed_in"]) for _, e in handed), Decimal(0)), Q2)
+            difference = _s(Decimal(paid) - Decimal(expected), Q2)
+        else:
+            expected, difference = None, None
+            paid = _s(sum((Decimal(e["handed_in"]) for _, e in handed), Decimal(0)), Q2)
+        ends = [p.left_at for p, _ in turns]
+        rows.append({"shift_id": str(shift.pk), "started_at": min(p.joined_at for p, _ in turns),
+                     "ended_at": None if any(x is None for x in ends) else max(ends), "status": shift.status,
+                     "attendants": list(dict.fromkeys(p.user.full_name for p, _ in handed)) or [w["name"] for w in waiting],
+                     "expected": expected, "handed_in": paid, "cash_difference": difference, "waiting": waiting,
+                     "people": [{"name": p.user.full_name, "expected": e["expected"], "handed_in": e["handed_in"], "cash_difference": e["cash_difference"]}
+                                for p, e in handed]})
     return rows
 
 
 def cash_losses(checks):
-    """Shortages on the shifts whose cash was handed in during the day, per attendant: their own difference when
-    pumps are assigned (or they ran the shift alone), else the shift's difference shared by the people on it."""
+    """Shortages on the turns handed in during the day, per attendant: their own difference when pumps are assigned
+    (or they worked alone), else the closed shift's difference shared by the people on it."""
     people, milking, milking_count = defaultdict(Decimal), Decimal(0), 0
-    for shift, c in checks:
-        if c["missing_rate"]:
-            continue
-        if c["per_attendant_expected"]:  # each person who has handed in, even while others work on
-            rows = [(a["name"], Decimal(a["cash_difference"])) for a in c["by_attendant"] if a["handed_in"]]
-        elif shift.status == Shift.Status.OPEN:  # a shared shift is only short once everyone has handed in
-            continue
+    for _shift, turns, whole in checks:
+        if whole is not None:
+            if whole["missing_rate"]:
+                continue
+            rows = [(" & ".join(a["name"] for a in whole["by_attendant"]) or "Not assigned", Decimal(whole["variance"]))]
         else:
-            rows = [(" & ".join(a["name"] for a in c["by_attendant"]) or "Not assigned", Decimal(c["variance"]))]
+            rows = [(p.user.full_name, Decimal(e["cash_difference"])) for p, e in turns if p.cash_submitted_at and e["cash_difference"] is not None]
         for name, difference in rows:
             short = -difference
             if short >= MILKING:
