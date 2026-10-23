@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { Badge, ErrorNote } from "../components";
-import { closedText, DayReport, n, shortDay } from "./DayReport";
+import { DayReport, n, shortDay } from "./DayReport";
 
 const amt = (o: Record<string, string>) => Object.entries(o).map(([c, a]) => `${c} ${Number(a).toLocaleString(undefined, { minimumFractionDigits: 2 })}`).join(" · ") || "—";
 
@@ -51,24 +51,48 @@ export default function Dashboard() {
 function DailyReports() {
   const [reports, setReports] = useState<any[] | null>(null);
   const [picked, setPicked] = useState("");
+  const [station, setStation] = useState(() => { try { return localStorage.getItem(LAST_STATION) ?? ""; } catch { return ""; } });
+  const touchX = useRef(0);
   useEffect(() => { void api<any[]>(`/api/reports/daily/${picked ? `?day=${picked}` : ""}`).then(setReports).catch(() => setReports([])); }, [picked]);
   if (!reports?.length) return null;
-  // without a chosen day: each station's most recently closed day; a station that has never closed shows no report
-  const shown = picked ? reports : reports.filter((r) => r.closed);
+  const index = Math.max(0, reports.findIndex((r) => r.station === station));
+  const r = reports[index];
+  const choose = (i: number) => {
+    const next = reports[(i + reports.length) % reports.length].station;
+    setStation(next);
+    try { localStorage.setItem(LAST_STATION, next); } catch { /* private mode: just not remembered */ }
+  };
+  const names = shortNames(reports.map((x) => x.station_name));
   return (<>
     <div className="row between"><h2>{picked ? "Closing report" : "Latest closing report"}</h2>
-      <label className="row gap"><span className="muted">Day</span><input type="date" aria-label="Report day" value={picked || (shown[0] ?? reports[0]).day} onChange={(e) => setPicked(e.target.value)} /></label></div>
+      <label className="row gap"><span className="muted">Day</span><input type="date" aria-label="Report day" value={picked || r.day} onChange={(e) => setPicked(e.target.value)} /></label></div>
     {reports.length > 1 && (
-      <table className="report" aria-label="Station reports">
-        <thead><tr className="sub"><td>Station</td><td>Day</td><td>Closed</td><td className="num">Grand Total</td></tr></thead>
-        <tbody>{reports.map((r) => (picked || r.closed) ? (
-          <tr key={r.station}><td>{r.station_name}</td><td>{shortDay(r.day)}</td><td>{closedText(r)}</td><td className="num">{r.currency} {n(r.totals.grand_total)}</td></tr>
-        ) : (
-          <tr key={r.station} className="sub"><td>{r.station_name}</td><td colSpan={3}>No day closed yet</td></tr>
-        ))}</tbody>
-      </table>
+      <div className="station-tabs" role="tablist" aria-label="Station reports">
+        {reports.map((x, i) => (
+          <button key={x.station} role="tab" aria-selected={i === index} className={`station-tab ${i === index ? "on" : ""}`} onClick={() => choose(i)}>
+            <strong>{names[i]}</strong>
+            <span>{picked || x.closed ? `${shortDay(x.day)} · ${x.currency} ${n(x.totals.grand_total)}` : "No day closed yet"}</span>
+          </button>
+        ))}
+      </div>
     )}
-    {shown.length === 0 && <p className="muted">No day has been closed yet. Managers close the day on the Dip screen at about 21:00.</p>}
-    {shown.map((r, i) => <DayReport key={r.station} r={r} of={{ index: i + 1, count: shown.length }} />)}
+    {/* swipe left or right on the report to go to the other station */}
+    <div onTouchStart={(e) => { touchX.current = e.touches[0].clientX; }}
+      onTouchEnd={(e) => { const dx = e.changedTouches[0].clientX - touchX.current; if (reports.length > 1 && Math.abs(dx) > 60) choose(index + (dx < 0 ? 1 : -1)); }}>
+      {picked || r.closed
+        ? <DayReport r={r} of={{ index: index + 1, count: reports.length }} />
+        : <p className="card muted">{r.station_name}: no day has been closed yet. The manager closes the day on the Dip screen at about 21:00.</p>}
+    </div>
   </>);
+}
+
+const LAST_STATION = "pumpwise.report.station"; // the station report last looked at, shown first next time
+
+/** Station names without the words they all share ("Eastview Mutamba Fuel Zone" → "Eastview Mutamba"). */
+function shortNames(names: string[]) {
+  if (names.length < 2) return names;
+  const words = names.map((x) => x.split(" "));
+  let common = 0;
+  while (words.every((w) => w.length > common + 1 && w[w.length - 1 - common] === words[0][words[0].length - 1 - common])) common++;
+  return words.map((w) => w.slice(0, w.length - common).join(" "));
 }

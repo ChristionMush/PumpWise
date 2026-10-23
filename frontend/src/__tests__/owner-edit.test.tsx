@@ -186,13 +186,13 @@ describe("daily report on the Today dashboard", () => {
     const card = await screen.findByRole("region", { name: "Daily report Chigwende" });
     // at the top of the page: the owner sees there are two station reports, one below the other
     expect(screen.getByRole("heading", { name: "Latest closing report" })).toBeInTheDocument();
-    // a small table at the top (no links) tells the owner there are two station reports
-    const overview = screen.getByRole("table", { name: "Station reports" });
-    expect(within(overview).getAllByRole("row").slice(1).map((row) => row.textContent)).toEqual([
-      expect.stringMatching(/^Chigwende.*Closed .* by Justice\s*USD 3\D?390\D92$/), expect.stringMatching(/^Eastview.*Closed .* by Justice/)]);
-    expect(screen.queryByRole("link", { name: /report below/ })).not.toBeInTheDocument();
+    // one button per station (name, day and grand total); one report at a time, no table of stations
+    expect(screen.queryByRole("table", { name: "Station reports" })).not.toBeInTheDocument();
+    const tabs = within(screen.getByRole("tablist", { name: "Station reports" })).getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual([expect.stringMatching(/^Chigwende.*USD 3\D?390\D92$/), expect.stringMatching(/^Eastview/)]);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(card).toHaveTextContent("Station 1 of 2");
-    expect(screen.getByRole("region", { name: "Daily report Eastview" })).toHaveTextContent("Station 2 of 2");
+    expect(screen.queryByRole("region", { name: "Daily report Eastview" })).not.toBeInTheDocument();
     // one underlined table per station, read top to bottom; no dropdowns
     expect([...card.querySelectorAll("th.section")].map((h) => h.textContent?.replace(/ (at|\().*/, ""))).toEqual(
       ["Money", "Cash losses", "Dips", "Sold", "Fuel check", "Pumps", "Attendants"]);
@@ -207,5 +207,10 @@ describe("daily report on the Today dashboard", () => {
     expect(within(card).getByRole("table", { name: "Dips" })).toHaveTextContent(/Petrol \(Unleaded\)\s*5\D?240 L.*Petrol Tank\s*1\D?312 mm\s*5\D?240 L/);
     expect(card).toHaveTextContent(/Latifah Taibu/);
     expect(within(card).getByRole("table", { name: "Pumps" })).toHaveTextContent(/4A · Petrol\s*924759\.36 \(attendant, .+\) → 925100\.36\s*341 L/); // no close the day before: the attendant's reading
+    // the other station's report is one tap away (or a swipe), and the choice is remembered
+    await userEvent.setup().click(tabs[1]);
+    expect(await screen.findByRole("region", { name: "Daily report Eastview" })).toHaveTextContent("Station 2 of 2");
+    expect(screen.queryByRole("region", { name: "Daily report Chigwende" })).not.toBeInTheDocument();
+    expect(localStorage.getItem("pumpwise.report.station")).toBe("s2");
   });
 });

@@ -85,3 +85,8 @@ table.report th.section{padding-top:16px;font-size:.8rem;letter-spacing:.06em;te
 table.report tr.total td{font-weight:700}
 table.report tr.sub td{color:var(--muted)}
 table.report + table.report th.section{padding-top:18px}
+/* switching between station reports on Today: one button per station, the chosen one filled */
+.station-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.station-tab{font:inherit;display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;padding:10px 14px;min-height:56px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);cursor:pointer}
+.station-tab span{font-size:.85rem;color:var(--muted)}
+.station-tab.on{background:var(--green-2);border-color:var(--green-2);color:#fff}.station-tab.on span{color:#e6f2ea}
