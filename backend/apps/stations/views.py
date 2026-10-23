@@ -33,6 +33,7 @@ from .serializers import (
 
 DUPLICATE = {"detail": "That already exists, or one of the values is not allowed."}
 ANNOUNCE_HOURS = 48  # a new price stays on everyone's home screen this long after it starts (and before, if set ahead)
+OWNER_ANNOUNCE_HOURS = 24  # the owner sees a price change while it is new: 24 hours from when it was set or started
 
 
 def price_serializer(user):
@@ -240,7 +241,8 @@ class FuelPriceView(APIView):
 
 class PriceAnnouncementView(APIView):
     """Price changes everyone at the station is told about: prices that started in the last ANNOUNCE_HOURS and are
-    still in force, and prices set to start later. The owner also gets who set each one and when."""
+    still in force, and prices set to start later. The owner sees each one for OWNER_ANNOUNCE_HOURS from when it was
+    set or started (whichever is later), with who set it and when."""
 
     permission_classes = [Allow("view_setup")]
 
@@ -258,6 +260,9 @@ class PriceAnnouncementView(APIView):
             for p in FuelPrice.objects.filter(station_id__in={r.station_id for r in rows}, effective_to__in={r.effective_from for r in rows})
         }
         owner = can(request.user, "see_price_setter")
+        if owner:  # the owner only while it is new: 24 hours from when it was set or started, whichever is later
+            since = now - timedelta(hours=OWNER_ANNOUNCE_HOURS)
+            rows = [r for r in rows if max(r.effective_from, r.created_at) >= since]
         out = []
         for r in rows:
             item = {

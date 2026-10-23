@@ -71,3 +71,19 @@ def test_announcements_follow_station_assignment_and_tenant():
     assert len(_news(a[Role.OWNER])) == 2
     for role in (Role.OWNER, Role.MANAGER, Role.ATTENDANT):
         assert _news(b[role]) == []
+
+
+def test_the_owner_sees_a_price_change_only_while_it_is_new():
+    """The owner is told for 24 hours from when a change was set or started; staff keep it on their screen longer."""
+    from apps.stations.models import FuelPrice
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"])
+    day_old = timezone.now() - timedelta(hours=30)
+    _set(a[Role.MANAGER], fc, "1.70", effective_from=day_old.isoformat())
+    with db_context(tenant_id=a["tenant"].id):
+        FuelPrice.objects.filter(price_per_litre="1.70").update(created_at=day_old)  # set yesterday, started yesterday
+    assert [n["price_per_litre"] for n in _news(a[Role.ATTENDANT])] == ["1.7000"]  # staff: still on their screen
+    assert _news(a[Role.OWNER]) == []  # the owner: no longer new
+    _set(a[Role.MANAGER], fc, "1.75", effective_from=(timezone.now() + timedelta(hours=2)).isoformat())
+    assert [n["price_per_litre"] for n in _news(a[Role.OWNER])] == ["1.7500"]  # a new (upcoming) change is shown

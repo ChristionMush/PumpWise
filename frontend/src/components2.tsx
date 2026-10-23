@@ -30,6 +30,7 @@ interface PriceNote {
   id: string; station_name: string; fuel: string; currency: string; price_per_litre: string; previous_price: string | null;
   effective_from: string; upcoming: boolean; set_by?: string | null; set_by_role?: string | null; set_at?: string;
 }
+const OWNER_NEWS_MS = 24 * 3600e3;
 const at = (iso: string) => new Date(iso).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 /** New fuel prices on everyone's home screen, so nobody sells at an old price. The server adds who set each one (and
@@ -44,10 +45,12 @@ export function PriceNews() {
       try { localStorage.setItem(key, JSON.stringify(r.announcements)); } catch { /* storage blocked: fine */ }
     }).catch(() => undefined); // offline: keep the saved list
   }, [key]);
-  if (!items.length) return null;
+  // the owner only while a change is new (24 hours from when it was set or started); also drops an old saved list
+  const fresh = items.filter((p) => !p.set_at || p.upcoming || Math.max(Date.parse(p.set_at), Date.parse(p.effective_from)) >= Date.now() - OWNER_NEWS_MS);
+  if (!fresh.length) return null;
   return (
     <section className="card price-news" aria-label="Price changes"><h2>Price changes</h2>
-      <ul className="plain">{items.map((p) => (
+      <ul className="plain">{fresh.map((p) => (
         <li key={p.id}>
           <strong>{p.fuel}: {p.currency} {Number(p.price_per_litre).toFixed(2)}</strong>
           {p.previous_price && <span className="muted"> (was {Number(p.previous_price).toFixed(2)})</span>}
