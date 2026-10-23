@@ -120,7 +120,8 @@ def end_card(row):
     """One end of shift, as the manager and the attendant see it."""
     last = UndoRequest.objects.filter(attendant=row).select_related("decided_by").order_by("-created_at").first()
     return {"id": str(row.pk), "shift_id": str(row.shift_id), "station": row.shift.station.name, "station_id": str(row.shift.station_id),
-            "status": row.approval or APPROVAL.APPROVED, "ended_at": row.cash_submitted_at, "shift_started_at": row.shift.started_at,
+            # ended: when they handed in their cash, or (meters closed, still counting) when they closed their meters
+            "status": row.approval or APPROVAL.APPROVED, "ended_at": row.cash_submitted_at or row.left_at, "shift_started_at": row.shift.started_at,
             "note": row.approval_note, "approved_by": row.approval_by.full_name if row.approval_by_id else None, "approved_at": row.approval_at,
             "undo": _undo_json(last) if last else None, **end_summary(row)}
 

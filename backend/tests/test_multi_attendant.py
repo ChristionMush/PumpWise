@@ -603,8 +603,9 @@ def test_close_my_meters_first_then_hand_in_the_cash_after_counting():
     assert stage["stage"] == "cash_due" and stage["expected"] == "75.00" and [m["litres"] for m in stage["meters"]][0] == "50.000"
     refused = ca.post("/api/shifts/start/", {**body, "started_at": T_END, "readings": readings(fc.nozzles, [50, 0])}, format="json")
     assert refused.status_code == 400 and "not handed in their cash" in str(refused.json())
-    waiting = {e["person"]: e["status"] for e in mgr.get("/api/shift-ends/").json()}
-    assert waiting[att_a.full_name] == "cash_due"
+    waiting = {e["person"]: e for e in mgr.get("/api/shift-ends/").json()}
+    assert waiting[att_a.full_name]["status"] == "cash_due"
+    assert waiting[att_a.full_name]["ended_at"] is not None  # when they closed their meters (not a blank date)
     end_id = stage["end_id"]
     assert mgr.post(f"/api/shift-ends/{end_id}/approve/").status_code == 400  # nothing to approve until the cash is in
 

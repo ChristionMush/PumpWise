@@ -10,7 +10,7 @@ type End = Omit<HeldStage, "stage" | "end_id" | "can_fix" | "status"> & { id: st
 interface Undo { id: string; kind_label: string; reason: string; person: string; station: string; requested_by: string; created_at: string; end: End }
 interface LogRow { at: string; action: string; what: string; by: string; station: string }
 
-const time = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const time = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
 const localDate = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
