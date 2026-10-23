@@ -18,7 +18,7 @@ from apps.core.db import clear_db_context, set_db_context
 
 from .authentication import FAILED, set_context_for_user, user_from_claims
 from .models import Role, User
-from .permissions import OwnerWriteManagerRead, can
+from .permissions import TeamPermission, can
 from .serializers import (
     ChangePasswordSerializer,
     LoginSerializer,
@@ -147,7 +147,8 @@ class UserViewSet(viewsets.ModelViewSet):
     database is what scopes it, and tests/test_isolation_api.py proves that is enough.
     """
 
-    permission_classes = [OwnerWriteManagerRead]
+    # read: owner and managers; add: owner, or a manager adding an attendant; change or remove: the owner only
+    permission_classes = [TeamPermission]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     queryset = User.objects.all()
 
@@ -157,9 +158,21 @@ class UserViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        by_manager = not can(request.user, "manage_users")
+        if by_manager and serializer.validated_data["role"] != Role.ATTENDANT:
+            raise PermissionDenied("Managers add attendants. The owner adds managers.")
         try:
             with transaction.atomic():  # savepoint: a duplicate must not poison the request transaction
                 user = serializer.save(tenant_id=request.user.tenant_id)
+                if by_manager:
+                    # works at the manager's station(s), and chooses their own password at their first sign-in
+                    from apps.stations.access import visible_station_ids
+                    from apps.stations.models import StationAssignment
+
+                    for station_id in visible_station_ids(request.user) or []:
+                        StationAssignment.objects.create(tenant_id=user.tenant_id, user=user, station_id=station_id)
+                    user.must_change_password = True
+                    user.save(update_fields=["must_change_password", "updated_at"])
         except IntegrityError:
             raise ValidationError({"detail": "That email or phone number is already in use."})
         audit.log("user_created", actor=request.user, obj=user, changes=audit.snapshot(user, AUDITED_USER_FIELDS), request=request)

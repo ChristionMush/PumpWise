@@ -20,14 +20,16 @@ CAPABILITIES = {
     # control plane (Tendeka & Elichi)
     "platform": {P},
     # people, settings, billing
-    "manage_users": {O},
+    "manage_users": {O},  # change anyone's details or password, remove people, add managers
+    "add_attendants": {O, M},  # managers add attendants (to their own station), but never edit or remove anyone
     "view_users": {O, M},
     "manage_settings": {O},
     "view_settings": {O, M},
     "view_billing": {O, M},
     "owner": {O},  # owner-only screens: audit log, exports, daily-summary settings, billing actions
     # station setup
-    "manage_stations": {O},  # add or remove a station, assign staff to stations
+    "manage_stations": {O},  # add or remove a station, assign staff to any station
+    "staff_my_station": {O, M},  # managers: choose which attendants work at their own station
     "edit_setup": {O, M},  # tanks, pumps, nozzles, prices, exchange rates, calibration, photos, QR images
     "view_setup": {O, M, A},  # stations, pumps, nozzles, prices (what an attendant needs to enter meters)
     "see_price_setter": {O},  # who set each price and when; everyone else just sees the new price
@@ -101,3 +103,15 @@ IsTenantUser = Allow("record_shift")
 OwnerWriteManagerRead = Allow("manage_users", read="view_users")
 TankRecords = Allow("tank_records")
 SetupPermission = Allow("edit_setup", read="view_setup")
+
+
+class TeamPermission(BasePermission):
+    """The team: owner and managers read it; the owner, or a manager adding an attendant, adds people; only the owner
+    changes or removes anyone."""
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return can(request.user, "view_users")
+        if request.method == "POST":
+            return can(request.user, "add_attendants")
+        return can(request.user, "manage_users")

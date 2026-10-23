@@ -46,6 +46,32 @@ describe("owner edits the team", () => {
     expect(await screen.findByText(/Tendai/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   });
+
+  it("lets a manager add attendants and choose who works at their station, and nothing more", async () => {
+    signedIn();
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: manager, tenant } },
+      "GET /api/users/": { body: { results: [{ ...ownerUser, station_ids: [] }, { ...manager, station_ids: ["s1"] }, tendai] } },
+      "GET /api/stations/": { body: { results: [{ id: "s1", name: "Chigwende" }] } },
+      "PUT /api/users/a1/stations/": { body: { station_ids: [] } },
+      "POST /api/users/": { status: 201, body: { id: "a2", role: "attendant", full_name: "Rudo" } },
+    });
+    renderApp("/settings");
+    expect(await screen.findByRole("heading", { name: "Team" })).toBeInTheDocument();
+    expect(screen.queryByText(/Daily message to the owner/)).not.toBeInTheDocument(); // the owner's settings are not shown
+    expect(calls.some((c) => c.path === "/api/settings/" || c.path === "/api/exports/")).toBe(false);
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /Station of/ })).not.toBeInTheDocument(); // no placing people at any station
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox", { name: "Tendai works at Chigwende" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ station_ids: [] }));
+    expect(screen.queryByLabelText("Role")).not.toBeInTheDocument(); // attendants only
+    await user.type(screen.getByLabelText("Name"), "Rudo");
+    await user.type(screen.getByLabelText("Phone"), "0772000222");
+    await user.type(screen.getByLabelText("Password"), "Temp-pass-123");
+    await user.click(screen.getByRole("button", { name: "Add attendant" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ full_name: "Rudo", phone: "0772000222", role: "attendant", password: "Temp-pass-123" }));
+  });
 });
 
 describe("owner edits tanks, pumps and nozzles", () => {

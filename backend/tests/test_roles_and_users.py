@@ -23,12 +23,17 @@ def test_attendant_cannot_reach_owner_or_manager_endpoints():
     assert c.get("/api/platform/tenants/").status_code == 403
 
 
-def test_manager_can_read_users_but_not_change_them_or_see_audit():
+def test_manager_can_read_users_and_add_attendants_but_not_change_anyone_or_see_audit():
     a, _ = two_tenants()
     c = client_for(a[Role.MANAGER])
     assert c.get("/api/users/").status_code == 200
-    assert c.post("/api/users/", NEW, format="json").status_code == 403
-    assert c.patch(f"/api/users/{a[Role.ATTENDANT].id}/", {"full_name": "x"}, format="json").status_code == 403
+    assert c.post("/api/users/", {**NEW, "role": "manager"}, format="json").status_code == 403  # the owner adds managers
+    added = c.post("/api/users/", NEW, format="json")
+    assert added.status_code == 201 and added.json()["role"] == "attendant"
+    assert added.json()["must_change_password"] is True  # they choose their own password; the manager does not keep it
+    for target in (a[Role.ATTENDANT].id, added.json()["id"]):  # no editing names, phones, roles or passwords, no removing
+        assert c.patch(f"/api/users/{target}/", {"full_name": "x"}, format="json").status_code == 403
+        assert c.patch(f"/api/users/{target}/", {"password": "Another-pass-123"}, format="json").status_code == 403
     assert c.delete(f"/api/users/{a[Role.ATTENDANT].id}/").status_code == 403
     assert c.get("/api/audit/").status_code == 403
     assert c.get("/api/platform/tenants/").status_code == 403
@@ -123,3 +128,29 @@ def test_platform_admin_is_not_a_tenant_user():
     assert admin.tenant_id is None and admin.role == Role.PLATFORM_ADMIN
     body = client_for(admin).get("/api/auth/me/").json()
     assert body["tenant"] is None
+
+
+def test_a_manager_staffs_their_own_station_only():
+    from apps.stations.models import StationAssignment
+
+    from .helpers import make_forecourt
+
+    a, _ = two_tenants()
+    mine, other = make_forecourt(a["tenant"]), make_forecourt(a["tenant"], name="Avondale", code="DIESEL")
+    owner, mgr = client_for(a[Role.OWNER]), client_for(a[Role.MANAGER])
+    assert owner.put(f"/api/users/{a[Role.MANAGER].id}/stations/", {"station_ids": [str(mine.station.pk)]}, format="json").status_code == 200
+
+    # a new attendant from the manager works at the manager's station
+    new = mgr.post("/api/users/", NEW, format="json").json()
+    with db_context(tenant_id=a["tenant"].id):
+        assert list(StationAssignment.objects.filter(user_id=new["id"]).values_list("station_id", flat=True)) == [mine.station.pk]
+
+    # an attendant who works everywhere: taking them off my station leaves them at the other one; adding back = everywhere again
+    att = a[Role.ATTENDANT]
+    url = f"/api/users/{att.id}/stations/"
+    assert mgr.put(url, {"station_ids": []}, format="json").json()["station_ids"] == [str(other.station.pk)]
+    assert mgr.put(url, {"station_ids": [str(mine.station.pk)]}, format="json").json()["station_ids"] == []
+    assert mgr.put(url, {"station_ids": [str(other.station.pk)]}, format="json").status_code == 403  # not my station
+    assert mgr.put(f"/api/users/{a[Role.MANAGER].id}/stations/", {"station_ids": []}, format="json").status_code == 403  # managers: the owner
+    only_mine = mgr.put(f"/api/users/{new['id']}/stations/", {"station_ids": []}, format="json")
+    assert only_mine.status_code == 400 and "no station left" in str(only_mine.json())

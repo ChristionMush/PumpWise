@@ -30,7 +30,7 @@ import TenantDetail from "./pages/TenantDetail";
 // managers and owners; the server refuses attendants anyway, this just keeps the screens out of their way.
 const NAV: Record<string, [string, string][]> = {
   owner: [["/", "Today"], ["/dip", "Dip & delivery"], ["/dip-history", "Dip history"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/approvals", "Approvals"], ["/prices", "Prices"], ["/pumps", "Pumps"], ["/setup", "Setup"], ["/import", "Import"], ["/settings", "Settings"]],
-  manager: [["/", "Today"], ["/dip", "Dip & delivery"], ["/dip-history", "Dip history"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/approvals", "Approvals"], ["/prices", "Prices"], ["/pumps", "Pumps"], ["/setup", "Setup"]],
+  manager: [["/", "Today"], ["/dip", "Dip & delivery"], ["/dip-history", "Dip history"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/approvals", "Approvals"], ["/prices", "Prices"], ["/pumps", "Pumps"], ["/setup", "Setup"], ["/settings", "Team"]],
   attendant: [["/", "Shift"]],
 };
 

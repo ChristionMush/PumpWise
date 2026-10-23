@@ -312,12 +312,14 @@ class StationAssignmentView(APIView):
         return Response({"station_ids": [str(i) for i in StationAssignment.objects.filter(user_id=self._user(pk).pk).values_list("station_id", flat=True)]})
 
     def put(self, request, pk):
-        require(request.user, "manage_stations")
+        require(request.user, "staff_my_station")
         user = self._user(pk)
         ids = request.data.get("station_ids", [])
         stations = list(Station.objects.filter(pk__in=ids))
         if len(stations) != len(set(map(str, ids))):
             raise ValidationError({"station_ids": "Unknown station."})
+        if not can(request.user, "manage_stations"):
+            stations = self._for_manager(request.user, user, stations)
         if user.role == Role.MANAGER:
             if len(stations) > 1:
                 raise ValidationError({"station_ids": "A manager runs one station."})
@@ -332,6 +334,26 @@ class StationAssignmentView(APIView):
                 StationAssignment.objects.create(tenant_id=user.tenant_id, user=user, station=s)
         audit.log("stations_assigned", actor=request.user, obj=user, changes={"stations": [s.name for s in stations]}, request=request)
         return Response({"station_ids": [str(s.pk) for s in stations]})
+
+
+    def _for_manager(self, manager, user, wanted):
+        """A manager decides only whether an attendant works at their own station(s); the attendant's other stations
+        stay as they are. Returns the attendant's full list of stations to save."""
+        if user.role != Role.ATTENDANT:
+            raise PermissionDenied("Managers choose attendants for their station. The owner places managers.")
+        mine = {s.pk for s in scope(Station.objects.all(), manager, "id")}
+        if any(s.pk not in mine for s in wanted):
+            raise PermissionDenied("You can only add people to your own station.")
+        current = set(StationAssignment.objects.filter(user=user).values_list("station_id", flat=True))
+        everywhere = {s.pk for s in Station.objects.all()}
+        if not current:  # no list means every station
+            current = set(everywhere)
+        chosen = (current - mine) | {s.pk for s in wanted}
+        if not chosen:
+            raise ValidationError({"station_ids": f"{user.full_name} would have no station left. Ask the owner to remove them instead."})
+        if chosen == everywhere:  # back to every station: keep it as no list, so new stations include them too
+            return []
+        return list(Station.objects.filter(pk__in=chosen))
 
 
 class StationListView(ListAPIView):
