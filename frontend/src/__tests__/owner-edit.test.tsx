@@ -125,13 +125,18 @@ describe("day close", () => {
     renderApp("/dip");
     const user = userEvent.setup();
     const form = await screen.findByRole("form", { name: "Close the day" });
+    // the dip height in mm comes first, then the litres
+    const tankInputs = within(form).getAllByRole("textbox").slice(0, 2).map((i) => i.closest("label")?.textContent);
+    expect(tankInputs).toEqual(["Dip (mm)", "Litres"]);
     await user.type(within(form).getByLabelText("Litres"), "5400");
     await user.click(within(form).getByRole("button", { name: "Close the day" }));
-    expect(await screen.findByText(/Missing: 4A Petrol/)).toBeInTheDocument();
-    await user.type(within(form).getByLabelText(/4A · Petrol/), "925100.5");
+    expect(await screen.findByText(/Missing: Petrol Tank, 4A Petrol/)).toBeInTheDocument(); // no mm yet
+    await user.type(within(form).getByLabelText("Dip (mm)"), "1340");
+    // pump meters grouped by fuel
+    await user.type(within(within(form).getByRole("group", { name: "Petrol pump meters" })).getByLabelText(/4A · Petrol/), "925100.5");
     await user.click(within(form).getByRole("button", { name: "Close the day" }));
     await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.path === "/api/day-close/")?.body).toEqual({
-      station: "s1", note: "", dips: [{ tank: "k1", litres: "5400" }], meters: [{ nozzle: "n1", reading: "925100.5" }],
+      station: "s1", note: "", dips: [{ tank: "k1", dip_mm: "1340", litres: "5400" }], meters: [{ nozzle: "n1", reading: "925100.5" }],
     }));
   });
 

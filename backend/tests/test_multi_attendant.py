@@ -632,10 +632,13 @@ def test_the_day_close_ends_the_trading_day_at_about_21_00():
     cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
 
     def close(meters, at="2026-10-01T19:10:00Z"):  # 21:10 in Harare: closes 1 Oct
-        return mgr.post("/api/day-close/", {"station": str(fc.station.pk), "at": at, "dips": [{"tank": str(fc.tank.pk), "litres": "5000"}],
+        return mgr.post("/api/day-close/", {"station": str(fc.station.pk), "at": at, "dips": [{"tank": str(fc.tank.pk), "dip_mm": "1500", "litres": "5000"}],
                                             "meters": [{"nozzle": str(n.pk), "reading": str(v)} for n, v in meters]}, format="json")
 
     assert close(list(zip(fc.nozzles, [40, 0], strict=True))).status_code == 400  # Pump 2 missing
+    no_mm = mgr.post("/api/day-close/", {"station": str(fc.station.pk), "at": "2026-10-01T19:10:00Z", "dips": [{"tank": str(fc.tank.pk), "litres": "5000"}],
+                                         "meters": [{"nozzle": str(n.pk), "reading": "40"} for n in fc.nozzles + p2]}, format="json")
+    assert no_mm.status_code == 400 and "dip height in mm first" in str(no_mm.json())  # the mm is always taken first
     assert close(list(zip(fc.nozzles + p2, [40, 0, 10, 0], strict=True))).status_code == 201
     again = close(list(zip(fc.nozzles + p2, [40, 0, 10, 0], strict=True)), at="2026-10-01T19:20:00Z")
     assert again.status_code == 400 and "already closed" in str(again.json())
@@ -698,7 +701,7 @@ def test_an_earlier_day_can_be_closed_afterwards_and_its_sales_are_re_split():
     assert sold() == {"2026-10-01": "0.000", "2026-10-02": "105.000"}  # no close: it all lands when the shift ended
 
     def close(meters, at="2026-10-01T19:00:00Z"):  # 21:00 on 1 Oct, entered on 2 Oct
-        return mgr.post("/api/day-close/", {"station": str(fc.station.pk), "at": at, "dips": [{"tank": str(fc.tank.pk), "litres": "5000"}],
+        return mgr.post("/api/day-close/", {"station": str(fc.station.pk), "at": at, "dips": [{"tank": str(fc.tank.pk), "dip_mm": "1500", "litres": "5000"}],
                                             "meters": [{"nozzle": str(n.pk), "reading": str(v)} for n, v in zip(fc.nozzles + p2, meters, strict=True)]},
                         format="json")
 

@@ -9,6 +9,8 @@ interface CloseStatus { station: string; day: string; closed: { day: string; clo
 
 const dayName = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
 const yesterday = () => { const d = new Date(Date.now() - 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+// PETROL → Petrol, DIESEL → Diesel: the heading of each fuel's pump meters
+const fuelName = (code: string) => code.charAt(0) + code.slice(1).toLowerCase();
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /** Managers: close the trading day at about 21:00 (every tank's dip and every pump's meter in one go), record fuel
@@ -44,19 +46,18 @@ export default function Dip() {
   const closeDay = async (e: FormEvent) => {
     e.preventDefault();
     if (!station) return;
-    const missingDip = stationTanks.filter((t) => !dips[t.id]?.mm && !dips[t.id]?.litres);
+    // every tank: the dip height in mm first, then the litres (from the chart when the tank has one)
+    const missingDip = stationTanks.filter((t) => !dips[t.id]?.mm || (!dips[t.id]?.litres && !t.has_calibration));
     const missingMeter = nozzles.filter((n) => !meters[n.id]);
     if (missingDip.length || missingMeter.length) {
       return setError(`Enter every tank's dip and every pump's meter. Missing: ${[...missingDip.map((t) => t.name), ...missingMeter.map((n) => `${n.pump.name} ${n.label}`)].join(", ")}.`);
     }
-    const noChart = stationTanks.find((t) => dips[t.id]?.mm && !dips[t.id]?.litres && !t.has_calibration);
-    if (noChart) return setError(`${noChart.name} has no calibration chart yet. Enter its litres instead.`);
     setBusy(true); setError(null); setMsg(null);
     try {
       const at = earlier ? new Date(`${earlier.day}T${earlier.time}`).toISOString() : undefined;
       await api("/api/day-close/", { method: "POST", body: {
         station: station.id, note, ...(at ? { at } : {}),
-        dips: stationTanks.map((t) => ({ tank: t.id, ...(dips[t.id].litres ? { litres: dips[t.id].litres } : { dip_mm: dips[t.id].mm }) })),
+        dips: stationTanks.map((t) => ({ tank: t.id, dip_mm: dips[t.id].mm, ...(dips[t.id].litres ? { litres: dips[t.id].litres } : {}) })),
         meters: nozzles.map((n) => ({ nozzle: n.id, reading: meters[n.id] })),
       } });
       setDips({}); setMeters({}); setNote(""); setEarlier(null);
@@ -71,8 +72,8 @@ export default function Dip() {
 
   const saveDip = async (e: FormEvent) => {
     e.preventDefault();
-    if (!litres && !dipMm) return setError("Enter the dip height or the litres.");
-    if (dipMm && !litres && !tank?.has_calibration) return setError("This tank has no calibration chart yet. Enter litres instead.");
+    if (!dipMm) return setError("Enter the dip height in mm first.");
+    if (!litres && !tank?.has_calibration) return setError("This tank has no calibration chart yet. Enter the litres too.");
     // client_id: made on the phone, so a retry can never record the same dip twice (rule 8)
     await enqueue("tank_dip", { client_id: uuid(), tank: tankId, at: new Date().toISOString(), ...(litres ? { litres } : {}), ...(dipMm ? { dip_mm: dipMm } : {}) });
     setLitres(""); setDipMm(""); setError(null); setMsg("Dip saved.");
@@ -111,15 +112,20 @@ export default function Dip() {
           {stationTanks.map((t) => (
             <div key={t.id} className="row gap">
               <strong>{t.name} <span className="muted">· {t.fuel_code}</span></strong>
-              {t.has_calibration && <label>Dip (mm)<input inputMode="decimal" value={dips[t.id]?.mm ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: e.target.value, litres: dips[t.id]?.litres ?? "" } })} /></label>}
-              <label>{t.has_calibration ? "or litres" : "Litres"}<input inputMode="decimal" value={dips[t.id]?.litres ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: dips[t.id]?.mm ?? "", litres: e.target.value } })} /></label>
+              <label>Dip (mm)<input inputMode="decimal" value={dips[t.id]?.mm ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: e.target.value, litres: dips[t.id]?.litres ?? "" } })} /></label>
+              <label>{t.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={dips[t.id]?.litres ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: dips[t.id]?.mm ?? "", litres: e.target.value } })} /></label>
             </div>
           ))}
           <h3>Pump meters</h3>
-          {nozzles.map((n) => (
-            <label key={n.id}>{n.pump.name} · {n.label} <span className="muted">({n.fuel_code}{n.last_reading && !earlier ? `, last ${n.last_reading}` : ""})</span>
-              <input inputMode="decimal" value={meters[n.id] ?? ""} onChange={(e) => setMeters({ ...meters, [n.id]: e.target.value.replace(",", ".") })} />
-            </label>
+          {[...new Set(nozzles.map((n) => n.fuel_code))].map((fuel) => (
+            <fieldset key={fuel} className="fuel-group" aria-label={`${fuelName(fuel)} pump meters`}>
+              <legend>{fuelName(fuel)}</legend>
+              {nozzles.filter((n) => n.fuel_code === fuel).map((n) => (
+                <label key={n.id}>{n.pump.name} · {n.label}{n.last_reading && !earlier ? <span className="muted"> (last {n.last_reading})</span> : null}
+                  <input inputMode="decimal" value={meters[n.id] ?? ""} onChange={(e) => setMeters({ ...meters, [n.id]: e.target.value.replace(",", ".") })} />
+                </label>
+              ))}
+            </fieldset>
           ))}
           <label>Note (optional)<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
           <button className="btn primary" disabled={busy}>{earlier ? `Close ${earlier.day ? dayName(earlier.day) : "that day"}` : "Close the day"}</button>
@@ -148,7 +154,7 @@ export default function Dip() {
         <form onSubmit={saveDip} className="form">
           <label>Tank<select value={tankId} onChange={(e) => setTankId(e.target.value)}>{tanks.map((t) => <option key={t.id} value={t.id}>{t.station} · {t.name} ({t.fuel_code})</option>)}</select></label>
           <label>Dip height (mm)<input inputMode="decimal" value={dipMm} onChange={(e) => setDipMm(e.target.value)} /></label>
-          <label>or litres<input inputMode="decimal" value={litres} onChange={(e) => setLitres(e.target.value)} /></label>
+          <label>{tank?.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={litres} onChange={(e) => setLitres(e.target.value)} /></label>
           <button className="btn">Save dip</button></form>
       </details>
       <ErrorNote message={error} />{msg && <p role="status" className="ok-note">{msg}</p>}

@@ -205,8 +205,9 @@ class DayCloseDipInput(serializers.Serializer):
     dip_mm = serializers.DecimalField(max_digits=8, decimal_places=1, required=False, allow_null=True)
 
     def validate(self, attrs):
-        if attrs.get("litres") is None and attrs.get("dip_mm") is None:
-            raise serializers.ValidationError(f"{attrs['tank'].name}: enter the dip height or the litres.")
+        # the dip height in mm is always taken first; the litres too, unless the tank's chart gives them
+        if attrs.get("dip_mm") is None:
+            raise serializers.ValidationError(f"{attrs['tank'].name}: enter the dip height in mm first.")
         return attrs
 
 

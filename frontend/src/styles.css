@@ -90,3 +90,6 @@ table.report + table.report th.section{padding-top:18px}
 .station-tab{font:inherit;display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;padding:10px 14px;min-height:56px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);cursor:pointer}
 .station-tab span{font-size:.85rem;color:var(--muted)}
 .station-tab.on{background:var(--green-2);border-color:var(--green-2);color:#fff}.station-tab.on span{color:#e6f2ea}
+/* the day close's pump meters, one group per fuel */
+fieldset.fuel-group{border:1px solid var(--line);border-radius:12px;padding:8px 12px 12px;margin:0;display:flex;flex-direction:column;gap:10px}
+fieldset.fuel-group legend{font-weight:700;padding:0 6px;color:var(--green-2)}

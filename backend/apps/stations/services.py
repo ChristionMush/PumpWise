@@ -54,7 +54,7 @@ def litres_from_dip(tank, dip_mm):
     """Linear interpolation on the tank's calibration chart. Raises if the chart cannot answer."""
     points = list(tank.calibration.order_by("dip_mm").values_list("dip_mm", "litres"))
     if len(points) < 2:
-        raise ValidationError({"dip_mm": "This tank has no calibration chart yet. Enter litres instead."})
+        raise ValidationError({"dip_mm": "This tank has no calibration chart yet. Enter the litres too."})
     dip = Decimal(str(dip_mm))
     if dip < points[0][0] or dip > points[-1][0]:
         raise ValidationError({"dip_mm": "Dip height is outside the calibration chart."})
