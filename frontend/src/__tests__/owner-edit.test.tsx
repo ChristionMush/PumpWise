@@ -211,12 +211,11 @@ describe("daily report on the Today dashboard", () => {
     const losses = within(card).getByRole("table", { name: "Cash losses" });
     expect(losses).toHaveTextContent(/Cash Losses Total\s*USD 3\D46.*Nancy Moyo\s*\$1 and above\s*USD 2\D50.*Milking errors\s*under \$1, 3\s*USD 0\D96/);
     expect(within(card).getByRole("table", { name: "Dips" })).toHaveTextContent(/Petrol \(Unleaded\)\s*5\D?240 L.*Petrol Tank\s*1\D?312 mm\s*5\D?240 L/);
-    // the manager's check from the day-close meters comes first; the attendants' readings (missing the morning) below
+    // each tank once, from the day-close meters; the attendants' line is not shown beside it
     const check = within(card).getByRole("table", { name: "Fuel check" });
     expect(within(check).getAllByRole("row").slice(2).map((row) => row.textContent)).toEqual([
-      expect.stringMatching(/^Petrol Tank · day-close meters\s*2\D?550 \+ 0 − 798 − 1\D?735\s*\+16\D9 L$/),
-      expect.stringMatching(/^Petrol Tank · attendants' readings\s*2\D?550 \+ 0 − 593 − 1\D?735\s*\+222\D0 L$/)]);
-    expect(card).toHaveTextContent(/some pumping was not recorded by an attendant/);
+      expect.stringMatching(/^Petrol Tank\s*2\D?550 \+ 0 − 798 − 1\D?735\s*\+16\D9 L$/)]);
+    expect(card).not.toHaveTextContent(/attendants' readings/);
     expect(card).toHaveTextContent(/Latifah Taibu/);
     expect(within(card).getByRole("table", { name: "Pumps" })).toHaveTextContent(/4A · Petrol\s*924759\.36 \(attendant, .+\) → 925100\.36\s*341 L/); // no close the day before: the attendant's reading
     // the other station's report is one tap away (or a swipe), and the choice is remembered
