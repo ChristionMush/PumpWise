@@ -27,10 +27,12 @@ describe("reports", () => {
     const day = await screen.findByRole("region", { name: "Daily report Chigwende" });
     expect(day).toHaveTextContent(/Date: Wednesday,? (21 October|October 21),? 2026/);
     expect(day).toHaveTextContent(/Grand Total\s*USD 155\D00/);
-    expect(within(day).getByRole("heading", { name: "Shifts (2)" })).toBeInTheDocument(); // a heading, no dropdown
-    expect(within(day).getByRole("generic", { name: "Shift Tendai" })).toHaveTextContent(/Expected USD 157\D50 · handed in 155\D00 · cash difference -2\D50/);
+    const shifts = within(day).getByRole("table", { name: "Shifts" });
+    expect(shifts).toHaveTextContent("Shifts (2)"); // a heading row, no dropdown
+    expect(within(shifts).getByRole("row", { name: "Shift Tendai" })).toHaveTextContent(/157\D50 \/ 155\D00\s*-2\D50/);
     // an open shift: only those who handed in count, the rest are listed as still to hand in
-    expect(within(day).getByRole("generic", { name: "Shift Rudo, Ashok" })).toHaveTextContent(/Shift still open\. Cash difference of those who handed in: -1\D00.*Still to hand in: Ashok \(USD 200\D00 so far\)/);
+    expect(within(shifts).getByRole("row", { name: "Shift Rudo, Ashok" })).toHaveTextContent(/still open\s*those who handed in\s*-1\D00/);
+    expect(shifts).toHaveTextContent(/Still to hand in: Ashok\s*USD 200\D00 so far/);
   });
 
 

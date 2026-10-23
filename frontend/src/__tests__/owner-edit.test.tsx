@@ -186,22 +186,26 @@ describe("daily report on the Today dashboard", () => {
     const card = await screen.findByRole("region", { name: "Daily report Chigwende" });
     // at the top of the page: the owner sees there are two station reports, one below the other
     expect(screen.getByRole("heading", { name: "Latest closing report" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Station reports")).toHaveTextContent("2 station reports: Chigwende · Eastview ↓");
+    // a small table at the top (no links) tells the owner there are two station reports
+    const overview = screen.getByRole("table", { name: "Station reports" });
+    expect(within(overview).getAllByRole("row").slice(1).map((row) => row.textContent)).toEqual([
+      expect.stringMatching(/^Chigwende.*Closed .* by Justice\s*USD 3\D?390\D92$/), expect.stringMatching(/^Eastview.*Closed .* by Justice/)]);
+    expect(screen.queryByRole("link", { name: /report below/ })).not.toBeInTheDocument();
     expect(card).toHaveTextContent("Station 1 of 2");
-    expect(within(card).getByRole("link", { name: "Next: Eastview report below ↓" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Daily report Eastview" })).toHaveTextContent("Station 2 of 2");
-    expect(within(card).getAllByRole("heading", { level: 3 }).map((h) => h.textContent?.replace(/ \(.*/, "").replace(/Dips.*/, "Dips"))).toEqual(
-      ["Money", "Cash losses", "Dips", "Sold", "Fuel check", "Pumps", "Attendants"]); // headings, no dropdowns
+    // one underlined table per station, read top to bottom; no dropdowns
+    expect([...card.querySelectorAll("th.section")].map((h) => h.textContent?.replace(/ (at|\().*/, ""))).toEqual(
+      ["Money", "Cash losses", "Dips", "Sold", "Fuel check", "Pumps", "Attendants"]);
     expect(card.querySelector("details")).toBeNull();
-    expect(card).toHaveTextContent(/closed .* by Justice/);
+    expect(card).toHaveTextContent(/Closed .* by Justice/);
     expect(card).toHaveTextContent(/Date: Thursday,? 22 October 2026|Date: Thursday,? October 22,? 2026/);
     const total = within(card).getByRole("table", { name: "Grand total" });
     expect(total).toHaveTextContent(/Grand Total\s*USD 3\D?390\D92/);
-    expect(total).toHaveTextContent(/Cash\s*USD 3\D?190\D92.*Swipe\s*USD 0\D00.*EcoCash\s*USD 0\D00.*Inter Company Credit \(owed by the other company\)\s*USD 200\D00/);
+    expect(total).toHaveTextContent(/Cash\s*USD 3\D?190\D92.*Swipe\s*USD 0\D00.*EcoCash\s*USD 0\D00.*Inter Company Credit\s*owed by the other company\s*USD 200\D00/);
     const losses = within(card).getByRole("table", { name: "Cash losses" });
-    expect(losses).toHaveTextContent(/Cash Losses Total\s*USD 3\D46.*Nancy Moyo\s*USD 2\D50.*Milking errors \(under \$1, 3\)\s*USD 0\D96/);
+    expect(losses).toHaveTextContent(/Cash Losses Total\s*USD 3\D46.*Nancy Moyo\s*\$1 and above\s*USD 2\D50.*Milking errors\s*under \$1, 3\s*USD 0\D96/);
     expect(within(card).getByRole("table", { name: "Dips" })).toHaveTextContent(/Petrol \(Unleaded\)\s*5\D?240 L.*Petrol Tank\s*1\D?312 mm\s*5\D?240 L/);
-    expect(card).toHaveTextContent(/Latifah Taibu/); // the deep dive
-    expect(card).toHaveTextContent(/4A · Petrol: 924759\.36 \(attendant, .+\) → 925100\.36 = 341 L/); // no close the day before: the attendant's reading
+    expect(card).toHaveTextContent(/Latifah Taibu/);
+    expect(within(card).getByRole("table", { name: "Pumps" })).toHaveTextContent(/4A · Petrol\s*924759\.36 \(attendant, .+\) → 925100\.36\s*341 L/); // no close the day before: the attendant's reading
   });
 });

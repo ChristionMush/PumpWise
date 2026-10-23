@@ -77,3 +77,11 @@ details.card summary{cursor:pointer}
 .alert .resolution{background:var(--bg);border-radius:8px;padding:8px 10px}
 .story{margin:6px 0 0;padding-left:1.2em;display:grid;gap:4px;font-size:.92rem}
 .form textarea{font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;width:100%}
+/* the daily report: one neat table per station, every row underlined, numbers right-aligned */
+table.report{width:100%;border-collapse:collapse;font-size:.95rem;font-variant-numeric:tabular-nums}
+table.report td,table.report th{padding:7px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+table.report td.num,table.report th.num{text-align:right;white-space:nowrap}
+table.report th.section{padding-top:16px;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--green-2);border-bottom:2px solid var(--green-2)}
+table.report tr.total td{font-weight:700}
+table.report tr.sub td{color:var(--muted)}
+table.report + table.report th.section{padding-top:18px}

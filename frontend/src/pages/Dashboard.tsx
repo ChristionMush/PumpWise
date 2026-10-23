@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { Badge, ErrorNote } from "../components";
-import { DayReport, jumpToReport } from "./DayReport";
+import { closedText, DayReport, n, shortDay } from "./DayReport";
 
 const amt = (o: Record<string, string>) => Object.entries(o).map(([c, a]) => `${c} ${Number(a).toLocaleString(undefined, { minimumFractionDigits: 2 })}`).join(" · ") || "—";
 
@@ -53,17 +53,22 @@ function DailyReports() {
   const [picked, setPicked] = useState("");
   useEffect(() => { void api<any[]>(`/api/reports/daily/${picked ? `?day=${picked}` : ""}`).then(setReports).catch(() => setReports([])); }, [picked]);
   if (!reports?.length) return null;
+  // without a chosen day: each station's most recently closed day; a station that has never closed shows no report
+  const shown = picked ? reports : reports.filter((r) => r.closed);
   return (<>
     <div className="row between"><h2>{picked ? "Closing report" : "Latest closing report"}</h2>
-      <label className="row gap"><span className="muted">Day</span><input type="date" aria-label="Report day" value={picked || reports[0].day} onChange={(e) => setPicked(e.target.value)} /></label></div>
+      <label className="row gap"><span className="muted">Day</span><input type="date" aria-label="Report day" value={picked || (shown[0] ?? reports[0]).day} onChange={(e) => setPicked(e.target.value)} /></label></div>
     {reports.length > 1 && (
-      <p aria-label="Station reports">{reports.length} station reports: {reports.map((r, i) => (
-        <span key={r.station}>{i > 0 && " · "}<a href={`#report-${r.station}`} onClick={(e) => { e.preventDefault(); jumpToReport(r.station); }}>{r.station_name}{i > 0 ? " ↓" : ""}</a></span>
-      ))}</p>
+      <table className="report" aria-label="Station reports">
+        <thead><tr className="sub"><td>Station</td><td>Day</td><td>Closed</td><td className="num">Grand Total</td></tr></thead>
+        <tbody>{reports.map((r) => (picked || r.closed) ? (
+          <tr key={r.station}><td>{r.station_name}</td><td>{shortDay(r.day)}</td><td>{closedText(r)}</td><td className="num">{r.currency} {n(r.totals.grand_total)}</td></tr>
+        ) : (
+          <tr key={r.station} className="sub"><td>{r.station_name}</td><td colSpan={3}>No day closed yet</td></tr>
+        ))}</tbody>
+      </table>
     )}
-    {reports.map((r, i) => (
-      <DayReport key={r.station} r={r} of={{ index: i + 1, count: reports.length }}
-        next={reports[i + 1] ? { id: reports[i + 1].station, name: reports[i + 1].station_name } : undefined} />
-    ))}
+    {shown.length === 0 && <p className="muted">No day has been closed yet. Managers close the day on the Dip screen at about 21:00.</p>}
+    {shown.map((r, i) => <DayReport key={r.station} r={r} of={{ index: i + 1, count: shown.length }} />)}
   </>);
 }
