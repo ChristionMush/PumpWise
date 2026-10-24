@@ -764,3 +764,17 @@ def test_the_day_report_shows_day_and_night_shifts_apart_even_on_one_open_shift(
     shifts = mgr.get("/api/reports/daily/", {"station": station, "day": "2026-10-02"}).json()[0]["shifts"]
     assert [(s["shift_id"], s["label"], s["attendants"], s["expected"]) for s in shifts] == [
         (sid, "Night shift, Thu 01 Oct", [att_b.full_name], "15.00"), (sid, "Day shift, Fri 02 Oct", [att_a.full_name], "150.00")]
+
+
+def test_cash_is_handed_in_in_whole_dollars():
+    """Notes have no cents: cash with cents is refused (a typing slip, often the amount owed copied in). Swipe,
+    EcoCash and intercompany credit can have cents."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca = client_for(att_a)
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": "2026-10-01T05:00:00Z", "readings": readings(fc.nozzles, [0, 0])},
+                  format="json").json()["id"]
+    end = {"ended_at": "2026-10-01T16:00:00Z", "readings": readings(fc.nozzles, [100, 0])}
+    refused = ca.post(f"/api/shifts/{sid}/end/", {**end, "cash": cash("144.15") + cash("5.85", kind="mobile_money")}, format="json")
+    assert refused.status_code == 400 and "Cash is counted in whole dollars" in str(refused.json())
+    ok = ca.post(f"/api/shifts/{sid}/end/", {**end, "cash": cash("144") + cash("5.85", kind="mobile_money") + cash("0.15", kind="card")}, format="json")
+    assert ok.status_code == 200, ok.content

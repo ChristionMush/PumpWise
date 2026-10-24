@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
 import { allOps, enqueue, expectedVsHanded, kvGet, kvSet, uuid, type PriceRow } from "../offline";
 import HeldEnd, { type HeldStage } from "./HeldEnd";
+import { CashField, hasCents } from "../components";
 
 /** Each nozzle draws from its own tank, so the fuel (and its price) is per nozzle. */
 export interface Nozzle { id: string; number: number; label: string; meter_max: string; last_reading: string | null; fuel_type: string; fuel_code: string }
@@ -215,6 +216,7 @@ export default function Shift() {
 
   const end = async () => {
     if (!active) return;
+    if (hasCents(cash.cash)) return setError("Cash is counted in whole dollars. Remove the cents from the cash.");
     if (active.member) { // someone else leads: I only hand in my cash
       await enqueue("shift_cash", { shift_id: active.id, cash: cashLines(), at: new Date().toISOString() });
       return finish("Your cash is saved. The lead closes the shift. Your manager approves your end before your next shift.");
@@ -246,6 +248,7 @@ export default function Shift() {
 
   const handInCash = async (shiftId: string) => {
     if (!cashLines().length) return setError("Enter the cash you are handing in.");
+    if (hasCents(cash.cash)) return setError("Cash is counted in whole dollars. Remove the cents from the cash.");
     await enqueue("shift_cash", { shift_id: shiftId, cash: cashLines(), at: new Date().toISOString() });
     await kvSet("cashDue", null);
     setCashDue(null); setCash({}); setError(null);
@@ -290,7 +293,7 @@ export default function Shift() {
         <section className="card form">
           <h2>Handed in ({station.pricing_currency})</h2>
           {TYPES.map(([t, label]) => (
-            <label key={t}>{label}<input inputMode="decimal" value={cash[t] ?? ""} onChange={(e) => setCash({ ...cash, [t]: e.target.value })} /></label>
+            <CashField key={t} type={t} label={label} value={cash[t] ?? ""} onChange={(v) => setCash({ ...cash, [t]: v })} />
           ))}
           {expected != null && (
             <div className={`summary ${Math.abs(handedIn - expected) < 1 ? "ok" : "off"}`} aria-live="polite">
@@ -353,7 +356,7 @@ export default function Shift() {
         <section className="card form">
           <h2>{active.member ? "My cash" : "Handed in"} ({station.pricing_currency})</h2>
           {TYPES.map(([t, label]) => (
-            <label key={t}>{label}<input inputMode="decimal" value={cash[t] ?? ""} onChange={(e) => setCash({ ...cash, [t]: e.target.value })} /></label>
+            <CashField key={t} type={t} label={label} value={cash[t] ?? ""} onChange={(v) => setCash({ ...cash, [t]: v })} />
           ))}
           {calc && (
             <div className={`summary ${Math.abs(calc.variance) < 1 ? "ok" : "off"}`} aria-live="polite">

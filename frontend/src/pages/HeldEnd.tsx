@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, errorMessage } from "../api";
-import { Badge, ErrorNote } from "../components";
+import { Badge, CashField, ErrorNote, hasCents } from "../components";
 
 export interface EndMeter { nozzle: string; pump: string; label: string; fuel_code: string; start: string | null; end: string | null; litres: string | null; amount: string | null }
 export interface EndCash { payment_type: string; currency: string; amount: string }
@@ -47,7 +47,7 @@ export default function HeldEnd({ stage, onChanged }: { stage: HeldStage; onChan
     setBusy(true); setError(null);
     try { await api(path, { method: "POST", body }); setDone(message); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
-  const fix = () => call(`/api/shift-ends/${stage.end_id}/fix/`, {
+  const fix = () => hasCents(cash.cash) ? setError("Cash is counted in whole dollars. Remove the cents from the cash.") : call(`/api/shift-ends/${stage.end_id}/fix/`, {
     cash: stage.can_fix.cash ? [
       ...TYPES.filter(([t]) => cash[t] || own.some((c) => c.payment_type === t)).map(([t]) => ({ payment_type: t, currency: stage.currency, amount: cash[t] || "0" })),
       ...stage.cash.filter((c) => c.currency !== stage.currency), // other currencies stay as they were
@@ -78,7 +78,7 @@ export default function HeldEnd({ stage, onChanged }: { stage: HeldStage; onChan
             <label key={m.nozzle}>{m.pump} · {m.label}: end meter<input inputMode="decimal" value={meters[m.nozzle] ?? ""} onChange={(e) => setMeters({ ...meters, [m.nozzle]: e.target.value.replace(",", ".") })} /></label>
           ))}
           {stage.can_fix.cash && TYPES.map(([t, label]) => (
-            <label key={t}>{label} ({stage.currency})<input inputMode="decimal" value={cash[t] ?? ""} onChange={(e) => setCash({ ...cash, [t]: e.target.value })} /></label>
+            <CashField key={t} type={t} label={`${label} (${stage.currency})`} value={cash[t] ?? ""} onChange={(v) => setCash({ ...cash, [t]: v })} />
           ))}
           <button className="btn primary big" disabled={busy} onClick={() => void fix()}>Send the fix to my manager</button>
         </section>

@@ -129,3 +129,4 @@ table.report tr.sub td{white-space:normal} /* column headings wrap */
 @media (max-width:360px){
   .grid,.station-tabs{grid-template-columns:1fr}
 }
+.form-field{display:flex;flex-direction:column;gap:4px}

@@ -1,4 +1,4 @@
-import { useState, type InputHTMLAttributes } from "react";
+import { useId, useState, type InputHTMLAttributes } from "react";
 import { t } from "./i18n";
 import type { Credentials } from "./types";
 
@@ -52,5 +52,24 @@ export function PasswordInput(props: Omit<InputHTMLAttributes<HTMLInputElement>,
         </svg>
       </span>
     </span>
+  );
+}
+
+/** Cash with cents: notes are counted in whole dollars, so this is a typing slip. */
+export const hasCents = (v: string | undefined) => Boolean(v) && Number(v) !== Math.trunc(Number(v));
+
+/** One payment type's box. Cash is notes, counted in whole dollars: the box takes no cents. */
+export function CashField({ type, label, value, onChange }: { type: string; label: string; value: string; onChange: (v: string) => void }) {
+  const whole = type === "cash";
+  const hint = useId();
+  const cents = whole && hasCents(value);
+  return (
+    <div className="form-field">
+      <label>{label}
+        <input inputMode={whole ? "numeric" : "decimal"} value={value} aria-describedby={whole ? hint : undefined}
+          onChange={(e) => onChange(e.target.value.replace(",", "."))} />
+      </label>
+      {whole && <span id={hint} className={cents ? "error small" : "muted small"}>{cents ? "Cash is counted in whole dollars: remove the cents" : "Cash is counted in whole dollars"}</span>}
+    </div>
   );
 }

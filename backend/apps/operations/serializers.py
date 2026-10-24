@@ -20,6 +20,12 @@ class CashInput(serializers.Serializer):
     currency = serializers.CharField(max_length=3, validators=[validate_currency])
     amount = serializers.DecimalField(**NUM)
 
+    def validate(self, attrs):
+        # notes are counted in whole dollars; swipe, EcoCash and intercompany credit can have cents
+        if attrs["payment_type"] == CashSubmission.PaymentType.CASH and attrs["amount"] != attrs["amount"].to_integral_value():
+            raise serializers.ValidationError({"amount": "Cash is counted in whole dollars. Enter the cash you counted, without cents."})
+        return attrs
+
 
 class ShiftStartInput(serializers.Serializer):
     shift_id = serializers.UUIDField(required=False)
