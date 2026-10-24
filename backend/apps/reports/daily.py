@@ -12,7 +12,7 @@
 """
 from collections import defaultdict
 from datetime import timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db.models import Q, Sum
 from django.utils import timezone
@@ -150,17 +150,28 @@ def meter_fuel_checks(station, opening, close, cfg):
     return out
 
 
+SETTLE_FROM = ("cash", "mobile_money", "card")  # what pays for the fuel of the day before the hand-in; never intercompany
+
+
+def _settle(rows, value):
+    """The part of a hand-in that pays for fuel of another day: that value in whole dollars, from cash first."""
+    left, taken = value.quantize(Decimal("1"), rounding=ROUND_HALF_UP) if value > 0 else Decimal(0), {}
+    for k in SETTLE_FROM:
+        part = min(left, rows.get(k, Decimal(0)))
+        if part > 0:
+            taken[k], left = part, left - part
+    return taken
+
+
 def day_money(station, start, end, sold_value):
     """The money for the day's fuel, by payment type, so the Grand Total always equals the fuel sold.
 
     Each attendant's hand-in covers their whole turn, and the night shift's turn runs across the 9 pm close
-    (18:00 to 07:00). So every turn's hand-in is shared between the days by the value of the fuel it pumped on each
-    side of the close: a turn that pumped 300 before the close and 600 after gives a third of its cash, swipe,
-    EcoCash and intercompany credit to the first day and two thirds to the next.
-
-    Until a turn is handed in, its fuel in the day shows as one line, "Value before split"
-    (the night shift's 18:00 to close). When they hand in in the morning, that line is replaced by its split.
-    What is left is the attendants' cash differences, the day's share of them."""
+    (18:00 to 07:00). Until they hand in, their fuel before the close shows as one line, "Value before split".
+    When they hand in in the morning, that part is settled as cash, in whole dollars: the value of their fuel before
+    the close, taken from their cash (then EcoCash, then swipe, if their cash is not enough; never intercompany
+    credit). Everything else of their hand-in, the rest of the cash and all swipe, EcoCash and intercompany credit,
+    stays whole on the day it was handed in. What is left is the attendants' cash differences (and rounding)."""
     turns = (ShiftAttendant.objects.filter(shift__station=station, joined_at__lte=end).filter(Q(left_at__isnull=True) | Q(left_at__gt=start))
              .prefetch_related("cash"))
     split, pending, settled_at = defaultdict(Decimal), Decimal(0), None
@@ -173,12 +184,16 @@ def day_money(station, start, end, sold_value):
         if t.cash_submitted_at is None:
             pending += inside  # sold, not handed in yet: the split is not known
             continue
-        share = inside / total if total else Decimal(1 if start < t.cash_submitted_at <= end else 0)
-        if not share:
-            continue
+        rows = defaultdict(Decimal)
         for c in t.cash.all():
-            split[c.payment_type] += c.amount * share
-        if t.cash_submitted_at > end and inside:  # handed in after the close: this day's split was settled then
+            rows[c.payment_type] += c.amount
+        if start < t.cash_submitted_at <= end:  # handed in today: all of it, less what settles the fuel of another day
+            taken = _settle(rows, total - inside)
+            for k, v in rows.items():
+                split[k] += v - taken.get(k, Decimal(0))
+        elif t.cash_submitted_at > end and inside:  # handed in after the close: today's fuel settles as cash
+            for k, v in _settle(rows, inside).items():
+                split[k] += v
             settled_at = max(settled_at or t.cash_submitted_at, t.cash_submitted_at)
     paid = sum(split.values(), Decimal(0))
     short = sold_value - paid - pending  # the day's share of the cash differences (and any fuel no attendant was on)
