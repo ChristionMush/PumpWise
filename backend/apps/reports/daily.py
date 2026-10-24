@@ -158,7 +158,7 @@ def day_money(station, start, end, sold_value):
     side of the close: a turn that pumped 300 before the close and 600 after gives a third of its cash, swipe,
     EcoCash and intercompany credit to the first day and two thirds to the next.
 
-    Until a turn is handed in, its fuel in the day shows as one line, "Evening sales 6–9 pm, not yet handed in"
+    Until a turn is handed in, its fuel in the day shows as one line, "Value before split"
     (the night shift's 18:00 to close). When they hand in in the morning, that line is replaced by its split.
     What is left is the attendants' cash differences, the day's share of them."""
     turns = (ShiftAttendant.objects.filter(shift__station=station, joined_at__lte=end).filter(Q(left_at__isnull=True) | Q(left_at__gt=start))
@@ -185,7 +185,7 @@ def day_money(station, start, end, sold_value):
     handed = [{"payment_type": k, "label": label, "amount": _s(split.get(k), Q2)} for k, label in PAYMENT.items()]
     handed += [{"payment_type": k, "label": k, "amount": _s(v, Q2)} for k, v in split.items() if k not in PAYMENT]
     balance = [{"key": k, "label": label, "amount": _s(v, Q2)} for k, label, v in (
-        ("evening", "Evening sales 6–9 pm, not yet handed in", pending), ("short", "Short (+) / over (−)", short)) if v.quantize(Q2)]
+        ("evening", "Value before split", pending), ("short", "Short (+) / over (−)", short)) if v.quantize(Q2)]
     return handed, balance, split, paid, (settled_at if not pending.quantize(Q2) else None)
 
 
