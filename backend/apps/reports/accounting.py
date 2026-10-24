@@ -90,7 +90,7 @@ def build_pack(station, year, month):
         dips = {f["fuel"]: float(Decimal(f["litres"])) for f in r["dips"]}
         values = [float(Decimal(r["totals"]["litres"])), float(Decimal(r["totals"]["amount"])), float(Decimal(r["totals"]["grand_total"])),
                   *(float(paid.get(k, 0)) for k in ("cash", "card", "mobile_money", "credit")),
-                  *(float(bal.get(k, 0)) for k in ("evening", "last_evening", "short")),  # the Grand Total = the fuel sold
+                  *(float(bal.get(k, 0)) for k in ("evening", "short")),  # the Grand Total = the fuel sold
                   float(Decimal(r["cash_losses"]["total"])), float(Decimal(r["cash_losses"]["attendants"])), float(Decimal(r["cash_losses"]["milking"]))]
         for i, v in enumerate(values):
             sums[i] = sums.get(i, 0.0) + v
@@ -101,7 +101,7 @@ def build_pack(station, year, month):
         rows.append(["Month total", "", "", *(round(sums[i], 3 if i == 0 else 2) for i in range(len(sums))), *(None for _ in fuels)])
     _sheet(wb, "Daily", station, period, ["Date", "Closed at", "Closed by", "Litres sold", f"Sales ({currency})", "Grand total", "Cash", "Swipe", "EcoCash",
                                           "Inter Company Credit (owed)",
-                                          "Evening sales after 18:00, cash in tomorrow", "Last evening's sales, cash in today", "Short (+) / over (-)",
+                                          "Evening sales 6-9 pm, not yet handed in", "Short (+) / over (-)",
                                           "Cash losses total", "Attendant losses ($1 and above)", "Milking errors (under $1)",
                                           *(f"Dip {f} (L)" for f in fuels)], rows)
 

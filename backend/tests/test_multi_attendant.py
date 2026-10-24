@@ -667,16 +667,23 @@ def test_the_day_close_ends_the_trading_day_at_about_21_00():
     assert {p["attendant"]: p["litres"] for p in report["people"]} == {att_a.full_name: "40.000", att_b.full_name: "10.000"}
     assert report["tanks"] == []  # the first dip ever: the fuel check runs from this close to the next
     assert [(f["fuel_code"], f["litres"]) for f in report["dips"]] == [(fc.tank.fuel_type.code, "5000.000")]  # the close dip
+    # money for 1 Oct = the fuel sold (75.00). A handed in 148 for 150 of fuel, 60 of it before the close: 40% of their
+    # cash (59.20) is 1 Oct's. B has not handed in: their 15.00 before the close waits as the evening sales line.
+    money = lambda r: ([(h["label"], h["amount"]) for h in r["handed_in"] if h["amount"] != "0.00"], [(b["key"], b["amount"]) for b in r["balance"]])  # noqa: E731
+    assert report["totals"]["grand_total"] == "75.00" and report["settled_at"] is None
+    assert money(report) == ([("Cash", "59.20")], [("evening", "15.00"), ("short", "0.80")])
 
     # 2 Oct: A hands in 148 of 150 (a $2 loss is theirs); B hands in 14.50 of 15.00 (a 50c milking error)
     cb.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:10:00Z", "readings": readings(p2, [10, 0]),
                                         "cash": cash("10") + cash("4.50", kind="card")}, format="json")
+    # in the morning B hands in: 1 Oct's evening line is replaced by B's split (all of B's fuel was before the close)
+    settled = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-01"}).json()[0]
+    assert settled["totals"]["grand_total"] == "75.00" and settled["settled_at"] is not None
+    assert money(settled) == ([("Cash", "69.20"), ("Swipe", "4.50")], [("short", "1.30")])
     report = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-02"}).json()[0]
-    # Grand Total = the fuel sold on 2 Oct (A's 60 L = 90.00): 162.50 handed in, less 75.00 for last evening's 50 L
-    # (sold before the 21:10 close, paid this morning), plus 2.50 short
+    # 2 Oct = A's 60 L after the close (90.00): 60% of A's 148 is 88.80, and 1.20 of A's 2.00 short
     assert report["totals"]["grand_total"] == "90.00" == report["totals"]["amount"]
-    assert [(b["key"], b["amount"]) for b in report["balance"]] == [("last_evening", "-75.00"), ("short", "2.50")]
-    assert [(h["label"], h["amount"]) for h in report["handed_in"]] == [("Cash", "158.00"), ("Swipe", "4.50"), ("EcoCash", "0.00"), ("Inter Company Credit", "0.00")]
+    assert money(report) == ([("Cash", "88.80")], [("short", "1.20")])
     losses = report["cash_losses"]
     assert (losses["total"], losses["milking"], losses["milking_count"]) == ("2.50", "0.50", 1)
     assert losses["by_attendant"] == [{"attendant": att_a.full_name, "amount": "2.00"}]
@@ -721,8 +728,8 @@ def test_an_earlier_day_can_be_closed_afterwards_and_its_sales_are_re_split():
     days = mgr.get("/api/reports/days/", {"date_from": "2026-10-01", "date_to": "2026-10-02", "station": str(fc.station.pk)}).json()["days"]
     assert [(d["day"], d["closed"], d["totals"]["litres"]) for d in days] == [("2026-10-02", False, "63.000"), ("2026-10-01", True, "42.000")]
     assert [s["shift_id"] for s in days[0]["shifts"]] == [sid] and days[0]["totals"]["grand_total"] == "94.50"  # = the fuel sold
-    # 1 Oct: 42 L sold before the close; the night shift hands in the next morning, so its money is still to come
-    assert [(b["key"], b["amount"]) for b in days[1]["balance"]] == [("evening", "63.00")] and days[1]["totals"]["grand_total"] == "63.00"
+    # 1 Oct, closed afterwards: both have handed in, so their 42 L before the close (63.00) is split from their cash
+    assert days[1]["balance"] == [] and days[1]["totals"]["grand_total"] == "63.00" and days[1]["handed_in"][0]["amount"] == "63.00"
 
 
 def test_the_manager_fuel_check_runs_from_close_meters_to_close_meters():

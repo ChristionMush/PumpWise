@@ -5,8 +5,7 @@ export const shortDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDat
 export const n = (v: string | number, digits = 2) => Number(v).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const BALANCE_NOTE: Record<string, string> = {
-  evening: "night shift hands it in; split not known yet",
-  last_evening: "yesterday's fuel, in today's hand-ins",
+  evening: "split into cash, swipe… when the night shift hands in",
   short: "attendants' cash differences",
 };
 const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
@@ -45,8 +44,10 @@ export function DayReport({ r, of }: { r: any; of?: { index: number; count: numb
         ))}
         {/* what takes the hand-ins to the fuel sold, so the Grand Total always equals it */}
         {(r.balance ?? []).map((b: any) => (
-          <tr key={b.key} className="sub"><td>{b.label}</td><td className="muted">{BALANCE_NOTE[b.key] ?? ""}</td><td className="num">{Number(b.amount) > 0 ? "+" : ""}{cur} {n(b.amount)}</td></tr>
+          <tr key={b.key} className={b.key === "evening" ? undefined : "sub"}><td>{b.label}</td><td className="muted">{BALANCE_NOTE[b.key] ?? ""}</td>
+            <td className="num">{b.key === "short" && Number(b.amount) > 0 ? "+" : ""}{cur} {n(b.amount)}</td></tr>
         ))}
+        {r.settled_at && <tr className="sub"><td colSpan={3}>Split completed when the night shift handed in, {when(r.settled_at)}</td></tr>}
       </Section>
 
       <Section title="Cash losses" label="Cash losses">
