@@ -91,13 +91,13 @@ export function DayReport({ r, of }: { r: any; of?: { index: number; count: numb
       {r.shifts?.length > 0 && (
         <Section title={`Shifts (${r.shifts.length})`} label="Shifts" head={["Shift", "Expected / handed in", "Difference"]}>
           {r.shifts.map((s: any) => [
-            <tr key={s.shift_id} aria-label={`Shift ${s.attendants.join(", ")}`}>
-              <td>{s.attendants.join(", ") || "Not assigned"}<br /><span className="muted">{when(s.started_at)} → {s.ended_at ? when(s.ended_at) : "still working"}</span></td>
+            <tr key={s.key ?? s.shift_id} aria-label={`Shift ${s.attendants.join(", ")}`}>
+              <td>{s.label && <><strong>{s.label}</strong><br /></>}{s.attendants.join(", ") || "Not assigned"}<br /><span className="muted">{when(s.started_at)} → {s.ended_at ? when(s.ended_at) : "still working"}</span></td>
               <td className="num">{s.expected != null ? `${n(s.expected)} / ${n(s.handed_in)}` : `— / ${n(s.handed_in)}`}</td>
               <td className="num"><strong>{s.cash_difference != null ? n(s.cash_difference) : "—"}</strong></td>
             </tr>,
             ...(s.waiting ?? []).map((w: any) => (
-              <tr key={`${s.shift_id}-${w.name}`} className="sub"><td>Meters closed, cash not in yet: {w.name}</td><td className="num">{w.expected != null ? `owes ${cur} ${n(w.expected)}` : ""}</td><td /></tr>
+              <tr key={`${s.key ?? s.shift_id}-${w.name}`} className="sub"><td>Meters closed, cash not in yet: {w.name}</td><td className="num">{w.expected != null ? `owes ${cur} ${n(w.expected)}` : ""}</td><td /></tr>
             )),
           ])}
         </Section>

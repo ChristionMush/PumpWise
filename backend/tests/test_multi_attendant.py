@@ -736,3 +736,18 @@ def test_the_manager_fuel_check_runs_from_close_meters_to_close_meters():
     [check] = report["meter_checks"]
     assert (check["opening"], check["dispensed"], check["closing"], check["loss"], check["status"]) == ("5000.000", "110.000", "4880.000", "10.000", "ok")
     assert mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-01"}).json()[0]["meter_checks"] == []  # no close before it
+
+
+def test_the_day_report_shows_day_and_night_shifts_apart_even_on_one_open_shift():
+    """Assigned pumps keep one shift open while people come and go: the report still shows the night shift and the
+    day shift as two lines, from when each turn was worked."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca, cb = client_for(att_a), client_for(att_b)
+    station = str(fc.station.pk)
+    sid = cb.post("/api/shifts/start/", {"station": station, "started_at": "2026-10-01T16:30:00Z", "readings": readings(p2, [0, 0])}, format="json").json()["id"]
+    assert ca.post("/api/shifts/start/", {"station": station, "started_at": "2026-10-02T05:00:00Z", "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"] == sid
+    cb.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:05:00Z", "readings": readings(p2, [10, 0]), "cash": cash("15")}, format="json")
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T16:00:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150")}, format="json")
+    shifts = mgr.get("/api/reports/daily/", {"station": station, "day": "2026-10-02"}).json()[0]["shifts"]
+    assert [(s["shift_id"], s["label"], s["attendants"], s["expected"]) for s in shifts] == [
+        (sid, "Night shift, Thu 01 Oct", [att_b.full_name], "15.00"), (sid, "Day shift, Fri 02 Oct", [att_a.full_name], "150.00")]

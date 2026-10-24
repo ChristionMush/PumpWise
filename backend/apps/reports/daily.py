@@ -50,25 +50,37 @@ def shift_checks(station, start, end):
     """The day's drill-down, built from each attendant's own turn (their meters, what they owe and what they handed
     in), not the whole shift: on assigned pumps a shift can stay open for days while people come and go. A turn
     belongs to the day it was handed in; one whose meters were closed in the day but whose cash is not in yet is
-    listed as still to hand in. Grouped by shift."""
+    listed as still to hand in. Grouped by the shift they were worked in: day (07:00-18:00) or night (18:00-07:00),
+    from the middle of each turn, so a shift record that stays open across shifts still shows each shift apart."""
     parts = (ShiftAttendant.objects.filter(shift__station=station)
              .filter(Q(cash_submitted_at__gt=start, cash_submitted_at__lte=end) | Q(cash_submitted_at__isnull=True, left_at__gt=start, left_at__lte=end))
              .select_related("shift__station", "user").order_by("joined_at"))
-    by_shift = {}
+    by_shift, now = {}, timezone.now()
     for part in parts:
-        by_shift.setdefault(part.shift, []).append((part, end_summary(part)))
+        e = end_summary(part)
+        shared = part.cash_submitted_at and e["expected"] is None  # pumps not assigned: only the whole shift has an amount
+        by_shift.setdefault((part.shift, None if shared else _worked_in(part, now)), []).append((part, e))
     out = []
-    for shift, turns in by_shift.items():
-        shared = any(p.cash_submitted_at and e["expected"] is None for p, e in turns)  # pumps not assigned: no per-person amount
-        out.append((shift, turns, cash_summary(shift) if shared and shift.status != Shift.Status.OPEN else None))
+    for (shift, slot), turns in sorted(by_shift.items(), key=lambda kv: min(p.joined_at for p, _ in kv[1])):
+        whole = cash_summary(shift) if slot is None and shift.status != Shift.Status.OPEN else None
+        out.append((shift, slot, turns, whole))
     return out
+
+
+def _worked_in(part, now):
+    """Day shift (07:00-18:00) or night shift (18:00-07:00, named by the evening it starts), from the middle of the turn."""
+    end = part.left_at or part.cash_submitted_at or now
+    middle = timezone.localtime(part.joined_at + (end - part.joined_at) / 2)
+    if 7 <= middle.hour < 18:
+        return f"Day shift, {middle:%a %d %b}"
+    return f"Night shift, {(middle - timedelta(hours=7)):%a %d %b}"
 
 
 def shift_rows(checks):
     """One line per shift for the turns handed in during the day (expected, handed in, difference), and the turns
     still to hand in listed below it."""
     rows = []
-    for shift, turns, whole in checks:
+    for shift, slot, turns, whole in checks:
         handed = [(p, e) for p, e in turns if p.cash_submitted_at]
         waiting = [{"name": p.user.full_name, "expected": e["expected"]} for p, e in turns if not p.cash_submitted_at]
         if whole is not None:  # shared pumps: the shift's own cash check, once it is closed
@@ -81,7 +93,7 @@ def shift_rows(checks):
             expected, difference = None, None
             paid = _s(sum((Decimal(e["handed_in"]) for _, e in handed), Decimal(0)), Q2)
         ends = [p.left_at for p, _ in turns]
-        rows.append({"shift_id": str(shift.pk), "started_at": min(p.joined_at for p, _ in turns),
+        rows.append({"shift_id": str(shift.pk), "key": f"{shift.pk}:{slot}", "label": slot, "started_at": min(p.joined_at for p, _ in turns),
                      "ended_at": None if any(x is None for x in ends) else max(ends), "status": shift.status,
                      "attendants": list(dict.fromkeys(p.user.full_name for p, _ in handed)) or [w["name"] for w in waiting],
                      "expected": expected, "handed_in": paid, "cash_difference": difference, "waiting": waiting,
@@ -94,7 +106,7 @@ def cash_losses(checks):
     """Shortages on the turns handed in during the day, per attendant: their own difference when pumps are assigned
     (or they worked alone), else the closed shift's difference shared by the people on it."""
     people, milking, milking_count = defaultdict(Decimal), Decimal(0), 0
-    for _shift, turns, whole in checks:
+    for _shift, _slot, turns, whole in checks:
         if whole is not None:
             if whole["missing_rate"]:
                 continue
