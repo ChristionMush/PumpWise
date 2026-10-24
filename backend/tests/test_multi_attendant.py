@@ -703,7 +703,7 @@ def test_an_earlier_day_can_be_closed_afterwards_and_its_sales_are_re_split():
     sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
     cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
     ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:00:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150")}, format="json")
-    cb.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:00:00Z", "readings": readings(p2, [5, 0]), "cash": cash("7.50")}, format="json")
+    cb.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:00:00Z", "readings": readings(p2, [5, 0]), "cash": cash("7") + cash("0.50", kind="mobile_money")}, format="json")
 
     def sold():
         rows = mgr.get("/api/reports/daily-sales/", {"date_from": "2026-10-01", "date_to": "2026-10-02"}).json()["days"]
