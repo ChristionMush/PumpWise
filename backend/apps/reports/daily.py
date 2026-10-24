@@ -151,6 +151,32 @@ def meter_fuel_checks(station, opening, close, cfg):
     return out
 
 
+def money_balance(station, start, end, sales, handed_total, sold_value):
+    """Lines that take the money handed in during the day to the value of the fuel sold, so the Grand Total always
+    equals the fuel sold. The night shift hands in at about 07:00, so its money for the evening before the close is
+    in the next day's hand-ins; its split (cash, swipe...) is only known then.
+
+    * Evening sales, cash in tomorrow (+): fuel sold in the day by turns not handed in by the close.
+    * Last evening's sales, cash in today (−): fuel sold before the day began, paid in today's hand-ins.
+    * Short (+) / over (−): what is left, the attendants' cash differences."""
+    turns = list(ShiftAttendant.objects.filter(shift__station=station, cash_submitted_at__gt=start, cash_submitted_at__lte=end))
+    carried_in = Decimal(0)
+    for t in turns:  # their fuel from before the day began
+        until = min(start, t.left_at) if t.left_at else start
+        carried_in += Transaction.objects.filter(shift_id=t.shift_id, attendant_id=t.user_id, occurred_at__gt=t.joined_at,
+                                                 occurred_at__lte=until).aggregate(s=Sum("amount"))["s"] or Decimal(0)
+
+    def paid_today(tx):
+        return any(t.shift_id == tx.shift_id and (tx.attendant_id is None or t.user_id == tx.attendant_id)
+                   and t.joined_at < tx.occurred_at <= (t.left_at or end) for t in turns)
+
+    to_come = sum((tx.amount for tx in sales.only("amount", "shift_id", "attendant_id", "occurred_at") if not paid_today(tx)), Decimal(0))
+    short = sold_value - (handed_total - carried_in + to_come)
+    lines = [("evening", "Evening sales after 18:00, cash in tomorrow", to_come), ("last_evening", "Last evening's sales, cash in today", -carried_in),
+             ("short", "Short (+) / over (−)", short)]
+    return [{"key": k, "label": label, "amount": _s(v, Q2)} for k, label, v in lines if v.quantize(Q2)]
+
+
 def dips_by_fuel(station, close, end):
     """The day close dips (mm and litres) per fuel type; before the close, each tank's latest dip."""
     out = {}
@@ -222,6 +248,8 @@ def daily_report(station, day):
     handed = [{"payment_type": k, "label": label, "amount": _s(cash.get(k), Q2)} for k, label in PAYMENT.items()]
     handed += [{"payment_type": k, "label": k, "amount": _s(v, Q2)} for k, v in cash.items() if k not in PAYMENT]
     received = sum((v for k, v in cash.items() if k != "credit"), Decimal(0))
+    sold_value = totals["amount"] or Decimal(0)
+    balance = money_balance(station, start, end, sales, sum(cash.values(), Decimal(0)), sold_value)
 
     # deep dive: each person's litres and money within the day, by shift
     people = [{"attendant": r["attendant__full_name"] or "Not assigned", "shift_id": str(r["shift_id"]), "shift_started_at": r["shift__started_at"],
@@ -236,8 +264,8 @@ def daily_report(station, day):
         "closed_by": close.closed_by.full_name if close and close.closed_by_id else None, "opened_by_close": bool(opening),
         "so_far": not close and end > timezone.now(),
         "totals": {"litres": _s(totals["litres"], Q3), "amount": _s(totals["amount"], Q2), "handed_in": _s(sum(cash.values(), Decimal(0)), Q2),
-                   "grand_total": _s(sum(cash.values(), Decimal(0)), Q2),
+                   "grand_total": _s(sold_value, Q2),  # always the value of the fuel sold: handed in + the balance lines
                    "received": _s(received, Q2), "intercompany": _s(cash.get("credit"), Q2)},
-        "fuels": fuels, "pumps": pumps, "tanks": tanks, "meter_checks": meter_checks, "handed_in": handed, "people": people,
+        "fuels": fuels, "pumps": pumps, "tanks": tanks, "meter_checks": meter_checks, "handed_in": handed, "balance": balance, "people": people,
         "cash_losses": cash_losses(checks), "dips": dips_by_fuel(station, close, end), "shifts": shift_rows(checks),
     }

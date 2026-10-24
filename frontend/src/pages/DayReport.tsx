@@ -4,6 +4,11 @@ const longDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(
 export const shortDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
 export const n = (v: string | number, digits = 2) => Number(v).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const BALANCE_NOTE: Record<string, string> = {
+  evening: "night shift hands it in; split not known yet",
+  last_evening: "yesterday's fuel, in today's hand-ins",
+  short: "attendants' cash differences",
+};
 const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
 // a meter at a day close, else the attendants' nearest reading with its time
 const meter = (value: string | null, from: string | null) =>
@@ -37,6 +42,10 @@ export function DayReport({ r, of }: { r: any; of?: { index: number; count: numb
         <tr className="total"><td>Grand Total</td><td /><td className="num">{cur} {n(r.totals.grand_total)}</td></tr>
         {r.handed_in.map((h: any) => (
           <tr key={h.payment_type}><td>{h.label}</td><td className="muted">{h.payment_type === "credit" && Number(h.amount) ? "owed by the other company" : ""}</td><td className="num">{cur} {n(h.amount)}</td></tr>
+        ))}
+        {/* what takes the hand-ins to the fuel sold, so the Grand Total always equals it */}
+        {(r.balance ?? []).map((b: any) => (
+          <tr key={b.key} className="sub"><td>{b.label}</td><td className="muted">{BALANCE_NOTE[b.key] ?? ""}</td><td className="num">{Number(b.amount) > 0 ? "+" : ""}{cur} {n(b.amount)}</td></tr>
         ))}
       </Section>
 

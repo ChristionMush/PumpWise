@@ -7,8 +7,9 @@ const me = { "GET /api/auth/me/": { body: { user: ownerUser, tenant: { id: "t1",
 const sales = { totals: { litres: "100", amount_by_currency: { USD: "150.00" } }, averages: { avg_daily_litres: "100", by_weekday: [] }, days: [] };
 const dayReport = {
   station: "s1", station_name: "Chigwende", day: "2026-10-21", currency: "USD", closed: true, closed_at: "2026-10-21T19:05:00Z", closed_by: "Justice", so_far: false,
-  totals: { litres: "105.000", amount: "157.50", handed_in: "155.00", grand_total: "155.00", received: "155.00", intercompany: "0.00" },
+  totals: { litres: "105.000", amount: "157.50", handed_in: "155.00", grand_total: "157.50", received: "155.00", intercompany: "0.00" },
   handed_in: [{ payment_type: "cash", label: "Cash", amount: "155.00" }, { payment_type: "card", label: "Swipe", amount: "0.00" }, { payment_type: "mobile_money", label: "EcoCash", amount: "0.00" }, { payment_type: "credit", label: "Inter Company Credit", amount: "0.00" }],
+  balance: [{ key: "short", label: "Short (+) / over (−)", amount: "2.50" }],
   cash_losses: { total: "2.50", attendants: "2.50", by_attendant: [{ attendant: "Tendai", amount: "2.50" }], milking: "0.00", milking_count: 0 },
   dips: [], fuels: [{ fuel: "Petrol", fuel_code: "PETROL", litres: "105.000", amount: "157.50" }], pumps: [], tanks: [], people: [],
   shifts: [{ shift_id: "sh1", started_at: "2026-10-20T16:00:00Z", ended_at: "2026-10-21T05:00:00Z", status: "closed", attendants: ["Tendai"], expected: "157.50", handed_in: "155.00",
@@ -26,7 +27,9 @@ describe("reports", () => {
     renderApp("/reports");
     const day = await screen.findByRole("region", { name: "Daily report Chigwende" });
     expect(day).toHaveTextContent(/Date: Wednesday,? (21 October|October 21),? 2026/);
-    expect(day).toHaveTextContent(/Grand Total\s*USD 155\D00/);
+    // the Grand Total is the fuel sold: 155.00 handed in + 2.50 short
+    expect(day).toHaveTextContent(/Grand Total\s*USD 157\D50/);
+    expect(within(day).getByRole("table", { name: "Grand total" })).toHaveTextContent(/Short \(\+\) \/ over \(−\)\s*attendants' cash differences\s*\+USD 2\D50/);
     const shifts = within(day).getByRole("table", { name: "Shifts" });
     expect(shifts).toHaveTextContent("Shifts (2)"); // a heading row, no dropdown
     expect(within(shifts).getByRole("row", { name: "Shift Tendai" })).toHaveTextContent(/157\D50 \/ 155\D00\s*-2\D50/);

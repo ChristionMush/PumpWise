@@ -149,7 +149,8 @@ def test_the_monthly_accounting_pack_has_every_sheet_with_the_months_numbers():
         return next(wb[name].iter_rows(min_row=4, values_only=True))
 
     # the trading day: litres, sales, grand total by payment type, cash losses ($10 short is the attendant's), the dip
-    assert first("Daily")[1:] == ("not closed", None, 100.0, 150.0, 140.0, 140.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 8000.0)
+    # Grand Total = the fuel sold (150): 140 handed in + 10 short
+    assert first("Daily")[1:] == ("not closed", None, 100.0, 150.0, 150.0, 140.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 10.0, 0.0, 8000.0)
     assert first("Sales")[1:] == ("Petrol", 100.0, 1.5, 150.0, "USD")
     assert first("Takings")[1:] == ("Cash", "USD", 140.0, 1.0, 140.0)
     assert first("Cash differences")[4:] == (150.0, 140.0, -10.0, "Short")

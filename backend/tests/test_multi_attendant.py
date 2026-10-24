@@ -672,7 +672,10 @@ def test_the_day_close_ends_the_trading_day_at_about_21_00():
     cb.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:10:00Z", "readings": readings(p2, [10, 0]),
                                         "cash": cash("10") + cash("4.50", kind="card")}, format="json")
     report = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-02"}).json()[0]
-    assert report["totals"]["grand_total"] == "162.50"
+    # Grand Total = the fuel sold on 2 Oct (A's 60 L = 90.00): 162.50 handed in, less 75.00 for last evening's 50 L
+    # (sold before the 21:10 close, paid this morning), plus 2.50 short
+    assert report["totals"]["grand_total"] == "90.00" == report["totals"]["amount"]
+    assert [(b["key"], b["amount"]) for b in report["balance"]] == [("last_evening", "-75.00"), ("short", "2.50")]
     assert [(h["label"], h["amount"]) for h in report["handed_in"]] == [("Cash", "158.00"), ("Swipe", "4.50"), ("EcoCash", "0.00"), ("Inter Company Credit", "0.00")]
     losses = report["cash_losses"]
     assert (losses["total"], losses["milking"], losses["milking_count"]) == ("2.50", "0.50", 1)
@@ -717,7 +720,9 @@ def test_an_earlier_day_can_be_closed_afterwards_and_its_sales_are_re_split():
     # Reports by day: newest first, each day with its shifts as the drill-down
     days = mgr.get("/api/reports/days/", {"date_from": "2026-10-01", "date_to": "2026-10-02", "station": str(fc.station.pk)}).json()["days"]
     assert [(d["day"], d["closed"], d["totals"]["litres"]) for d in days] == [("2026-10-02", False, "63.000"), ("2026-10-01", True, "42.000")]
-    assert [s["shift_id"] for s in days[0]["shifts"]] == [sid] and days[0]["totals"]["grand_total"] == "157.50"
+    assert [s["shift_id"] for s in days[0]["shifts"]] == [sid] and days[0]["totals"]["grand_total"] == "94.50"  # = the fuel sold
+    # 1 Oct: 42 L sold before the close; the night shift hands in the next morning, so its money is still to come
+    assert [(b["key"], b["amount"]) for b in days[1]["balance"]] == [("evening", "63.00")] and days[1]["totals"]["grand_total"] == "63.00"
 
 
 def test_the_manager_fuel_check_runs_from_close_meters_to_close_meters():
