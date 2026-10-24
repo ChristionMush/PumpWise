@@ -30,8 +30,8 @@ export default function Reports() {
     <>
       <h1>Reports</h1>
       <div className="chips">{([["days", "By day"], ["sales", "Sales"], ["tank", "Fuel check"], ["cash", "Shifts: cash check"], ["people", "By attendant"]] as const).map(([k, l]) => <button key={k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
-      <div className="row gap">
-        {stations.length > 1 && <label>Station<select value={station} onChange={(e) => setStation(e.target.value)}><option value="">All stations</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
+      <div className="filters">
+        {stations.length > 1 && <label className="wide">Station<select value={station} onChange={(e) => setStation(e.target.value)}><option value="">All stations</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
         <label>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></div>
       <ErrorNote message={error} />
       {user?.role === "owner" && <AccountingPack stations={stations} />}

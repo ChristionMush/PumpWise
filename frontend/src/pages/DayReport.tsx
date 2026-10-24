@@ -31,11 +31,7 @@ export function DayReport({ r, of }: { r: any; of?: { index: number; count: numb
   return (
     <section id={`report-${r.station}`} className="card" aria-label={`Daily report ${r.station_name}`}>
       <div className="row between"><h2>{r.station_name}</h2>{of && of.count > 1 && <span className="muted">Station {of.index} of {of.count}</span>}</div>
-      <table className="report" aria-label="Day">
-        <tbody>
-          <tr><td><strong>Date: {longDay(r.day)}</strong></td><td className="num">{closedText(r)}</td></tr>
-        </tbody>
-      </table>
+      <p className="day-line"><strong>Date: {longDay(r.day)}</strong> <span className="muted">{closedText(r)}</span></p>
 
       <Section title="Money" label="Grand total">
         <tr className="total"><td>Grand Total</td><td /><td className="num">{cur} {n(r.totals.grand_total)}</td></tr>

@@ -46,9 +46,10 @@ export default function Settings() {
         <button className="btn primary" onClick={wrap(() => api("/api/settings/", { method: "PATCH", body: { ...s, logo_url: undefined } }), "Saved.")}>Save settings</button></section>}
       <section className="card form">{owner && <h2>Team</h2>}
         {users.map((u) => (
-          <div key={u.id}>
-          <div className="row between gap"><span>{u.full_name} <span className="muted">· {u.role} · {u.phone ?? u.email}</span></span>
+          <div key={u.id} className="member">
+          <div className="row between gap member-head"><span>{u.full_name}<br /><span className="muted small">{u.role} · {u.phone ?? u.email}</span></span>
             {owner && editing !== u.id && <button type="button" className="link" onClick={() => setEditing(u.id)}>Edit</button>}
+          </div>
             {/* managers: tick which attendants work at their own station(s); the owner places everyone */}
             {!owner && u.role === "attendant" && stations.map((st) => (
               <label key={st.id} className="row gap"><input type="checkbox" aria-label={`${u.full_name} works at ${st.name}`}
@@ -67,7 +68,6 @@ export default function Settings() {
                 })}
               </select>
             )}
-          </div>
           {owner && editing === u.id && (
             <MemberEditor member={u} self={u.id === user?.id} onClose={() => setEditing(null)}
               onSaved={(text) => { setEditing(null); setMsg(text); setError(null); void load(); }} />

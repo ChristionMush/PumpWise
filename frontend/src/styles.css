@@ -93,3 +93,39 @@ table.report + table.report th.section{padding-top:18px}
 /* the day close's pump meters, one group per fuel */
 fieldset.fuel-group{border:1px solid var(--line);border-radius:12px;padding:8px 12px 12px;margin:0;display:flex;flex-direction:column;gap:10px}
 fieldset.fuel-group legend{font-weight:700;padding:0 6px;color:var(--green-2)}
+
+/* ---- phones: everything fits the screen width; nothing makes the page scroll sideways ---- */
+body{overflow-wrap:break-word}
+.main{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+.main>*,.card>*,.row>*{min-width:0}
+/* boxes side by side share the row, and drop under each other when there is no room */
+.row>label{flex:1 1 150px}
+label.row>span{flex:none;white-space:nowrap} /* a short label beside its box never gets squeezed */
+.member-head{flex-wrap:nowrap;align-items:flex-start}.member-head>button{flex:none}.small{font-size:.85rem}
+.card>p,.card>ul{margin:0}
+.member{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid var(--line)}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.filters>.wide{grid-column:1/-1}
+.day-line{margin:0;display:flex;flex-wrap:wrap;gap:2px 12px;justify-content:space-between}
+input[type=date],input[type=time],input[type=month]{min-width:0;-webkit-appearance:none;appearance:none;text-align:left;display:block}
+/* a wide plain table scrolls inside itself instead of widening the page */
+.table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.report{table-layout:auto}
+table.report tr.sub td{white-space:normal} /* column headings wrap */
+@media (max-width:560px){
+  .main{gap:12px;padding-top:12px}
+  h1{font-size:1.25rem}
+  .card{padding:12px;border-radius:12px}
+  .btn{padding:10px 14px}
+  .chips{gap:6px}.chip{padding:6px 12px}
+  .nav{padding:6px 8px;-webkit-mask-image:linear-gradient(to right,#000 88%,transparent);mask-image:linear-gradient(to right,#000 88%,transparent)} /* the fade says the menu scrolls */
+  .nav a{padding:8px 12px}
+  /* the daily report: smaller type, and long middle cells (meters, sums) wrap; the amount column stays on one line */
+  table.report{font-size:.86rem}
+  table.report td,table.report th{padding:6px 2px}
+  table.report td.num:not(:last-child){white-space:normal}
+  .station-tab{padding:8px 10px}
+  .grid{gap:8px}.stat strong{font-size:1.25rem}
+}
+@media (max-width:360px){
+  .grid,.station-tabs{grid-template-columns:1fr}
+}
