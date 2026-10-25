@@ -130,3 +130,4 @@ table.report tr.sub td{white-space:normal} /* column headings wrap */
   .grid,.station-tabs{grid-template-columns:1fr}
 }
 .form-field{display:flex;flex-direction:column;gap:4px}
+.hist li.correction strong{color:var(--amber)}

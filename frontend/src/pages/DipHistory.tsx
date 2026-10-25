@@ -5,6 +5,7 @@ import { Badge, ErrorNote } from "../components";
 const today = () => new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const dipText = (d: { dip_mm: string | null; litres: string }) => `${d.dip_mm ? `${d.dip_mm} mm = ` : ""}${Number(d.litres).toLocaleString()} L`;
 const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
 const ago = (h: number) => (h < 1 ? "under an hour ago" : h < 48 ? `${Math.round(h)} h ago` : `${Math.round(h / 24)} days ago`);
 
@@ -61,7 +62,11 @@ export default function DipHistory() {
                     <span className="hist-time">{time(e.at)}</span>
                     <span>{e.type === "dip"
                       ? <><strong>{e.tank}</strong>{data.tanks.length > 1 ? <span className="muted"> · {e.station}</span> : null}: dip {e.dip_mm ? `${e.dip_mm} mm = ` : ""}{Number(e.litres).toLocaleString()} L</>
-                      : <><strong>Delivery</strong> to {e.tank}: {Number(e.litres).toLocaleString()} L from {e.supplier || "supplier not given"}{e.note_number ? ` (note ${e.note_number})` : ""}</>}
+                      : e.type === "correction"
+                        ? <><strong>Day close of {dayName(e.close_day)} corrected</strong>{data.tanks.length > 1 ? <span className="muted"> · {e.station}</span> : null}:{" "}
+                          {[...e.dips.map((x: any) => `${x.tank} ${dipText(x.from)} → ${dipText(x.to)}`), ...e.meters.map((x: any) => `${x.pump} meter ${x.from} → ${x.to}`)].join("; ")}
+                          {e.note ? <span className="muted"> ({e.note})</span> : null}</>
+                        : <><strong>Delivery</strong> to {e.tank}: {Number(e.litres).toLocaleString()} L from {e.supplier || "supplier not given"}{e.note_number ? ` (note ${e.note_number})` : ""}</>}
                       {e.by && <span className="muted"> · {e.by}</span>}</span>
                   </li>
                 ))}

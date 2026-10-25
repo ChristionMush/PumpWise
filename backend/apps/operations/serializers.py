@@ -222,6 +222,14 @@ class DayCloseMeterInput(serializers.Serializer):
     reading = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0"))
 
 
+class DayCloseCorrectInput(serializers.Serializer):
+    """A correction to the latest day close: the dips and meters to change (each tank's dip in mm, then litres)."""
+
+    dips = DayCloseDipInput(many=True, required=False, default=list)
+    meters = DayCloseMeterInput(many=True, required=False, default=list)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 class DayCloseInput(serializers.Serializer):
     """The manager's day close at about 21:00: every tank's dip and every pump's meter at the station."""
 

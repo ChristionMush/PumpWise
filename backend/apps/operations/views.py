@@ -23,12 +23,13 @@ from apps.stations.models import FuelPrice, Pump, Station, StationAssignment, Ta
 from apps.stations.views import validate_image
 
 from . import approvals, dayclose, imports, services
-from .models import Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, SyncOperation, TankReading, UndoRequest
+from .models import DayClose, Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, SyncOperation, TankReading, UndoRequest
 from .serializers import (
     CashInput,
     CashInputOnly,
     CashSerializer,
     CheckpointInput,
+    DayCloseCorrectInput,
     DayCloseInput,
     DeliveryInput,
     DeliverySerializer,
@@ -785,3 +786,20 @@ class DayCloseView(APIView):
         _check_station(request.user, d["station"])
         dayclose.close_day(user=request.user, station=d["station"], dips=d["dips"], meters=d["meters"], at=d.get("at"), note=d["note"], request=request)
         return Response(dayclose.close_status(d["station"]), status=status.HTTP_201_CREATED)
+
+
+class DayCloseCorrectView(APIView):
+    """PATCH: correct the latest day close of a station (its dips and meters). Managers (their stations) and the owner."""
+
+    permission_classes = [TankRecords]
+
+    def patch(self, request, pk):
+        close = DayClose.objects.select_related("station").filter(pk=pk).first()
+        if close is None:
+            raise NotFound()
+        _check_station(request.user, close.station)
+        data = DayCloseCorrectInput(data=request.data)
+        data.is_valid(raise_exception=True)
+        d = data.validated_data
+        dayclose.correct_close(user=request.user, close=close, dips=d["dips"], meters=d["meters"], note=d["note"], request=request)
+        return Response(dayclose.close_status(close.station))

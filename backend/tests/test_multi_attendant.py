@@ -778,3 +778,53 @@ def test_cash_is_handed_in_in_whole_dollars():
     assert refused.status_code == 400 and "Cash is counted in whole dollars" in str(refused.json())
     ok = ca.post(f"/api/shifts/{sid}/end/", {**end, "cash": cash("144") + cash("5.85", kind="mobile_money") + cash("0.15", kind="card")}, format="json")
     assert ok.status_code == 200, ok.content
+
+
+
+def test_the_latest_day_close_can_be_corrected_and_the_correction_is_in_dip_history():
+    """A manager typed a meter wrong and put a dip on the wrong number: they correct the latest close. The shift that
+    was pumping through it is re-split at the corrected meter; the change is checked like a close and logged."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca = client_for(att_a)
+    station = str(fc.station.pk)
+    sid = ca.post("/api/shifts/start/", {"station": station, "started_at": "2026-10-01T15:00:00Z", "readings": readings(fc.nozzles, [0, 0])},
+                  format="json").json()["id"]
+
+    def close(at, meters, litres="5000"):
+        return mgr.post("/api/day-close/", {"station": station, "at": at, "dips": [{"tank": str(fc.tank.pk), "dip_mm": "1500", "litres": litres}],
+                                            "meters": [{"nozzle": str(n.pk), "reading": str(v)} for n, v in zip(fc.nozzles + p2, meters, strict=True)]},
+                        format="json")
+
+    assert close("2026-09-30T19:00:00Z", [0, 0, 0, 0]).status_code == 201
+    assert close("2026-10-01T19:00:00Z", [40, 0, 0, 0]).status_code == 201  # Pump 1 really read 45
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-02T05:00:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150")}, format="json")
+
+    def sold():
+        rows = mgr.get("/api/reports/daily-sales/", {"date_from": "2026-10-01", "date_to": "2026-10-02"}).json()["days"]
+        return {d["date"]: d["litres"] for d in rows}
+
+    assert sold() == {"2026-10-01": "40.000", "2026-10-02": "60.000"}
+    status = mgr.get("/api/day-close/", {"station": station}).json()[0]
+    latest = status["latest"]
+    assert latest["day"] == "2026-10-01" and {m["reading"] for m in latest["meters"]} == {"40", "0"}
+    url = f"/api/day-close/{latest['id']}/"
+    pump1 = str(fc.nozzles[0].pk)
+    above = mgr.patch(url, {"meters": [{"nozzle": pump1, "reading": "120"}]}, format="json")
+    assert above.status_code == 400 and "above the next number" in str(above.json())
+    assert mgr.patch(url, {"meters": [{"nozzle": pump1, "reading": "40"}]}, format="json").status_code == 400  # nothing changed
+    older = next(c for c in status["recent"] if c["day"] == "2026-09-30")
+    assert mgr.patch(f"/api/day-close/{older['id']}/", {"meters": [{"nozzle": pump1, "reading": "1"}]}, format="json").status_code == 400  # not the latest
+    assert ca.patch(url, {"meters": [{"nozzle": pump1, "reading": "45"}]}, format="json").status_code == 403  # attendants never
+
+    fixed = mgr.patch(url, {"note": "Typo on Pump 1", "meters": [{"nozzle": pump1, "reading": "45"}],
+                            "dips": [{"tank": str(fc.tank.pk), "dip_mm": "1480", "litres": "4800"}]}, format="json")
+    assert fixed.status_code == 200, fixed.content
+    assert sold() == {"2026-10-01": "45.000", "2026-10-02": "55.000"}  # A's litres split at the corrected meter
+    with db_context(tenant_id=a["tenant"].id):
+        assert Transaction.objects.filter(shift_id=sid).aggregate(s=Sum("litres"))["s"] == Decimal("100.000")  # A's total is unchanged
+
+    history = mgr.get("/api/reports/dip-history/", {"date_from": "2026-09-30", "date_to": "2026-12-31"}).json()
+    [entry] = [e for d in history["days"] for e in d["entries"] if e["type"] == "correction"]
+    assert entry["close_day"] == "2026-10-01" and entry["note"] == "Typo on Pump 1" and entry["by"] == a[Role.MANAGER].full_name
+    assert entry["meters"] == [{"pump": f"Pump 1 {fc.nozzles[0]}", "from": "40", "to": "45"}]
+    assert entry["dips"] == [{"tank": fc.tank.name, "from": {"dip_mm": "1500", "litres": "5000"}, "to": {"dip_mm": "1480", "litres": "4800"}}]

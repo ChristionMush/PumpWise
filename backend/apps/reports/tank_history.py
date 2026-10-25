@@ -1,4 +1,5 @@
-"""Dip history for managers and owners: when each tank was dipped, by whom, and the days a tank was not dipped.
+"""Dip history for managers and owners: when each tank was dipped, by whom, the days a tank was not dipped, and every
+correction made to a day close.
 
 Dips and deliveries are tank-side records (rule 11): attendants never see this.
 """
@@ -6,7 +7,8 @@ from datetime import datetime, time, timedelta
 
 from django.utils import timezone
 
-from apps.operations.models import Delivery, TankReading
+from apps.audit.models import AuditLog
+from apps.operations.models import DayClose, Delivery, TankReading
 from apps.stations.models import Tank
 
 # A tank should be dipped at least once every 24 hours. Shown here as a warning; not (yet) enforced anywhere.
@@ -53,6 +55,15 @@ def tank_history(*, station_ids, date_from, date_to, now=None):
         by_day.setdefault(day, []).append({
             "type": "delivery", "at": v.delivered_at.isoformat(), "tank_id": str(v.tank_id), "tank": names[v.tank_id][0], "station": names[v.tank_id][1],
             "litres": _num(v.litres_received), "supplier": v.supplier, "note_number": v.note_number, "by": v.recorded_by.full_name if v.recorded_by_id else None,
+        })
+
+    # corrections to a day close: what was changed, by whom and when (the audit log holds every one)
+    closes = {str(c.pk): c for c in DayClose.objects.filter(station__in={t.station_id for t in tanks})}
+    for a in AuditLog.objects.filter(action="day_close_corrected", object_id__in=list(closes), created_at__gte=start, created_at__lt=end).select_related("actor"):
+        c = a.changes
+        by_day.setdefault(timezone.localtime(a.created_at).date(), []).append({
+            "type": "correction", "at": a.created_at.isoformat(), "station": c.get("station"), "close_day": c.get("day"),
+            "dips": c.get("dips", []), "meters": c.get("meters", []), "note": c.get("note", ""), "by": a.actor.full_name if a.actor_id else None,
         })
 
     days = []
