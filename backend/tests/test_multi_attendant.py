@@ -668,7 +668,7 @@ def test_the_day_close_ends_the_trading_day_at_about_21_00():
     assert report["tanks"] == []  # the first dip ever: the fuel check runs from this close to the next
     assert [(f["fuel_code"], f["litres"]) for f in report["dips"]] == [(fc.tank.fuel_type.code, "5000.000")]  # the close dip
     # money for 1 Oct = the fuel sold (75.00). A handed in 148 for 150 of fuel, 60 of it before the close: 60 of their
-    # cash settles 1 Oct. B has not handed in: their 15.00 before the close waits as "Value before split".
+    # cash settles 1 Oct. B has not handed in: their 15.00 before the close waits as "Sales between 6pm & 9pm".
     money = lambda r: ([(h["label"], h["amount"]) for h in r["handed_in"] if h["amount"] != "0.00"], [(b["key"], b["amount"]) for b in r["balance"]])  # noqa: E731
     assert report["totals"]["grand_total"] == "75.00" and report["settled_at"] is None
     assert money(report) == ([("Cash", "60.00")], [("evening", "15.00")])

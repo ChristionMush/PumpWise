@@ -101,7 +101,7 @@ def build_pack(station, year, month):
         rows.append(["Month total", "", "", *(round(sums[i], 3 if i == 0 else 2) for i in range(len(sums))), *(None for _ in fuels)])
     _sheet(wb, "Daily", station, period, ["Date", "Closed at", "Closed by", "Litres sold", f"Sales ({currency})", "Grand total", "Cash", "Swipe", "EcoCash",
                                           "Inter Company Credit (owed)",
-                                          "Value before split (6-9 pm sales)", "Short (+) / over (-)",
+                                          "Sales between 6pm & 9pm (not yet split)", "Short (+) / over (-)",
                                           "Cash losses total", "Attendant losses ($1 and above)", "Milking errors (under $1)",
                                           *(f"Dip {f} (L)" for f in fuels)], rows)
 

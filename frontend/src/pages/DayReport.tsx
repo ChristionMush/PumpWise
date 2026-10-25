@@ -5,7 +5,7 @@ export const shortDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDat
 export const n = (v: string | number, digits = 2) => Number(v).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const BALANCE_NOTE: Record<string, string> = {
-  evening: "6–9 pm sales, split when the night shift hands in",
+  evening: "split into cash, swipe… when the night shift hands in",
   short: "attendants' cash differences",
 };
 const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });

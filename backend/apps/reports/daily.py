@@ -167,7 +167,7 @@ def day_money(station, start, end, sold_value):
     """The money for the day's fuel, by payment type, so the Grand Total always equals the fuel sold.
 
     Each attendant's hand-in covers their whole turn, and the night shift's turn runs across the 9 pm close
-    (18:00 to 07:00). Until they hand in, their fuel before the close shows as one line, "Value before split".
+    (18:00 to 07:00). Until they hand in, their fuel before the close shows as one line, "Sales between 6pm & 9pm".
     When they hand in in the morning, that part is settled as cash, in whole dollars: the value of their fuel before
     the close, taken from their cash (then EcoCash, then swipe, if their cash is not enough; never intercompany
     credit). Everything else of their hand-in, the rest of the cash and all swipe, EcoCash and intercompany credit,
@@ -200,7 +200,7 @@ def day_money(station, start, end, sold_value):
     handed = [{"payment_type": k, "label": label, "amount": _s(split.get(k), Q2)} for k, label in PAYMENT.items()]
     handed += [{"payment_type": k, "label": k, "amount": _s(v, Q2)} for k, v in split.items() if k not in PAYMENT]
     balance = [{"key": k, "label": label, "amount": _s(v, Q2)} for k, label, v in (
-        ("evening", "Value before split", pending), ("short", "Short (+) / over (−)", short)) if v.quantize(Q2)]
+        ("evening", "Sales between 6pm & 9pm", pending), ("short", "Short (+) / over (−)", short)) if v.quantize(Q2)]
     return handed, balance, split, paid, (settled_at if not pending.quantize(Q2) else None)
 
 

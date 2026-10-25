@@ -9,7 +9,7 @@ const dayReport = {
   station: "s1", station_name: "Chigwende", day: "2026-10-21", currency: "USD", closed: true, closed_at: "2026-10-21T19:05:00Z", closed_by: "Justice", so_far: false,
   totals: { litres: "105.000", amount: "157.50", handed_in: "115.00", grand_total: "157.50", received: "155.00", intercompany: "0.00" },
   handed_in: [{ payment_type: "cash", label: "Cash", amount: "155.00" }, { payment_type: "card", label: "Swipe", amount: "0.00" }, { payment_type: "mobile_money", label: "EcoCash", amount: "0.00" }, { payment_type: "credit", label: "Inter Company Credit", amount: "0.00" }],
-  balance: [{ key: "evening", label: "Value before split", amount: "40.00" }, { key: "short", label: "Short (+) / over (−)", amount: "2.50" }],
+  balance: [{ key: "evening", label: "Sales between 6pm & 9pm", amount: "40.00" }, { key: "short", label: "Short (+) / over (−)", amount: "2.50" }],
   cash_losses: { total: "2.50", attendants: "2.50", by_attendant: [{ attendant: "Tendai", amount: "2.50" }], milking: "0.00", milking_count: 0 },
   dips: [], fuels: [{ fuel: "Petrol", fuel_code: "PETROL", litres: "105.000", amount: "157.50" }], pumps: [], tanks: [], people: [],
   shifts: [{ shift_id: "sh1", started_at: "2026-10-20T16:00:00Z", ended_at: "2026-10-21T05:00:00Z", status: "closed", attendants: ["Tendai"], expected: "157.50", handed_in: "155.00",
@@ -29,7 +29,7 @@ describe("reports", () => {
     expect(day).toHaveTextContent(/Date: Wednesday,? (21 October|October 21),? 2026/);
     // the Grand Total is the fuel sold: the splits, the evening sales not handed in yet (6–9 pm), and 2.50 short
     expect(day).toHaveTextContent(/Grand Total\s*USD 157\D50/);
-    expect(within(day).getByRole("table", { name: "Grand total" })).toHaveTextContent(/Value before split\s*6–9 pm sales, split when the night shift hands in\s*USD 40\D00.*Short \(\+\) \/ over \(−\)\s*attendants' cash differences\s*\+USD 2\D50/);
+    expect(within(day).getByRole("table", { name: "Grand total" })).toHaveTextContent(/Sales between 6pm & 9pm\s*split into cash, swipe… when the night shift hands in\s*USD 40\D00.*Short \(\+\) \/ over \(−\)\s*attendants' cash differences\s*\+USD 2\D50/);
     const shifts = within(day).getByRole("table", { name: "Shifts" });
     expect(shifts).toHaveTextContent("Shifts (2)"); // a heading row, no dropdown
     expect(within(shifts).getByRole("row", { name: "Shift Tendai" })).toHaveTextContent(/157\D50 \/ 155\D00\s*-2\D50/);
