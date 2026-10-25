@@ -255,6 +255,36 @@ def _record_many(shift, kind, readings, at, user):
         _record_reading(shift, item["nozzle"], kind, item["reading"], at, user, item.get("photo"))
 
 
+def carry_to_next_start(*, user, nozzle, old, new, after, request=None):
+    """A closing number was corrected (from old to new). Whoever started from the old number on this pump (the next
+    start reading after it, if it equals the old number) now starts from the corrected one, even if their shift is
+    running or closed; their sales are rebuilt and it is logged. Returns their start reading, or None."""
+    old, new = Decimal(str(old)).quantize(TWO), Decimal(str(new)).quantize(TWO)
+    if old == new:
+        return None
+    nxt = (PumpMeterReading.objects.filter(nozzle=nozzle, kind=PumpMeterReading.Kind.START, reading_at__gte=after)
+           .select_related("shift__station", "recorded_by").order_by("reading_at", "created_at").first())
+    if nxt is None or nxt.reading != old:
+        return None  # nobody started from that number (or they entered their own)
+    nxt.reading = new
+    nxt.flags = [f for f in nxt.flags if not f.startswith("gap_since_last_shift")]
+    nxt.save(update_fields=["reading", "flags", "updated_at"])
+    shift = nxt.shift
+    shift.flags = [f for f in shift.flags if f != f"gap_since_last_shift:{nozzle.pk}"]
+    shift.save()
+    if shift.status == Shift.Status.OPEN:
+        update_sales_so_far(shift)
+    else:
+        from .rollups import on_shift_closed  # rollups import this module
+
+        compute_transactions(shift)
+        on_shift_closed(shift)
+    audit.log("start_reading_carried", actor=user, obj=nxt, request=request, changes={
+        "pump": f"{nozzle.pump.name} {nozzle}", "from": str(old), "to": str(new),
+        "who": nxt.recorded_by.full_name if nxt.recorded_by_id else None})
+    return nxt
+
+
 def resolve_readings(*, user, shift, keep, request=None):
     """Lead or manager picks the right number where two people entered different ones. The others are soft-deleted."""
     require_manage(user, shift)
@@ -262,6 +292,7 @@ def resolve_readings(*, user, shift, keep, request=None):
     if keep.shift_id != shift.pk or keep.kind == PumpMeterReading.Kind.CHECKPOINT:
         raise ValidationError({"reading": "Choose a start or end number of this shift."})
     others = PumpMeterReading.objects.filter(shift=shift, nozzle=keep.nozzle_id, kind=keep.kind).exclude(pk=keep.pk)
+    counted = _first([keep, *others])  # the number that counted until now (the first entered)
     dropped = [str(r.reading) for r in others]
     others.update(deleted_at=timezone.now())
     keep.flags = [f for f in keep.flags if f != "readings_differ"]
@@ -271,6 +302,8 @@ def resolve_readings(*, user, shift, keep, request=None):
     audit.log("readings_resolved", actor=user, obj=keep, changes={"kept": str(keep.reading), "dropped": dropped}, request=request)
     if shift.status != Shift.Status.OPEN:
         compute_transactions(shift)
+    if keep.kind != PumpMeterReading.Kind.START:  # a closing number changed: so does the start of whoever began from it
+        carry_to_next_start(user=user, nozzle=keep.nozzle, old=counted.reading, new=keep.reading, after=keep.reading_at, request=request)
     return keep
 
 

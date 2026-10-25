@@ -216,3 +216,36 @@ def test_a_manager_answers_undo_requests_at_their_station_and_sees_what_was_done
     assert [r["action"] for r in log] == ["undo_allowed", "undo_requested"]
     assert log[0]["by"] == a[Role.MANAGER].full_name and "Counted it with him" in log[0]["what"] and log[0]["station"] == fc.station.name
     assert att.get("/api/approvals/log/").status_code == 403  # attendants never see it
+
+
+def test_a_corrected_closing_number_carries_to_whoever_started_from_it():
+    """The first attendant closed Pump 1 at 1100 and the next one started from 1100. The manager corrects the closing
+    number to 1090: the next attendant's start becomes 1090 too, even though their shift is running."""
+    from apps.operations.models import PumpMeterReading
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    first, second = a[Role.ATTENDANT], make_user(a["tenant"], Role.ATTENDANT, full_name="Second")
+    platform = platform_client()
+    platform.patch(f"/api/platform/tenants/{a['tenant'].id}/features/", {"multi_attendant_enabled": True, "pump_assignment_enabled": True}, format="json")
+    platform.patch(f"/api/platform/tenants/{a['tenant'].id}/stations/{fc.station.pk}/policy/", {"attendants_mode": "multiple", "assignment_mode": "assigned"}, format="json")
+    with db_context(tenant_id=a["tenant"].id):
+        Pump.objects.filter(pk=fc.pump.pk).update(assigned_to=first)
+    sid, end_id = ended(a, fc)  # closed at 1100 / 5040
+    with db_context(tenant_id=a["tenant"].id):
+        Pump.objects.filter(pk=fc.pump.pk).update(assigned_to=second)
+    assert start(client_for(second), fc, (1100, 5040)).status_code == 201  # starts from the closing numbers
+
+    mgr = client_for(a[Role.MANAGER])
+    fixed = mgr.post(f"/api/shift-ends/{end_id}/fix/", {"readings": [{"nozzle": str(fc.nozzles[0].pk), "reading": "1090"}]}, format="json")
+    assert fixed.status_code == 200, fixed.content
+    with db_context(tenant_id=a["tenant"].id):
+        starts = {r.nozzle_id: r.reading for r in PumpMeterReading.objects.filter(kind="start", recorded_by=second)}
+        assert (str(starts[fc.nozzles[0].pk]), str(starts[fc.nozzles[1].pk])) == ("1090.00", "5040.00")  # only the corrected pump
+        log = AuditLog.objects.get(action="start_reading_carried")
+        assert log.changes["from"] == "1100.00" and log.changes["to"] == "1090.00" and log.changes["who"] == "Second"
+    # the other pump too: they started from 5040, so a correction to 5030 carries
+    fixed_again = mgr.post(f"/api/shift-ends/{end_id}/fix/", {"readings": [{"nozzle": str(fc.nozzles[1].pk), "reading": "5030"}]}, format="json")
+    assert fixed_again.status_code == 200
+    with db_context(tenant_id=a["tenant"].id):
+        assert str(PumpMeterReading.objects.get(kind="start", recorded_by=second, nozzle=fc.nozzles[1]).reading) == "5030.00"

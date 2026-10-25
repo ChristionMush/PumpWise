@@ -236,6 +236,8 @@ def fix_end(*, user, row, cash=(), readings=(), request=None):
             services.update_sales_so_far(shift)
         audit.log("shift_end_fixed", actor=user, obj=shift, request=request, changes={
             "who": row.user.full_name, "meters": {str(p[0].pk): [str(p[2][0].reading), str(v)] for p, v in changes}})
+        for (nozzle, _, ends, _kind, at), value in changes:  # whoever started from the old closing number starts from the new one
+            services.carry_to_next_start(user=user, nozzle=nozzle, old=ends[0].reading, new=value, after=at, request=request)
     row.refresh_from_db()
     return row
 
