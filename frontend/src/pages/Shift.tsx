@@ -122,6 +122,7 @@ export default function Shift() {
   const [waiting, setWaiting] = useState(false);
   const [cashDue, setCashDue] = useState<CashDue | null>(null);
   const { user } = useAuth();
+  const canType = user?.role === "owner" || user?.role === "manager"; // attendants start from the last closing number
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -170,17 +171,20 @@ export default function Shift() {
   // On assigned pumps the server sends an attendant only the pumps a manager gave them.
   const nozzles = useMemo(() => station?.pumps.flatMap((p) => p.nozzles.map((n) => ({ ...n, pump: p }))) ?? [], [station]);
   const assigned = station?.assignment_mode === "assigned";
+  // an attendant starts a free pump from its last closing number; a pump someone is still on, they enter as handed over
+  const fixedStart = (n: (typeof nozzles)[number]) => !canType && Boolean(n.last_reading) && !n.pump.in_use_by;
 
   const start = async () => {
     if (!station) return;
-    const readings = nozzles.filter((n) => nums[n.id] !== "" && nums[n.id] !== undefined);
+    const startOf = (n: (typeof nozzles)[number]) => (fixedStart(n) ? n.last_reading! : nums[n.id]);
+    const readings = nozzles.filter((n) => startOf(n) !== "" && startOf(n) !== undefined);
     if (!readings.length) return setError("Enter the meter number for at least one pump.");
     // Assigned pumps: every nozzle of my free pumps. A pump still with the outgoing attendant is taken over only if
     // I enter its numbers (when they hand it to me).
     if (assigned && nozzles.some((n) => !n.pump.in_use_by && !readings.includes(n))) return setError("Enter the meter number of every nozzle on your pumps.");
-    const a: Active = { id: uuid(), station_id: station.id, started_at: new Date().toISOString(), starts: Object.fromEntries(readings.map((n) => [n.id, Number(nums[n.id])])) };
+    const a: Active = { id: uuid(), station_id: station.id, started_at: new Date().toISOString(), starts: Object.fromEntries(readings.map((n) => [n.id, Number(startOf(n))])) };
     await kvSet("activeShift", a); // saved on the phone first
-    await enqueue("shift_start", { shift_id: a.id, station: station.id, started_at: a.started_at, readings: readings.map((n) => ({ nozzle: n.id, reading: nums[n.id] })) });
+    await enqueue("shift_start", { shift_id: a.id, station: station.id, started_at: a.started_at, readings: readings.map((n) => ({ nozzle: n.id, reading: startOf(n) })) });
     setActive(a); setNums({}); setError(null);
   };
 
@@ -345,7 +349,10 @@ export default function Shift() {
       {!active?.member && (active ? rows : nozzles).map((n) => (
         <label key={n.id} className="card pump">
           <strong>{n.pump.name} · {n.label}</strong><span className="muted">{n.fuel_code}{active ? ` · started at ${active.starts[n.id]}` : n.last_reading ? ` · last ${n.last_reading}` : ""}</span>
-          <input inputMode="decimal" value={nums[n.id] ?? ""} placeholder={active ? "Meter number now" : "Meter number"} onChange={(e) => setNums({ ...nums, [n.id]: e.target.value.replace(",", ".") })} />
+          {/* an attendant starts from the last closing number on the pump; managers may type it (a repaired meter) */}
+          {!active && fixedStart(n)
+            ? <><input value={n.last_reading ?? ""} readOnly aria-readonly="true" placeholder="Meter number" /><span className="muted small">From the last closing number</span></>
+            : <input inputMode="decimal" value={nums[n.id] ?? ""} placeholder={active ? "Meter number now" : "Meter number"} onChange={(e) => setNums({ ...nums, [n.id]: e.target.value.replace(",", ".") })} />}
         </label>
       ))}
       {active && assigned && !active.member && (<>

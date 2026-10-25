@@ -200,3 +200,25 @@ def test_prefill_gives_the_phone_everything_for_offline_work():
     assert st["prices"][0]["price"] == "1.5000"
     mgr = client_for(a[Role.MANAGER]).get("/api/shifts/prefill/").json()["stations"][0]
     assert mgr["tanks"][0]["capacity_litres"] == "10000.000"
+
+
+def test_an_attendant_starts_a_free_pump_from_its_last_closing_number():
+    """From the app, an attendant cannot type their own starting number: a typo would charge them, or the person
+    before, for fuel nobody sold. What they typed is kept on the reading for the record. A manager may type it."""
+    from .helpers import client_for, make_user
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.00")
+    first, second = client_for(a[Role.ATTENDANT]), client_for(make_user(a["tenant"], Role.ATTENDANT, full_name="Second"))
+
+    def body(readings, **extra):
+        return {"station": str(fc.station.pk), "readings": [{"nozzle": str(n.pk), "reading": str(r)} for n, r in zip(fc.nozzles, readings, strict=True)], **extra}
+
+    sid = first.post("/api/shifts/start/", body([100, 200], started_at="2026-10-01T05:00:00Z"), format="json").json()["id"]
+    cash = [{"payment_type": "cash", "currency": "USD", "amount": "110"}]
+    assert first.post(f"/api/shifts/{sid}/end/", body([150, 260], ended_at="2026-10-01T12:00:00Z", cash=cash), format="json").status_code == 200
+    s2 = second.post("/api/shifts/start/", body([130, 260], started_at="2026-10-01T13:00:00Z"), format="json").json()["id"]  # typed 130
+    with db_context(tenant_id=a["tenant"].id):
+        r = PumpMeterReading.objects.get(shift_id=s2, nozzle=fc.nozzles[0], kind="start")
+        assert r.reading == Decimal("150.00") and r.flags == ["start_from_last_closing:130.00"]  # the pump closed at 150
+        assert PumpMeterReading.objects.get(shift_id=s2, nozzle=fc.nozzles[1], kind="start").flags == []  # 260 was right

@@ -57,16 +57,16 @@ describe("assigned pumps", () => {
     expect(screen.queryByRole("link", { name: "Pumps" })).not.toBeInTheDocument();
     const meters = screen.getAllByPlaceholderText("Meter number");
     expect(meters).toHaveLength(2); // both nozzles of my pump, one per tank
-    await user.clear(meters[1]);
-    await user.click(screen.getByRole("button", { name: "Start shift" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("every nozzle");
-    await user.type(meters[1], "500");
+    meters.forEach((m) => expect(m).toHaveAttribute("readonly")); // they start from the last closing numbers, not their own
+    expect(screen.getAllByText("From the last closing number")).toHaveLength(2);
+    const lastClosing = meters.map((m) => (m as HTMLInputElement).value);
     await user.click(screen.getByRole("button", { name: "Start shift" }));
     await waitFor(() => expect(calls.some((c) => c.path === "/api/sync/")).toBe(true));
     const start = calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops)[0];
     expect(start.kind).toBe("shift_start");
     expect(start.payload.assignments).toBeUndefined();
     expect(start.payload.readings.map((r: any) => r.nozzle)).toEqual(["n1", "n2"]);
+    expect(start.payload.readings.map((r: any) => r.reading)).toEqual(lastClosing);
   });
 
   it("tells an attendant with no pumps to ask their manager", async () => {

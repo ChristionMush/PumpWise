@@ -14,6 +14,7 @@ Several people can work one shift (PLAN.md section 4):
   those numbers. Each pump period (PumpAssignment) is bounded by meter readings, so every litre belongs to exactly one
   person. The shift closes when the last person on it ends their part. A manager can also swap a pump at once.
 """
+import contextvars
 from decimal import Decimal
 
 from django.db import IntegrityError
@@ -218,9 +219,33 @@ def last_end_reading(nozzle, exclude_shift=None):
     return qs.order_by("-reading_at", "created_at").first()
 
 
+# Set while an attendant starts from the app (views.do_shift_start): their start numbers come from the pump's last
+# closing number. Imports and the demo replay record the numbers they are given.
+FROM_LAST_CLOSING = contextvars.ContextVar("from_last_closing", default=False)
+
+
+def closing_before(nozzle, at):
+    """The pump's latest closing number before a moment: an end, a handover or a day close, on any shift."""
+    return (PumpMeterReading.objects.filter(nozzle=nozzle, kind__in=[PumpMeterReading.Kind.END, PumpMeterReading.Kind.CHECKPOINT], reading_at__lte=at)
+            .order_by("-reading_at", "-created_at").first())
+
+
 def _record_reading(shift, nozzle, kind, reading, at, user, photo=None):
     reading = Decimal(str(reading)).quantize(TWO)
+    typed = None
+    if kind == PumpMeterReading.Kind.START and FROM_LAST_CLOSING.get() and not can(user, "manage_shift"):
+        # an attendant starts from the last closing number on the pump; they do not type their own (a typo there
+        # would charge them, or the person before, for fuel nobody sold). Managers may, for a repaired meter.
+        prev = closing_before(nozzle, at)
+        # only while the pump is idle since that closing: taking over a pump someone is still on, the number is theirs to give
+        idle = prev is not None and not PumpMeterReading.objects.filter(nozzle=nozzle, kind=PumpMeterReading.Kind.START,
+                                                                       reading_at__gt=prev.reading_at, reading_at__lte=at).exists()
+        if idle and prev.reading != reading:
+            typed, reading = reading, prev.reading
     row = adapter_for(nozzle.pump.data_source).record_meter_reading(shift=shift, nozzle=nozzle, kind=kind, reading=reading, at=at, user=user, photo=photo)
+    if typed is not None:
+        row.flags = [*row.flags, f"start_from_last_closing:{typed}"]  # what they had typed, kept for the record
+        row.save(update_fields=["flags", "updated_at"])
     if kind != PumpMeterReading.Kind.CHECKPOINT:
         _mark_differences(shift, nozzle, kind)
     if kind == PumpMeterReading.Kind.START and not any(f.startswith("gap_since_last_shift") for f in row.flags):

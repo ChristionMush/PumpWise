@@ -93,6 +93,14 @@ def _user(pk, tenant_id):
 # ---- core operations (shared by REST and offline sync) ---------------------------------------------------------
 
 def do_shift_start(user, data, strict=False):
+    token = services.FROM_LAST_CLOSING.set(True)  # an attendant starts a free pump from its last closing number
+    try:
+        return _do_shift_start(user, data, strict)
+    finally:
+        services.FROM_LAST_CLOSING.reset(token)
+
+
+def _do_shift_start(user, data, strict=False):
     _check_station(user, data["station"])
     return _conflict_as_400(
         services.start_shift, user=user, station=data["station"], readings=data["readings"], shift_id=data.get("shift_id"),
