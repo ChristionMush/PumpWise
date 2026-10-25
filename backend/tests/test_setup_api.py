@@ -11,14 +11,14 @@ from apps.core.db import db_context
 from apps.stations.models import Nozzle, Pump
 from apps.stations.services import price_at
 
-from .helpers import at, client_for, make_forecourt, make_user, second_tank, two_tenants
+from .helpers import at, client_for, make_forecourt, make_user, platform_client, second_tank, two_tenants
 
 
 def test_owner_builds_a_forecourt_through_the_api():
     a, _ = two_tenants()
     c = client_for(a[Role.OWNER])
-    st = c.post("/api/stations/", {"name": "Borrowdale", "pricing_currency": "USD"}, format="json")
-    assert st.status_code == 201, st.content
+    st = platform_client().post(f"/api/platform/tenants/{a['tenant'].id}/stations/", {"name": "Borrowdale", "pricing_currency": "USD"}, format="json")
+    assert st.status_code == 201, st.content  # stations are added by the platform
     fuel = c.post("/api/fuel-types/", {"name": "Diesel", "code": "diesel"}, format="json").json()
     assert fuel["code"] == "DIESEL"
     tank = c.post("/api/tanks/", {"station": st.json()["id"], "name": "T1", "fuel_type": fuel["id"], "capacity_litres": "20000", "reserve_litres": "1000"}, format="json")
@@ -68,8 +68,9 @@ def test_who_may_change_setup():
     assert client_for(a[Role.ATTENDANT]).get("/api/pumps/").status_code == 200  # attendants can look
     assert client_for(a[Role.ATTENDANT]).post("/api/tanks/", body, format="json").status_code == 403
     assert client_for(a[Role.MANAGER]).post("/api/tanks/", body, format="json").status_code == 201
-    assert client_for(a[Role.MANAGER]).post("/api/stations/", {"name": "New"}, format="json").status_code == 403  # owner only
-    assert client_for(a[Role.OWNER]).post("/api/stations/", {"name": "New"}, format="json").status_code == 201
+    for role in (Role.MANAGER, Role.OWNER):  # stations are added by the platform only
+        refused = client_for(a[role]).post("/api/stations/", {"name": "New"}, format="json")
+        assert refused.status_code == 403 and "added by PumpWise" in str(refused.json())
 
 
 def test_cannot_link_another_tenants_records_or_mismatched_stations():
@@ -81,7 +82,7 @@ def test_cannot_link_another_tenants_records_or_mismatched_stations():
     mine = second_tank(fa)
     theirs = {"station": str(fa.station.pk), "name": "P", "nozzles": [{"tank": str(fa.tank.pk)}, {"tank": str(fb.tank.pk)}]}
     assert c.post("/api/pumps/", theirs, format="json").status_code == 400  # B's tank is invisible to A
-    st2 = c.post("/api/stations/", {"name": "Second"}, format="json").json()
+    st2 = platform_client().post(f"/api/platform/tenants/{a['tenant'].id}/stations/", {"name": "Second"}, format="json").json()
     mismatch = c.post("/api/pumps/", {"station": st2["id"], "name": "P", "nozzles": [{"tank": str(fa.tank.pk)}, {"tank": str(mine.pk)}]}, format="json")
     assert mismatch.status_code == 400 and "pump's station" in str(mismatch.json())
     assert c.get(f"/api/tanks/{fb.tank.pk}/").status_code == 404
@@ -217,7 +218,7 @@ def test_one_manager_per_station_and_only_the_owner_adds_stations():
     north, south = make_forecourt(a["tenant"], name="North"), make_forecourt(a["tenant"], name="South", code="DIESEL")
     second = make_user(a["tenant"], Role.MANAGER, full_name="Second Manager")
     owner, mgr = client_for(a[Role.OWNER]), client_for(a[Role.MANAGER])
-    assert mgr.post("/api/stations/", {"name": "Mine"}, format="json").status_code == 403  # stations are added by the owner
+    assert mgr.post("/api/stations/", {"name": "Mine"}, format="json").status_code == 403  # stations are added by the platform
     url = f"/api/users/{a[Role.MANAGER].id}/stations/"
     both = owner.put(url, {"station_ids": [str(north.station.pk), str(south.station.pk)]}, format="json")
     assert both.status_code == 400 and "one station" in str(both.json())

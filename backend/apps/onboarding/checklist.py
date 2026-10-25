@@ -31,7 +31,7 @@ def build_checklist(tenant_id):
     shift_done = (Shift.objects.filter(status__in=["closed", "reviewed"]).exists()
                   or ShiftAttendant.objects.filter(left_at__isnull=False, cash_submitted_at__isnull=False).exists())
     items = [
-        ("stations", "Add the station(s)", bool(stations), f"{len(stations)} added", "/setup"),
+        ("stations", "Station(s) set up by PumpWise", bool(stations), f"{len(stations)} set up", "/setup"),
         ("tanks", "Add every tank (capacity and reserve level)", bool(tanks) and all(any(t.station_id == s.pk for t in tanks) for s in stations), f"{len(tanks)} tanks", "/setup"),
         ("calibration", "Enter each tank's calibration chart (dip height to litres)", bool(tanks) and not uncalibrated, f"Missing: {', '.join(uncalibrated)}" if uncalibrated else "All tanks done", "/setup"),
         ("pumps", "Add every pump with its nozzles", bool(pumps) and not bad_pumps,

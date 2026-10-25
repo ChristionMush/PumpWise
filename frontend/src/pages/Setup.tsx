@@ -110,7 +110,7 @@ export default function Setup() {
         </section>
       ))}
       {user?.role === "owner" && ( /* only the owner adds stations; each station has one manager (Settings, Team) */
-        <form className="card form" onSubmit={post("/api/stations/", { name: f.sname })}><h2>Add station</h2><label>Name<input required value={f.sname ?? ""} onChange={set("sname")} /></label><button className="btn">Add station</button></form>
+        <section className="card"><h2>Stations</h2><p className="muted">To add a station, contact PumpWise support.</p></section>
       )}
       <form className="card form" onSubmit={post("/api/tanks/", { station: f.tstation, name: f.tname, fuel_type: f.tfuel, capacity_litres: f.tcap, reserve_litres: f.tres || "0" })}><h2>Add tank</h2>
         <label>Station<select required value={f.tstation ?? ""} onChange={set("tstation")}><option value="" />{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>

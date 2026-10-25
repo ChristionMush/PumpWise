@@ -90,15 +90,8 @@ class StationViewSet(SetupViewSet):
         return scope(self.queryset.all(), self.request.user, "id")
 
     def perform_create(self, serializer):
-        require(self.request.user, "manage_stations", "Only the owner can add stations.")
-        from apps.tenants.features import SYSTEM_POLICY
-        from apps.tenants.models import Tenant
-
-        # A new station follows the pump system the platform chose for this business.
-        tenant = Tenant.objects.get(pk=self.request.user.tenant_id)
-        mode, assignment = SYSTEM_POLICY.get(tenant.pump_system, SYSTEM_POLICY["shared"])
-        serializer.validated_data.update(attendants_mode=mode, assignment_mode=assignment)
-        super().perform_create(serializer)
+        # A new station is part of the subscription: only PumpWise (the platform) adds one, from the business's page.
+        raise PermissionDenied("Stations are added by PumpWise. Contact PumpWise support to add a station.")
 
     def perform_destroy(self, instance):
         require(self.request.user, "manage_stations", "Only the owner can remove stations.")
