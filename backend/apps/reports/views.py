@@ -108,6 +108,23 @@ class TankHistoryView(APIView):
         return Response(tank_history(station_ids=_stations(request), date_from=frm, date_to=to))
 
 
+class DipExportView(APIView):
+    """Dip history as an Excel workbook, to check and inspect every dip (managers: their stations, owners)."""
+
+    permission_classes = [TankRecords]
+
+    def get(self, request):
+        from django.http import HttpResponse
+
+        from .dip_export import build_dip_export
+
+        frm, to = _dates(request, default_days=31)
+        body, name = build_dip_export(station_ids=_stations(request), date_from=frm, date_to=to)
+        resp = HttpResponse(body, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = f'attachment; filename="Dip history - {name} - {frm} to {to}.xlsx"'
+        return resp
+
+
 class AccountingPackView(APIView):
     """Owner only: the monthly accounting pack, one Excel workbook per station and month. ?station=<id>&month=2026-10"""
 

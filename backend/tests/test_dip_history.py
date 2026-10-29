@@ -51,3 +51,27 @@ def test_a_fresh_dip_is_not_overdue_and_attendants_cannot_see_dip_history():
     (tank,) = client_for(a[Role.OWNER]).get("/api/reports/dip-history/").json()["tanks"]
     assert tank["overdue"] is False and 2.9 <= tank["hours_since_last_dip"] <= 3.1
     assert client_for(a[Role.ATTENDANT]).get("/api/reports/dip-history/").status_code == 403
+
+
+def test_the_dip_sheet_lists_every_dip_with_a_chart_check():
+    import io
+
+    from openpyxl import load_workbook
+
+    from apps.stations.models import CalibrationPoint
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], name="Msasa Road")
+    mgr = a[Role.MANAGER]
+    with db_context(tenant_id=a["tenant"].id):
+        for mm, litres in ((0, 0), (1000, 5000), (2000, 10000)):
+            CalibrationPoint.objects.create(tenant_id=a["tenant"].id, tank=fc.tank, dip_mm=mm, litres=litres)
+    dip(a["tenant"], mgr, fc, 6000, local(2, 6))
+    dip(a["tenant"], mgr, fc, 4000, local(1, 6))
+    res = client_for(mgr).get("/api/reports/dip-history/export/", {"date_from": str(timezone.localdate() - timedelta(days=2))})
+    assert res.status_code == 200 and res["Content-Type"].startswith("application/vnd.openxml"), res.content[:200]
+    wb = load_workbook(io.BytesIO(res.content))
+    assert wb.sheetnames == ["Dips", "Deliveries", "Corrections", "Days without a dip", "Tanks"]
+    rows = [r for r in wb["Dips"].iter_rows(min_row=4, values_only=True)]
+    assert [(r[3], r[6], r[11]) for r in rows] == [("Tank 1", 6000, None), ("Tank 1", 4000, 6000)]  # tank, litres, previous dip
+    assert client_for(a[Role.ATTENDANT]).get("/api/reports/dip-history/export/").status_code == 403

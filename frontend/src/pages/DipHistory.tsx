@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, errorMessage } from "../api";
+import { api, downloadFile, errorMessage } from "../api";
 import { Badge, ErrorNote } from "../components";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -17,6 +17,15 @@ export default function DipHistory() {
   const [to, setTo] = useState(today());
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const exportSheet = async () => {
+    setExporting(true); setError(null);
+    const q = new URLSearchParams({ date_from: from, date_to: to, ...(station ? { station } : {}) });
+    const name = stations.find((s) => s.id === station)?.name ?? "All stations";
+    try { await downloadFile(`/api/reports/dip-history/export/?${q}`, `Dip history - ${name} - ${from} to ${to}.xlsx`); }
+    catch (e) { setError(errorMessage(e)); }
+    finally { setExporting(false); }
+  };
 
   useEffect(() => { api<any>("/api/stations/").then((s) => setStations(s.results)).catch(() => setStations([])); }, []);
   useEffect(() => {
@@ -36,6 +45,10 @@ export default function DipHistory() {
         )}
         <label>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+      </div>
+      <div className="row between gap">
+        <p className="muted">The Excel sheet lists every dip with a chart check (do the litres match the mm?) and a stock check from one day-close dip to the next.</p>
+        <button className="btn" disabled={exporting} onClick={() => void exportSheet()}>{exporting ? "Preparing…" : "Download dip sheet (Excel)"}</button>
       </div>
       <ErrorNote message={error} />
       {!data && !error && <p className="muted center">Loading…</p>}
