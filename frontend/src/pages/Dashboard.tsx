@@ -22,6 +22,7 @@ export default function Dashboard() {
   return (
     <>
       <h1>Today</h1>
+      <PumpGaps gaps={d.pump_gaps ?? []} />
       <DailyReports />
       <div className="row between"><h2>Right now</h2><span className="muted" data-testid="updated">Updated {new Date(d.as_of).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
       <div className="grid">
@@ -84,6 +85,25 @@ function DailyReports() {
         : <p className="card muted">{r.station_name}: no day has been closed yet. The manager closes the day on the Dip screen at about 21:00.</p>}
     </div>
   </>);
+}
+
+/** Assigned pumps nobody is working, or nobody is planned for: the manager gives each one to someone on the Pumps
+ * screen, otherwise the litres on it belong to nobody. Goes away as soon as every pump has someone. */
+function PumpGaps({ gaps }: { gaps: any[] }) {
+  if (!gaps.length) return null;
+  const stations = [...new Set(gaps.map((g) => g.station_name))];
+  return (
+    <section className="card bad" role="alert" data-testid="pump-gaps">
+      <h2>Pumps without an attendant</h2>
+      {stations.map((name) => (
+        <div key={name}>
+          {stations.length > 1 && <strong>{name}</strong>}
+          <ul>{gaps.filter((g) => g.station_name === name).map((g) => <li key={g.pump}>{g.message}</li>)}</ul>
+        </div>
+      ))}
+      <Link to="/pumps" className="btn">Assign pumps</Link>
+    </section>
+  );
 }
 
 const LAST_STATION = "pumpwise.report.station"; // the station report last looked at, shown first next time

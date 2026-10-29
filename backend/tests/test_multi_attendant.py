@@ -828,3 +828,23 @@ def test_the_latest_day_close_can_be_corrected_and_the_correction_is_in_dip_hist
     assert entry["close_day"] == "2026-10-01" and entry["note"] == "Typo on Pump 1" and entry["by"] == a[Role.MANAGER].full_name
     assert entry["meters"] == [{"pump": f"Pump 1 {fc.nozzles[0]}", "from": "40", "to": "45"}]
     assert entry["dips"] == [{"tank": fc.tank.name, "from": {"dip_mm": "1500", "litres": "5000"}, "to": {"dip_mm": "1480", "litres": "4800"}}]
+
+
+def test_the_managers_landing_page_lists_pumps_nobody_is_working():
+    """A pump with nobody planned, or left free while others work, shows at the top of the manager's Today page."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    gaps = lambda: [(g["pump_name"], g["kind"]) for g in mgr.get("/api/dashboard/").json()["pump_gaps"]]  # noqa: E731
+    assert gaps() == []  # every pump has someone
+    assert mgr.post(f"/api/pumps/{pump2.pk}/assign/", {"user": None}, format="json").status_code == 200
+    assert gaps() == [("Pump 2", "no_attendant")]
+    # Pump 2 goes to B again, but only A comes in: after half an hour Pump 2 is flagged as nobody's
+    mgr.post(f"/api/pumps/{pump2.pk}/assign/", {"user": str(att_b.pk)}, format="json")
+    now = timezone.now()
+    start(client_for(att_a), fc, [0, 0], started_at=(now - timedelta(minutes=10)).isoformat())
+    assert gaps() == []  # a handover takes a few minutes
+    with db_context(tenant_id=a["tenant"].id):
+        Shift.objects.filter(station=fc.station).update(started_at=now - timedelta(minutes=45))
+    idle = mgr.get("/api/dashboard/").json()["pump_gaps"]
+    assert [(g["pump_name"], g["kind"]) for g in idle] == [("Pump 2", "idle")]
+    assert "planned for Second Attendant, who is not on shift" in idle[0]["message"] and att_a.full_name in idle[0]["message"]
+    assert client_for(a[Role.OWNER]).get("/api/dashboard/").json()["pump_gaps"] == idle  # the owner sees it too

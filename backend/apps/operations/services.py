@@ -15,6 +15,7 @@ Several people can work one shift (PLAN.md section 4):
   person. The shift closes when the last person on it ends their part. A manager can also swap a pump at once.
 """
 import contextvars
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError
@@ -450,6 +451,46 @@ def reassign_pump(*, user, shift, pump, to_user, readings, at=None, request=None
     if pump.station_id != shift.station_id:
         raise ValidationError({"pump": "This pump is not at this station."})
     return assign_pump(user=user, pump=pump, to_user=to_user, readings=readings, at=at, request=request)
+
+
+IDLE_GRACE_MINUTES = 30  # a handover takes a few minutes: a free pump is only a problem once it has waited this long
+
+
+def pump_gaps(stations, now=None):
+    """Assigned pumps the manager still has to give to someone, for the top of their landing page.
+
+    * no_attendant: nobody is planned for the pump (or the person planned has been switched off), so nobody can start
+      on it;
+    * idle: people are on shift at the station but nobody has been working the pump for IDLE_GRACE_MINUTES, for
+      example it is planned for someone who is not on shift. Its litres would then belong to nobody.
+    """
+    now = now or timezone.now()
+    out = []
+    for station in stations:
+        if not is_assigned_station(station):
+            continue
+        shift = open_shift_at(station)
+        on_shift = {a.user_id: a.user.full_name for a in active_attendants(shift)} if shift else {}
+        for pump in Pump.objects.filter(station=station).select_related("assigned_to").order_by("name"):
+            planned = pump.assigned_to if pump.assigned_to_id and pump.assigned_to.is_active else None
+            current = open_pump_assignment(pump)
+            gap = {"station": str(station.pk), "station_name": station.name, "pump": str(pump.pk), "pump_name": pump.name}
+            if planned is None:
+                after = f" after {current.user.full_name} ends their part" if current else ""
+                out.append({**gap, "kind": "no_attendant", "message": f"{pump.name} has no attendant{after}. Give it to someone so their sales on it are counted."})
+                continue
+            if current is not None or not on_shift:
+                continue
+            last = PumpAssignment.objects.filter(pump=pump, ended_at__isnull=False).order_by("-ended_at").values_list("ended_at", flat=True).first()
+            since = max(shift.started_at, last) if last else shift.started_at
+            if now - since < timedelta(minutes=IDLE_GRACE_MINUTES):
+                continue
+            who = (f"It is planned for {planned.full_name}, who is not on shift" if planned.pk not in on_shift
+                   else f"{planned.full_name} is on shift but has not started on it")
+            out.append({**gap, "kind": "idle", "since": since,
+                        "message": f"Nobody is working {pump.name} since {timezone.localtime(since):%H:%M}. {who}. "
+                                   f"On shift now: {', '.join(on_shift.values())}."})
+    return out
 
 
 # ---- starting, joining, leaving --------------------------------------------------------------------------------

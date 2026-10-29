@@ -10,8 +10,9 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsOwner, IsOwnerOrManager, can
 from apps.audit import services as audit
+from apps.operations.services import pump_gaps
 from apps.stations.access import scope
-from apps.stations.models import Tank
+from apps.stations.models import Station, Tank
 
 from . import alert_actions
 from .alerts import evaluate_tenant
@@ -29,7 +30,11 @@ class DashboardView(APIView):
     permission_classes = [IsOwnerOrManager]
 
     def get(self, request):
-        body = json.dumps(build_dashboard(request.user), cls=DjangoJSONEncoder, separators=(",", ":"))
+        # Pumps nobody is working are checked on every call, outside the cache: a manager who just gave a pump to
+        # someone sees the warning go at once.
+        stations = scope(Station.objects.filter(status="active"), request.user, "id")
+        data = {**build_dashboard(request.user), "pump_gaps": pump_gaps(stations)}
+        body = json.dumps(data, cls=DjangoJSONEncoder, separators=(",", ":"))
         # as_of changes every second; the validator ignores it so an unchanged dashboard gets a 304
         stable = json.dumps({k: v for k, v in json.loads(body).items() if k != "as_of"}, sort_keys=True)
         etag = '"' + hashlib.md5(stable.encode()).hexdigest() + '"'  # noqa: S324 - cache validator only
