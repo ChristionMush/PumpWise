@@ -7,12 +7,13 @@ Built from the records themselves (meter readings, cash) and the audit trail (wh
 from datetime import timedelta
 from decimal import Decimal
 
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.audit.models import AuditLog
 from apps.operations import tradingday
 from apps.operations.approvals import LOG_ACTIONS
-from apps.operations.models import CashSubmission, DayClose, DayCloseReading, Delivery, PumpMeterReading, Shift, TankReading
+from apps.operations.models import CashSubmission, DayClose, DayCloseReading, Delivery, PumpMeterReading, Shift, ShiftAttendant, TankReading
 from apps.stations.models import FuelPrice, Pump
 
 from .daily import PAYMENT
@@ -104,16 +105,12 @@ def day_log(station, day):
                                       f"{later.reading - r.reading:,.2f} L were sold on it before anyone started on it.")
         events.append({"at": at, "by": who, "kind": "meters", "text": f"{who} {KIND.get(kind, kind)}: " + ", ".join(parts)})
 
-    # cash as it stands now, one line per hand-in
-    handed = {}
-    for c in CashSubmission.objects.filter(shift__in=shifts, created_at__gt=start, created_at__lte=end).select_related("attendant"):
-        key = (c.attendant_id, c.part_id)
-        row = handed.setdefault(key, {"at": c.created_at, "who": c.attendant.full_name if c.attendant_id else "Someone", "lines": []})
-        row["at"] = min(row["at"], c.created_at)
-        if c.amount:
-            row["lines"].append(f"{PAYMENT.get(c.payment_type, c.payment_type)} {c.currency} {_num(c.amount)}")
-    for row in handed.values():
-        events.append({"at": row["at"], "by": row["who"], "kind": "cash", "text": f"{row['who']} handed in " + (", ".join(row["lines"]) or "nothing")})
+    # cash as it stands now, one line per hand-in, at the time it was handed in (a phone may sync it later)
+    parts = ShiftAttendant.objects.filter(shift__in=shifts, cash_submitted_at__gt=start, cash_submitted_at__lte=end).select_related("user")
+    for p in parts:
+        subs = CashSubmission.objects.filter(shift_id=p.shift_id).filter(Q(part=p) | Q(part__isnull=True, attendant=p.user))
+        lines = [f"{PAYMENT.get(c.payment_type, c.payment_type)} {c.currency} {_num(c.amount)}" for c in subs if c.amount]
+        events.append({"at": p.cash_submitted_at, "by": p.user.full_name, "kind": "cash", "text": f"{p.user.full_name} handed in " + (", ".join(lines) or "nothing")})
 
     # who changed what (audit trail)
     ids = {str(s.pk) for s in shifts} | {str(p) for p in pumps} | {str(r.pk) for r in readings}
