@@ -90,4 +90,4 @@ def test_the_dip_sheet_works_for_a_tank_without_a_calibration_chart():
     res = client_for(a[Role.OWNER]).get("/api/reports/dip-history/export/", {"date_from": str(timezone.localdate() - timedelta(days=2))})
     assert res.status_code == 200, res.content[:300]
     (row,) = load_workbook(io.BytesIO(res.content))["Dips"].iter_rows(min_row=4, values_only=True)
-    assert (row[5], row[6], row[7], row[16]) == (800, 4000, "no chart", "")
+    assert (row[5], row[6], row[7], row[16]) == (800, 4000, "no chart", None)  # no note: an empty cell
