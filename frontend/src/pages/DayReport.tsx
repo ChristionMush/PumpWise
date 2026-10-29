@@ -39,7 +39,6 @@ export function DayReport({ r, of }: { r: any; of?: { index: number; count: numb
     <section id={`report-${r.station}`} className="card" aria-label={`Daily report ${r.station_name}`}>
       <div className="row between"><h2>{r.station_name}</h2>{of && of.count > 1 && <span className="muted">Station {of.index} of {of.count}</span>}</div>
       <p className="day-line"><strong>Date: {longDay(r.day)}</strong> <span className="muted">{closedText(r)}</span></p>
-      {user?.role === "owner" && <p><Link to={`/day-log?${new URLSearchParams({ station: r.station, day: r.day })}`}>What happened this day →</Link></p>}
 
       <Section title="Money" label="Grand total">
         <tr className="total"><td>Grand Total</td><td /><td className="num">{cur} {n(r.totals.grand_total)}</td></tr>
@@ -115,6 +114,11 @@ export function DayReport({ r, of }: { r: any; of?: { index: number; count: numb
             )),
           ])}
         </Section>
+      )}
+      {user?.role === "owner" && (
+        <Link className="more-link" to={`/day-log?${new URLSearchParams({ station: r.station, day: r.day })}`}>
+          <span>What happened this day<small>Pumps, meters, cash and changes, in time order</small></span><span aria-hidden>›</span>
+        </Link>
       )}
     </section>
   );

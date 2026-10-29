@@ -1,15 +1,26 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { ErrorNote } from "../components";
 import { shortDay } from "./DayReport";
 
-const time = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const longDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const when = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
 const shiftDay = (iso: string, by: number) => { const d = new Date(`${iso}T12:00:00`); d.setDate(d.getDate() + by); return d.toISOString().slice(0, 10); };
 
-/** Owner: what happened at a station during one trading day, in time order, opened from "What happened" on a daily
- * report. Points worth a look come first. */
+/** The shift a moment falls in: day 07:00-18:00, night 18:00-07:00 named by the evening it starts. */
+function shiftOf(iso: string) {
+  const d = new Date(iso);
+  const day = d.getHours() >= 7 && d.getHours() < 18;
+  const named = day ? d : new Date(d.getTime() - 7 * 36e5); // a night shift is named by its evening
+  return `${day ? "Day" : "Night"} shift · ${named.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}`;
+}
+
+/** Owner: what happened at a station during one trading day, in time order and grouped by shift, opened from
+ * "What happened this day" on a daily report. Points worth a look come first. Laid out like the daily report. */
 export default function DayLog() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const station = params.get("station") ?? "";
   const day = params.get("day") ?? "";
@@ -21,33 +32,49 @@ export default function DayLog() {
   }, [station, day]);
   const go = (by: number) => setParams({ station, day: shiftDay(day, by) });
 
+  const groups: { label: string; events: any[] }[] = [];
+  for (const e of data?.events ?? []) {
+    const label = shiftOf(e.at);
+    if (groups[groups.length - 1]?.label !== label) groups.push({ label, events: [] });
+    groups[groups.length - 1].events.push(e);
+  }
+
   return (
     <>
-      <p><Link to="/">← Back to the report</Link></p>
-      <h1>What happened</h1>
-      <div className="row between">
-        <button className="btn" onClick={() => go(-1)}>← Day before</button>
-        <strong>{day && shortDay(day)}</strong>
-        <button className="btn" onClick={() => go(1)}>Day after →</button>
+      <div className="row between"><h1>What happened</h1><button className="link" onClick={() => navigate(-1)}>Back</button></div>
+      <div className="chips day-nav">
+        <button className="chip" onClick={() => go(-1)}>‹ {day && shortDay(shiftDay(day, -1))}</button>
+        <button className="chip on" disabled>{day && shortDay(day)}</button>
+        <button className="chip" onClick={() => go(1)}>{day && shortDay(shiftDay(day, 1))} ›</button>
       </div>
       <ErrorNote message={error} />
       {!data && !error && <p className="muted center">Loading…</p>}
-      {data && (<>
-        <p className="muted">{data.station_name} · trading day from {time(data.start)} to {time(data.end)}{data.in_progress ? " (still running)" : ""}</p>
-        {data.highlights.length > 0 && (
-          <section className="card bad" role="alert"><h2>Worth a look</h2>
-            <ul>{data.highlights.map((h: string) => <li key={h}>{h}</li>)}</ul></section>
-        )}
-        <section className="card">
-          {data.events.length ? (
-            <table className="report" aria-label="What happened">
-              <tbody>{data.events.map((e: any, i: number) => (
-                <tr key={i}><td className="muted num">{time(e.at)}</td><td>{e.text}{e.by && !e.text.startsWith(e.by) && <span className="muted"> · {e.by}</span>}</td></tr>
+      {data && (
+        <section className="card" aria-label={`What happened at ${data.station_name}`}>
+          <h2>{data.station_name}</h2>
+          <p className="day-line"><strong>Date: {longDay(data.day)}</strong> <span className="muted">{when(data.start)} to {when(data.end)}{data.in_progress ? " · still running" : ""}</span></p>
+
+          {data.highlights.length > 0 && (
+            <table className="report" aria-label="Worth a look">
+              <thead><tr><th className="section attention" colSpan={2}>Worth a look</th></tr></thead>
+              <tbody>{data.highlights.map((h: string) => <tr key={h}><td className="flag" aria-hidden>!</td><td>{h}</td></tr>)}</tbody>
+            </table>
+          )}
+
+          {groups.length === 0 && <p className="muted">Nothing was recorded on this day.</p>}
+          {groups.map((g) => (
+            <table key={g.label} className="report log" aria-label={g.label}>
+              <thead><tr><th className="section" colSpan={2}>{g.label}</th></tr></thead>
+              <tbody>{g.events.map((e: any, i: number) => (
+                <tr key={i}>
+                  <td className="time">{clock(e.at)}</td>
+                  <td>{e.text}{e.by && !e.text.startsWith(e.by) && <span className="by">{e.by}</span>}</td>
+                </tr>
               ))}</tbody>
             </table>
-          ) : <p className="muted">Nothing was recorded on this day.</p>}
+          ))}
         </section>
-      </>)}
+      )}
     </>
   );
 }

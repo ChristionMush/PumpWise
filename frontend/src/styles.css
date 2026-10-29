@@ -132,3 +132,14 @@ table.report tr.sub td{white-space:normal} /* column headings wrap */
 .form-field{display:flex;flex-direction:column;gap:4px}
 .hist li.correction strong{color:var(--amber)}
 .bad-text{color:var(--red);font-weight:600}
+
+/* "What happened this day": the last row of a daily report, and the day log page laid out like the report */
+.more-link{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:16px;padding:12px 14px;min-height:56px;border:1px solid var(--line);border-radius:12px;color:var(--ink);text-decoration:none;font-weight:600}
+.more-link small{display:block;font-weight:400;font-size:.85rem;color:var(--muted)}
+.more-link > span:last-child{font-size:1.4rem;color:var(--green-2)}
+.more-link:hover{border-color:var(--green-2)}
+.day-nav{margin:4px 0 12px}.day-nav .chip.on{cursor:default}
+table.report th.section.attention{color:var(--red);border-bottom-color:var(--red)}
+table.report td.flag{width:1.5em;color:var(--red);font-weight:700;text-align:center}
+table.report.log td.time{width:3.6em;white-space:nowrap;color:var(--muted)}
+table.report.log .by{display:block;font-size:.85rem;color:var(--muted)}
