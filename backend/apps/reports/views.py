@@ -109,9 +109,9 @@ class TankHistoryView(APIView):
 
 
 class DipExportView(APIView):
-    """Dip history as an Excel workbook, to check and inspect every dip (managers: their stations, owners)."""
+    """Owner only: dip history as an Excel workbook, to check and inspect every dip."""
 
-    permission_classes = [TankRecords]
+    permission_classes = [IsOwner]
 
     def get(self, request):
         from django.http import HttpResponse

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, downloadFile, errorMessage } from "../api";
+import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -17,6 +18,7 @@ export default function DipHistory() {
   const [to, setTo] = useState(today());
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
   const [exporting, setExporting] = useState(false);
   const exportSheet = async () => {
     setExporting(true); setError(null);
@@ -46,10 +48,10 @@ export default function DipHistory() {
         <label>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
       </div>
-      <div className="row between gap">
+      {user?.role === "owner" && <div className="row between gap">
         <p className="muted">The Excel sheet lists every dip with a chart check (do the litres match the mm?) and a stock check from one day-close dip to the next.</p>
         <button className="btn" disabled={exporting} onClick={() => void exportSheet()}>{exporting ? "Preparing…" : "Download dip sheet (Excel)"}</button>
-      </div>
+      </div>}
       <ErrorNote message={error} />
       {!data && !error && <p className="muted center">Loading…</p>}
       {data && (

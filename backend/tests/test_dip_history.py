@@ -63,7 +63,8 @@ def test_the_dip_sheet_lists_every_dip_with_a_chart_check():
     mgr = a[Role.MANAGER]
     dip(a["tenant"], mgr, fc, 6000, local(2, 6))
     dip(a["tenant"], mgr, fc, 4000, local(1, 6))
-    res = client_for(mgr).get("/api/reports/dip-history/export/", {"date_from": str(timezone.localdate() - timedelta(days=2))})
+    assert client_for(mgr).get("/api/reports/dip-history/export/").status_code == 403  # the owner's
+    res = client_for(a[Role.OWNER]).get("/api/reports/dip-history/export/", {"date_from": str(timezone.localdate() - timedelta(days=2))})
     assert res.status_code == 200 and res["Content-Type"].startswith("application/vnd.openxml"), res.content[:200]
     wb = load_workbook(io.BytesIO(res.content))
     assert wb.sheetnames == ["Dips", "Deliveries", "Corrections", "Days without a dip", "Tanks"]

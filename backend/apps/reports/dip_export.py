@@ -1,4 +1,4 @@
-"""Dip history as an Excel workbook (managers and owners), to check and inspect every dip.
+"""Dip history as an Excel workbook (owner only), to check and inspect every dip.
 
 Sheets:
 * Dips: every dip in time order per tank, with two checks:
