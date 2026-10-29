@@ -72,3 +72,22 @@ def test_the_dip_sheet_lists_every_dip_with_a_chart_check():
     assert [(r[3], r[6], r[11]) for r in rows] == [("Tank 1", 6000, None), ("Tank 1", 4000, 6000)]  # tank, litres, previous dip
     assert rows[0][7] is None and rows[0][16] == "no mm entered"  # the chart check needs the mm
     assert client_for(a[Role.ATTENDANT]).get("/api/reports/dip-history/export/").status_code == 403
+
+
+
+def test_the_dip_sheet_works_for_a_tank_without_a_calibration_chart():
+    import io
+
+    from openpyxl import load_workbook
+
+    from apps.stations.models import CalibrationPoint
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"])
+    with db_context(tenant_id=a["tenant"].id):
+        CalibrationPoint.objects.filter(tank=fc.tank).delete()
+        services.record_tank_dip(user=a[Role.MANAGER], tank=fc.tank, litres=Decimal("4000"), dip_mm=Decimal("800"), at=local(1, 6))
+    res = client_for(a[Role.OWNER]).get("/api/reports/dip-history/export/", {"date_from": str(timezone.localdate() - timedelta(days=2))})
+    assert res.status_code == 200, res.content[:300]
+    (row,) = load_workbook(io.BytesIO(res.content))["Dips"].iter_rows(min_row=4, values_only=True)
+    assert (row[5], row[6], row[7], row[16]) == (800, 4000, "no chart", "")

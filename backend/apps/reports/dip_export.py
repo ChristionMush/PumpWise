@@ -72,8 +72,9 @@ def _dip_rows(tanks, start, end):
             chart_diff = d.litres - chart if chart is not None else None
             if d.dip_mm is None:
                 notes.append("no mm entered")
-            elif chart is None and has_chart:
-                notes.append("mm outside the calibration chart")
+            elif chart is None:
+                if has_chart:
+                    notes.append("mm outside the calibration chart")
             elif abs(chart_diff) > CHART_TOLERANCE:
                 notes.append("litres do not match the mm on the chart")
                 fill = LOSS_FILL
