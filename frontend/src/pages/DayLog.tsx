@@ -17,7 +17,7 @@ function shiftOf(iso: string) {
   return `${day ? "Day" : "Night"} shift · ${named.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}`;
 }
 
-/** Owner: what happened at a station during one trading day, in time order and grouped by shift, opened from
+/** Owner: what happened at a station during one trading day, newest first and grouped by shift, opened from
  * "What happened this day" on a daily report. Points worth a look come first. Laid out like the daily report. */
 export default function DayLog() {
   const navigate = useNavigate();
@@ -33,7 +33,7 @@ export default function DayLog() {
   const go = (by: number) => setParams({ station, day: shiftDay(day, by) });
 
   const groups: { label: string; events: any[] }[] = [];
-  for (const e of data?.events ?? []) {
+  for (const e of [...(data?.events ?? [])].reverse()) { // newest first: the page opens on the latest time
     const label = shiftOf(e.at);
     if (groups[groups.length - 1]?.label !== label) groups.push({ label, events: [] });
     groups[groups.length - 1].events.push(e);
