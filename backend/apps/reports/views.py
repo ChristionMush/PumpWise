@@ -192,3 +192,23 @@ class DailyReportView(APIView):
                 raise ValidationError({"day": "Dates must look like 2026-10-22."})
             out.append(daily_report(st, day))
         return Response(out)
+
+
+class PumpReportView(APIView):
+    """Owner and managers (their stations): per day and night shift, how many pumps had an attendant (3/4) and who."""
+
+    permission_classes = [IsOwnerOrManager]
+
+    def get(self, request):
+        from apps.stations.models import Station
+
+        from .pumps import pump_report
+
+        frm, to = _dates(request, default_days=7)
+        if (to - frm).days > 62:
+            raise ValidationError({"detail": "Choose a period of up to two months."})
+        stations = Station.objects.filter(status="active").order_by("name")
+        ids = _stations(request)
+        if ids is not None:
+            stations = stations.filter(pk__in=ids)
+        return Response({"stations": pump_report(stations, frm, to)})

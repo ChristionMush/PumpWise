@@ -11,4 +11,5 @@ urlpatterns = [
     path("reports/accounting-pack/", views.AccountingPackView.as_view()),
     path("reports/daily/", views.DailyReportView.as_view()),
     path("reports/days/", views.DaysReportView.as_view()),
+    path("reports/pumps/", views.PumpReportView.as_view()),
 ]

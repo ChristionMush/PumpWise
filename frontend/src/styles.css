@@ -131,3 +131,4 @@ table.report tr.sub td{white-space:normal} /* column headings wrap */
 }
 .form-field{display:flex;flex-direction:column;gap:4px}
 .hist li.correction strong{color:var(--amber)}
+.bad-text{color:var(--red);font-weight:600}

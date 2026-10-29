@@ -11,7 +11,7 @@ const CASH_LABEL: Record<string, string> = { ok: "ok", short: "cash difference",
 
 export default function Reports() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<"days" | "sales" | "tank" | "cash" | "people">("days");
+  const [tab, setTab] = useState<"days" | "sales" | "tank" | "cash" | "people" | "pumps">("days");
   const [from, setFrom] = useState(daysAgo(13));
   const [to, setTo] = useState(today());
   const [stations, setStations] = useState<{ id: string; name: string }[]>([]);
@@ -23,13 +23,13 @@ export default function Reports() {
   const data = loaded?.tab === tab ? loaded.data : null;
   useEffect(() => {
     setLoaded(null); setError(null);
-    const path = { days: "/api/reports/days/", sales: "/api/reports/daily-sales/", tank: "/api/reconciliation/tanks/", cash: "/api/reconciliation/cash/", people: "/api/reports/attendants/" }[tab];
+    const path = { days: "/api/reports/days/", sales: "/api/reports/daily-sales/", tank: "/api/reconciliation/tanks/", cash: "/api/reconciliation/cash/", people: "/api/reports/attendants/", pumps: "/api/reports/pumps/" }[tab];
     api(`${path}?date_from=${from}&date_to=${to}${station ? `&station=${station}` : ""}`).then((d) => setLoaded({ tab, data: d })).catch((e) => setError(errorMessage(e)));
   }, [tab, from, to, station]);
   return (
     <>
       <h1>Reports</h1>
-      <div className="chips">{([["days", "By day"], ["sales", "Sales"], ["tank", "Fuel check"], ["cash", "Shifts: cash check"], ["people", "By attendant"]] as const).map(([k, l]) => <button key={k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="chips">{([["days", "By day"], ["sales", "Sales"], ["tank", "Fuel check"], ["cash", "Shifts: cash check"], ["people", "By attendant"], ["pumps", "Pumps"]] as const).map(([k, l]) => <button key={k} className={`chip ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
       <div className="filters">
         {stations.length > 1 && <label className="wide">Station<select value={station} onChange={(e) => setStation(e.target.value)}><option value="">All stations</option>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
         <label>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></div>
@@ -77,6 +77,7 @@ export default function Reports() {
             <tbody>{r.pumps.map((p: any) => <tr key={p.pump + p.fuel_code}><td>{p.pump}</td><td>{p.fuel_code}</td><td>{Number(p.litres).toLocaleString()}</td><td>{p.amount}</td></tr>)}</tbody></table>
         </section>
       )) : <p className="muted center">No closed shifts in this period.</p>)}
+      {data && tab === "pumps" && <PumpReport stations={data.stations} />}
     </>
   );
 }
@@ -149,5 +150,29 @@ function FuelCheck({ rows, totals }: { rows: any[]; totals: any[] }) {
         </section>
       );
     })}
+  </>);
+}
+
+/** Per day and night shift: how many of the station's pumps had an attendant (4/4) and who worked each one. A pump
+ * nobody worked is marked, so the manager can see a shift where a pump was not allocated. */
+function PumpReport({ stations }: { stations: any[] }) {
+  if (!stations.length) return <p className="muted center">No stations.</p>;
+  return (<>
+    <p className="muted">Day shift 07:00 to 18:00, night shift 18:00 to 07:00. Every pump should have an attendant on every shift.</p>
+    {stations.map((st) => (
+      <section key={st.station} className="card">
+        <h2>{st.station_name} <span className="muted">· {st.pumps} pump{st.pumps === 1 ? "" : "s"}{st.assigned ? "" : " · shared pumps"}</span></h2>
+        <table className="table">
+          <thead><tr><th>Shift</th><th>Pumps</th>{st.shifts[0]?.pumps.map((p: any) => <th key={p.pump}>{p.pump}</th>)}</tr></thead>
+          <tbody>{st.shifts.map((r: any) => (
+            <tr key={r.label}>
+              <td>{r.label}{r.in_progress && <span className="muted"> (now)</span>}</td>
+              <td><strong className={r.covered < r.total ? "bad-text" : "ok-note"}>{r.covered}/{r.total}</strong></td>
+              {r.pumps.map((p: any) => <td key={p.pump}>{p.people.length ? p.people.join(", ") : <span className="bad-text">nobody</span>}</td>)}
+            </tr>
+          ))}</tbody>
+        </table>
+      </section>
+    ))}
   </>);
 }

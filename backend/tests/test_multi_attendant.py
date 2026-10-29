@@ -849,3 +849,19 @@ def test_the_manager_is_told_to_allocate_pumps_once_meters_are_closed_and_every_
     # the manager keeps A on it for the next shift: saving the same name counts
     assert mgr.post(f"/api/pumps/{fc.pump.pk}/assign/", {"user": str(att_a.pk)}, format="json").status_code == 200
     assert gaps() == []
+
+
+def test_the_pump_report_shows_how_many_pumps_had_an_attendant_each_shift():
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca = client_for(att_a)
+    # only A comes in on the day shift (07:00-18:00 Harare = 05:00-16:00 UTC): Pump 2 is nobody's
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": "2026-10-01T05:10:00Z", "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T15:50:00Z", "readings": readings(fc.nozzles, [10, 0]), "cash": cash("15")}, format="json")
+    body = mgr.get("/api/reports/pumps/", {"date_from": "2026-10-01", "date_to": "2026-10-01"}).json()
+    st = next(s for s in body["stations"] if s["station"] == str(fc.station.pk))
+    day = next(r for r in st["shifts"] if r["label"] == "Day shift, Thu 01 Oct")
+    assert (day["covered"], day["total"], day["missing"]) == (1, 2, ["Pump 2"])
+    assert day["pumps"] == [{"pump": "Pump 1", "people": [att_a.full_name]}, {"pump": "Pump 2", "people": []}]
+    night = next(r for r in st["shifts"] if r["label"] == "Night shift, Thu 01 Oct")
+    assert (night["covered"], night["total"]) == (0, 2)
+    assert client_for(att_a).get("/api/reports/pumps/").status_code == 403
