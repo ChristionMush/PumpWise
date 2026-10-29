@@ -8,6 +8,8 @@ import { loadPrefill, type PumpInfo, type StationInfo } from "./Shift";
  * For a pump in use there are two ways to give it to someone else:
  *  - hand over: the person on it keeps it until they end their part of the shift; the new person then starts on it;
  *  - swap now: the meter numbers taken now end it for one person and start it for the other, on the same shift.
+ * Every pump keeps an attendant's name. Once someone closes their meter numbers on a pump, the manager allocates it for
+ * the next shift (saving the same person again counts); until then it is listed here and at the top of Today.
  */
 export default function Pumps() {
   const [stations, setStations] = useState<StationInfo[]>([]);
@@ -17,8 +19,13 @@ export default function Pumps() {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<{ pump: string; message: string } | null>(null);
+  const [toAllocate, setToAllocate] = useState<Record<string, string>>({}); // pump id -> why it needs allocating
 
-  const load = async () => setStations(await loadPrefill());
+  const load = async () => {
+    setStations(await loadPrefill());
+    const gaps = await api<{ pump_gaps?: { pump: string; message: string }[] }>("/api/dashboard/").then((d) => d.pump_gaps ?? []).catch(() => []);
+    setToAllocate(Object.fromEntries(gaps.map((g) => [g.pump, g.message])));
+  };
   useEffect(() => { void load(); }, []);
 
   // A free pump for someone already on shift: they start on it now, at the meter numbers entered (last numbers prefilled).
@@ -26,6 +33,7 @@ export default function Pumps() {
 
   const save = async (station: StationInfo, pump: PumpInfo, now: boolean, startNow: boolean) => {
     const to = choice[pump.id] ?? pump.assigned_to ?? "";
+    if (!to) return setError({ pump: pump.id, message: `Choose who works ${pump.name}: every pump needs an attendant's name.` });
     const withNumbers = now || startNow;
     // a swap needs the numbers read now; starting on a free pump may keep the last numbers shown
     const number = (n: PumpInfo["nozzles"][number]) => (now ? meters[n.id] ?? "" : meterOf(n));
@@ -38,9 +46,9 @@ export default function Pumps() {
         method: "POST",
         body: { user: to || null, ...(withNumbers ? { at: new Date().toISOString(), readings: pump.nozzles.map((n) => ({ nozzle: n.id, reading: number(n) })) } : {}) },
       });
-      const name = station.staff?.find((s) => s.id === to)?.name ?? "nobody";
+      const name = station.staff?.find((s) => s.id === to)?.name ?? "them";
       setNote(now ? `${pump.name} swapped to ${name}.` : startNow ? `${name} is now on ${pump.name}.`
-        : pump.in_use_by ? `${pump.name} goes to ${name} when ${pump.in_use_by} ends their part of the shift.` : `${pump.name} is now ${name === "nobody" ? "unassigned" : `${name}'s`}.`);
+        : pump.in_use_by ? `${pump.name} goes to ${name} when ${pump.in_use_by} ends their part of the shift.` : `${pump.name} is allocated to ${name}.`);
       setMeters({}); setChoice({}); setSwapNow({});
       await load();
     } catch (err) {
@@ -69,7 +77,7 @@ export default function Pumps() {
               <div key={pump.id} className="pump-row">
                 <label>{pump.name} <span className="muted">({pump.nozzles.map((n) => n.fuel_code).join(" + ")}){pump.in_use_by ? ` · in use by ${pump.in_use_by}` : ""}</span>
                   <select aria-label={`Who works ${pump.name}`} value={to} onChange={(e) => setChoice({ ...choice, [pump.id]: e.target.value })}>
-                    <option value="">Nobody</option>
+                    {!to && <option value="" disabled>Choose a name</option>}
                     {(station.staff ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </label>
@@ -78,15 +86,16 @@ export default function Pumps() {
                   <label className="row gap"><input type="checkbox" checked={now} onChange={(e) => setSwapNow({ ...swapNow, [pump.id]: e.target.checked })} />
                     Swap now (instead of when {pump.in_use_by} ends their part)</label>
                 )}
+                {toAllocate[pump.id] && <p className="warn">{toAllocate[pump.id]}</p>}
                 {startNow && <p className="muted">{person?.name} is on shift now: enter {pump.name}'s meter numbers to start them on it.</p>}
                 {(now || startNow) && pump.nozzles.map((n) => (
                   <label key={n.id}>{n.label} ({n.fuel_code}): meter number now
                     <input inputMode="decimal" value={now ? meters[n.id] ?? "" : meterOf(n)} onChange={(e) => setMeters({ ...meters, [n.id]: e.target.value.replace(",", ".") })} />
                   </label>
                 ))}
-                {(changed || now || startNow) && (
+                {(changed || now || startNow || toAllocate[pump.id]) && (
                   <button className="btn" disabled={busy === pump.id} onClick={() => void save(station, pump, now, startNow && !now)}>
-                    {now ? "Swap pump now" : startNow ? `Start ${person?.name} on it now` : pump.in_use_by ? "Hand over when they end" : "Save"}
+                    {now ? "Swap pump now" : startNow ? `Start ${person?.name} on it now` : pump.in_use_by ? "Hand over when they end" : changed ? "Save" : `Keep ${person?.name ?? "them"} for the next shift`}
                   </button>
                 )}
                 {error?.pump === pump.id && <ErrorNote message={error.message} />}

@@ -87,14 +87,14 @@ function DailyReports() {
   </>);
 }
 
-/** Assigned pumps nobody is working, or nobody is planned for: the manager gives each one to someone on the Pumps
- * screen, otherwise the litres on it belong to nobody. Goes away as soon as every pump has someone. */
+/** Assigned pumps to allocate: one with no attendant's name saved, or one an attendant has closed their meter numbers
+ * on, until the manager allocates it for the next shift on the Pumps screen. */
 function PumpGaps({ gaps }: { gaps: any[] }) {
   if (!gaps.length) return null;
   const stations = [...new Set(gaps.map((g) => g.station_name))];
   return (
     <section className="card bad" role="alert" data-testid="pump-gaps">
-      <h2>Pumps without an attendant</h2>
+      <h2>Allocate pumps</h2>
       {stations.map((name) => (
         <div key={name}>
           {stations.length > 1 && <strong>{name}</strong>}

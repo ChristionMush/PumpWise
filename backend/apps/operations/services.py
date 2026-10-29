@@ -15,7 +15,6 @@ Several people can work one shift (PLAN.md section 4):
   person. The shift closes when the last person on it ends their part. A manager can also swap a pump at once.
 """
 import contextvars
-from datetime import timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError
@@ -386,7 +385,7 @@ def _pump_readings(pump, readings):
 
 
 def assign_pump(*, user, pump, to_user, readings=(), at=None, strict=True, request=None):
-    """A manager or owner decides who works a pump (to_user=None: nobody).
+    """A manager or owner decides who works a pump. Every pump keeps an attendant's name (to_user=None is refused).
 
     * Not in use: it is theirs from now on.
     * In use, no meter numbers: the person working it keeps it until they end their part of the shift; the new person
@@ -399,6 +398,8 @@ def assign_pump(*, user, pump, to_user, readings=(), at=None, strict=True, reque
     station = pump.station
     if not is_assigned_station(station):
         raise ValidationError({"detail": "Pumps are shared at this station."})
+    if to_user is None:
+        raise ValidationError({"user": f"Choose who works {pump.name}: every pump needs an attendant's name."})
     if to_user is not None:
         _check_attendant_user(to_user, pump.tenant_id)
         if not _works_at(to_user, station):
@@ -453,43 +454,35 @@ def reassign_pump(*, user, shift, pump, to_user, readings, at=None, request=None
     return assign_pump(user=user, pump=pump, to_user=to_user, readings=readings, at=at, request=request)
 
 
-IDLE_GRACE_MINUTES = 30  # a handover takes a few minutes: a free pump is only a problem once it has waited this long
+def pump_gaps(stations):
+    """Assigned pumps the manager still has to allocate, for the top of their landing page.
 
-
-def pump_gaps(stations, now=None):
-    """Assigned pumps the manager still has to give to someone, for the top of their landing page.
-
-    * no_attendant: nobody is planned for the pump (or the person planned has been switched off), so nobody can start
-      on it;
-    * idle: people are on shift at the station but nobody has been working the pump for IDLE_GRACE_MINUTES, for
-      example it is planned for someone who is not on shift. Its litres would then belong to nobody.
+    * no_name: no attendant is saved on the pump (or the person saved has been switched off), so nobody can start on it;
+    * allocate: an attendant closed their meter numbers on the pump and nobody has taken it over since. The manager
+      allocates it for the next shift on the Pumps screen (saving the same person again counts), and the reminder goes
+      away. A pump that passed straight to the next person on shift is never listed.
     """
-    now = now or timezone.now()
+    from apps.audit.models import AuditLog
+
     out = []
     for station in stations:
         if not is_assigned_station(station):
             continue
-        shift = open_shift_at(station)
-        on_shift = {a.user_id: a.user.full_name for a in active_attendants(shift)} if shift else {}
         for pump in Pump.objects.filter(station=station).select_related("assigned_to").order_by("name"):
-            planned = pump.assigned_to if pump.assigned_to_id and pump.assigned_to.is_active else None
-            current = open_pump_assignment(pump)
             gap = {"station": str(station.pk), "station_name": station.name, "pump": str(pump.pk), "pump_name": pump.name}
-            if planned is None:
-                after = f" after {current.user.full_name} ends their part" if current else ""
-                out.append({**gap, "kind": "no_attendant", "message": f"{pump.name} has no attendant{after}. Give it to someone so their sales on it are counted."})
+            if not (pump.assigned_to_id and pump.assigned_to.is_active):
+                out.append({**gap, "kind": "no_name", "message": f"{pump.name} has no attendant's name saved. Choose who works it."})
                 continue
-            if current is not None or not on_shift:
+            if open_pump_assignment(pump) is not None:
+                continue  # someone is on it
+            closed = PumpAssignment.objects.filter(pump=pump, ended_at__isnull=False).select_related("user").order_by("-ended_at").first()
+            if closed is None:
                 continue
-            last = PumpAssignment.objects.filter(pump=pump, ended_at__isnull=False).order_by("-ended_at").values_list("ended_at", flat=True).first()
-            since = max(shift.started_at, last) if last else shift.started_at
-            if now - since < timedelta(minutes=IDLE_GRACE_MINUTES):
-                continue
-            who = (f"It is planned for {planned.full_name}, who is not on shift" if planned.pk not in on_shift
-                   else f"{planned.full_name} is on shift but has not started on it")
-            out.append({**gap, "kind": "idle", "since": since,
-                        "message": f"Nobody is working {pump.name} since {timezone.localtime(since):%H:%M}. {who}. "
-                                   f"On shift now: {', '.join(on_shift.values())}."})
+            allocated = AuditLog.objects.filter(action__in=["pump_assigned", "pump_reassigned"], object_id=str(pump.pk),
+                                                created_at__gte=closed.updated_at).exists()
+            if not allocated:
+                out.append({**gap, "kind": "allocate", "message": f"{closed.user.full_name} closed {pump.name}. Allocate it for the next shift "
+                                                                  f"(saved now: {pump.assigned_to.full_name})."})
     return out
 
 
@@ -841,7 +834,7 @@ def maybe_close(shift):
 def _close(shift):
     shift.status = Shift.Status.CLOSED
     shift.ended_at = shift.ended_at or shift.close_requested_at or timezone.now()
-    PumpAssignment.objects.filter(shift=shift, ended_at__isnull=True).update(ended_at=shift.ended_at)
+    PumpAssignment.objects.filter(shift=shift, ended_at__isnull=True).update(ended_at=shift.ended_at, updated_at=timezone.now())  # updated_at: when the meters were closed (pump_gaps)
     compute_transactions(shift)
     audit.log("shift_closed", actor=shift.closed_by, tenant_id=shift.tenant_id, obj=shift, changes={"flags": shift.flags})
     from .rollups import on_shift_closed  # rollups import this module, so import here
