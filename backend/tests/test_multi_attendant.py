@@ -865,3 +865,19 @@ def test_the_pump_report_shows_how_many_pumps_had_an_attendant_each_shift():
     night = next(r for r in st["shifts"] if r["label"] == "Night shift, Thu 01 Oct")
     assert (night["covered"], night["total"]) == (0, 2)
     assert client_for(att_a).get("/api/reports/pumps/").status_code == 403
+
+
+def test_the_owner_reads_what_happened_on_a_day():
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca = client_for(att_a)
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": "2026-10-01T05:10:00Z", "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T15:50:00Z", "readings": readings(fc.nozzles, [10, 0]), "cash": cash("15")}, format="json")
+    owner = client_for(a[Role.OWNER])
+    q = {"station": str(fc.station.pk), "day": "2026-10-01"}
+    log = owner.get("/api/reports/day-log/", q).json()
+    texts = [e["text"] for e in log["events"]]
+    assert any(t.startswith(f"{att_a.full_name} started: Pump 1") for t in texts), texts
+    assert any(t.startswith(f"{att_a.full_name} closed (end of shift): Pump 1") for t in texts), texts
+    assert any(t == f"{att_a.full_name} handed in Cash USD 15.00" for t in texts), texts
+    assert any("Pump 2 had nobody" in h for h in log["highlights"]), log["highlights"]
+    assert mgr.get("/api/reports/day-log/", q).status_code == 403  # the owner's

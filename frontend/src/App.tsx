@@ -9,6 +9,7 @@ import { startAutoSync } from "./offline";
 import Alerts from "./pages/Alerts";
 import Approvals from "./pages/Approvals";
 import Dashboard from "./pages/Dashboard";
+import DayLog from "./pages/DayLog";
 import Dip from "./pages/Dip";
 import Import from "./pages/Import";
 import DipHistory from "./pages/DipHistory";
@@ -108,6 +109,7 @@ export default function App() {
       <Route path="/dip-history" element={<Private managers><DipHistory /></Private>} />
       <Route path="/pumps" element={<Private managers><Pumps /></Private>} />
       <Route path="/reports" element={<Private><Reports /></Private>} />
+      <Route path="/day-log" element={<Private managers><DayLog /></Private>} />
       <Route path="/alerts" element={<Private><Alerts /></Private>} />
       <Route path="/approvals" element={<Private managers><Approvals /></Private>} />
       <Route path="/prices" element={<Private><Prices /></Private>} />

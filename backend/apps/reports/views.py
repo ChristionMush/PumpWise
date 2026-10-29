@@ -212,3 +212,21 @@ class PumpReportView(APIView):
         if ids is not None:
             stations = stations.filter(pk__in=ids)
         return Response({"stations": pump_report(stations, frm, to)})
+
+
+class DayLogView(APIView):
+    """Owner: what happened at a station during a trading day, in time order. ?station=<id>&day=2026-10-28"""
+
+    permission_classes = [IsOwner]
+
+    def get(self, request):
+        from apps.stations.models import Station
+
+        from .daylog import day_log
+
+        try:
+            station = Station.objects.get(pk=request.query_params.get("station"))
+            day = date.fromisoformat(request.query_params.get("day") or "")
+        except (Station.DoesNotExist, ValueError, DjangoValidationError):
+            raise ValidationError({"detail": "Choose a station and a day, for example day=2026-10-28."})
+        return Response(day_log(station, day))

@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../auth";
 
 const longDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 export const shortDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
@@ -32,10 +34,12 @@ function Section({ title, label, head, children }: { title: ReactNode; label: st
  * in Reports. `of` says which station this is when there are several. */
 export function DayReport({ r, of }: { r: any; of?: { index: number; count: number } }) {
   const cur = r.currency;
+  const { user } = useAuth();
   return (
     <section id={`report-${r.station}`} className="card" aria-label={`Daily report ${r.station_name}`}>
       <div className="row between"><h2>{r.station_name}</h2>{of && of.count > 1 && <span className="muted">Station {of.index} of {of.count}</span>}</div>
       <p className="day-line"><strong>Date: {longDay(r.day)}</strong> <span className="muted">{closedText(r)}</span></p>
+      {user?.role === "owner" && <p><Link to={`/day-log?${new URLSearchParams({ station: r.station, day: r.day })}`}>What happened this day →</Link></p>}
 
       <Section title="Money" label="Grand total">
         <tr className="total"><td>Grand Total</td><td /><td className="num">{cur} {n(r.totals.grand_total)}</td></tr>
