@@ -1,7 +1,8 @@
 """The monthly accounting pack: one Excel workbook per station and month, for the bookkeeper.
 
 Sheets: Sales (per day and fuel), Takings (per day and payment type, converted at the owner's rates), Cash differences
-(per shift and attendant), Deliveries (purchases), Stock (per tank and day) and Prices (in force during the month).
+(per shift and attendant), Deliveries (purchases), Stock (per tank and day), Prices (in force during the month) and Notes
+(the owner's notes on what the numbers do not show, see notes.py).
 Built from the same records and rules as the Reports screens, so the two always agree. Deliveries carry no cost yet:
 those two columns stay empty until deliveries record what was paid.
 """
@@ -189,6 +190,13 @@ def build_pack(station, year, month):
               .select_related("fuel_type").order_by("fuel_type__name", "effective_from"))
     rows = [[p.fuel_type.name, p.currency, float(p.price_per_litre), _local(p.effective_from), _local(p.effective_to) or "still in force"] for p in prices]
     _sheet(wb, "Prices", station, period, ["Fuel", "Currency", "Price per litre", "From", "To"], rows)
+
+    # Notes from the owner about money or fuel the system's numbers do not show
+    from .notes import book_notes
+
+    rows = [[n["day"], n["note"], float(n["litres"]) if n.get("litres") else None, float(n["amount"]) if n.get("amount") else None,
+             n.get("currency") or currency, n["by"], _local(n["at"])] for n in book_notes(station, first, last)]
+    _sheet(wb, "Notes", station, period, ["Date", "Note", "Litres", "Amount", "Currency", "Written by", "Written at"], rows, [LOSS_FILL] * len(rows))
 
     out = io.BytesIO()
     wb.save(out)

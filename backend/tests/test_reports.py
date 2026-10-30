@@ -143,7 +143,7 @@ def test_the_monthly_accounting_pack_has_every_sheet_with_the_months_numbers():
     res = owner.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"})
     assert res.status_code == 200 and "spreadsheetml" in res["Content-Type"] and "2026-10" in res["Content-Disposition"]
     wb = load_workbook(io.BytesIO(res.content))
-    assert wb.sheetnames == ["Daily", "Sales", "Takings", "Cash differences", "Deliveries", "Stock", "Prices"]
+    assert wb.sheetnames == ["Daily", "Sales", "Takings", "Cash differences", "Deliveries", "Stock", "Prices", "Notes"]
 
     def first(name):
         return next(wb[name].iter_rows(min_row=4, values_only=True))
@@ -157,11 +157,39 @@ def test_the_monthly_accounting_pack_has_every_sheet_with_the_months_numbers():
     assert first("Deliveries")[1:6] == ("Tank 1", "Petrol", "Zuva", "DN-7", 1000.0)
     assert first("Stock")[1:] == ("Tank 1", "Petrol", 8000.0, 1000.0, 100.0, 8900.0, 0.0, "OK")
     assert first("Prices")[:3] == ("Petrol", "USD", 1.5)
+    assert first("Notes")[0] == "Nothing recorded in this month."
 
     for other in (a[Role.MANAGER], a[Role.ATTENDANT]):  # the owner's only
         assert client_for(other).get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"}).status_code == 403
     assert owner.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "October"}).status_code == 400
     assert owner.get("/api/reports/accounting-pack/", {"month": "2026-10"}).status_code == 400
+
+
+def test_an_owners_note_for_the_books_shows_in_the_accounting_pack_and_the_day_log():
+    import io
+    from datetime import date
+
+    from openpyxl import load_workbook
+
+    from apps.reports.notes import add_book_note
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="2.05")
+    owner = client_for(a[Role.OWNER])
+    note = "Pump 4A, night of 28-29 Oct: 224.15 L sold were not recorded under the attendant who sold them."
+    with db_context(tenant_id=a["tenant"].id):
+        add_book_note(station=fc.station, day=date(2026, 10, 29), note=note, litres=Decimal("224.15"), amount=Decimal("459.51"), actor=a[Role.OWNER])
+        add_book_note(station=fc.station, day=date(2026, 11, 2), note="next month", actor=a[Role.OWNER])
+
+    res = owner.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"})
+    rows = list(load_workbook(io.BytesIO(res.content))["Notes"].iter_rows(min_row=4, values_only=True))
+    assert len(rows) == 1 and rows[0][1:6] == (note, 224.15, 459.51, "USD", a[Role.OWNER].full_name)
+    assert rows[0][0].date() == date(2026, 10, 29)
+
+    log = owner.get("/api/reports/day-log/", {"station": str(fc.station.pk), "day": "2026-10-29"}).json()
+    assert f"Note for the books: {note}" in log["highlights"]
+    other = owner.get("/api/reports/day-log/", {"station": str(fc.station.pk), "day": "2026-10-28"}).json()
+    assert not any("Note for the books" in h for h in other["highlights"])
 
 
 def test_a_delivery_must_go_into_a_tank_of_the_fuel_received():

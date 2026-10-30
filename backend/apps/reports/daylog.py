@@ -135,6 +135,11 @@ def day_log(station, day):
             if s["end"] > start and s["start"] < end and s["missing"]:
                 highlights.append(f"{s['label']}: {', '.join(s['missing'])} had nobody ({s['covered']}/{s['total']} pumps).")
 
+    # the owner's notes for the books on this day
+    from .notes import book_notes
+
+    highlights += [f"Note for the books: {n['note']}" for n in book_notes(station, day, day)]
+
     events.sort(key=lambda e: e["at"])
     return {"station": str(station.pk), "station_name": station.name, "day": day, "start": start, "end": end, "in_progress": end > timezone.now(),
             "highlights": list(dict.fromkeys(highlights)), "events": events}
