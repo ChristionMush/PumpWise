@@ -12,7 +12,7 @@ Managers and the owner correct directly. Every step is in the audit log, and the
 from decimal import Decimal
 
 from django.db import transaction as db_tx
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
@@ -137,8 +137,10 @@ def end_stage(row):
 
 
 def fix_grant(user):
-    """A change the owner allowed this attendant and they have not made yet."""
+    """A change the owner allowed this attendant and they have not made yet. One the manager has since approved the
+    end over is settled: it must not keep the phone on the fix screen (and the attendant off a new shift)."""
     return (UndoRequest.objects.filter(attendant__user=user, status=STATUS.ALLOWED, kind__in=[KIND.CASH, KIND.METERS])
+            .exclude(attendant__approval=APPROVAL.APPROVED, attendant__approval_at__gt=F("decided_at"))
             .select_related("attendant__shift__station", "attendant__user").order_by("-created_at").first())
 
 
@@ -168,6 +170,9 @@ def approve(*, user, row, request=None):
         raise ValidationError({"detail": "This end of shift is not waiting for approval."})
     row.approval, row.approval_by, row.approval_at = APPROVAL.APPROVED, user, timezone.now()
     row.save(update_fields=["approval", "approval_by", "approval_at", "updated_at"])
+    # approved as it stands: a change allowed earlier and not made is settled, so the phone goes back to "Start shift"
+    UndoRequest.objects.filter(attendant=row, status=STATUS.ALLOWED, kind__in=[KIND.CASH, KIND.METERS]).update(
+        status=STATUS.USED, used_at=row.approval_at, updated_at=row.approval_at)
     audit.log("shift_end_approved", actor=user, obj=row.shift, request=request, changes={"who": row.user.full_name})
     return row
 

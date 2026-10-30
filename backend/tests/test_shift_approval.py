@@ -249,3 +249,24 @@ def test_a_corrected_closing_number_carries_to_whoever_started_from_it():
     assert fixed_again.status_code == 200
     with db_context(tenant_id=a["tenant"].id):
         assert str(PumpMeterReading.objects.get(kind="start", recorded_by=second, nozzle=fc.nozzles[1]).reading) == "5030.00"
+
+
+
+def test_an_allowed_change_made_while_sent_back_does_not_trap_the_phone_after_approval():
+    """What happened to Abel: he asked to change his cash, the manager allowed it and also sent the end back, he fixed it
+    while sent back (so the allowed change was never used up) and the manager approved. His phone must go back to
+    "Start shift", not stay on the fix screen."""
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    att, mgr = client_for(a[Role.ATTENDANT]), client_for(a[Role.MANAGER])
+    sid, end_id = ended(a, fc, cash="924")
+    asked = att.post(f"/api/shift-ends/{end_id}/undo/", {"kind": "cash", "reason": "Wrong typing"}, format="json").json()
+    mgr.post(f"/api/undo-requests/{asked['id']}/allow/", {}, format="json")
+    mgr.post(f"/api/shift-ends/{end_id}/send-back/", {"note": "Cash balancing"}, format="json")
+    fixed = att.post(f"/api/shift-ends/{end_id}/fix/", {"cash": [{"payment_type": "cash", "currency": "USD", "amount": "210"}]}, format="json")
+    assert fixed.status_code == 200 and fixed.json()["status"] == "pending", fixed.content
+    assert mgr.post(f"/api/shift-ends/{end_id}/approve/").json()["status"] == "approved"
+    assert stage(att)["stage"] == "start"
+    assert start(att, fc, (1100, 5040)).status_code == 201
+    with db_context(tenant_id=a["tenant"].id):
+        assert UndoRequest.objects.get(pk=asked["id"]).status == "used"
