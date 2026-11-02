@@ -40,8 +40,8 @@ def test_the_presentation_company_shows_smooth_days_problems_caught_and_approval
 
         # cash: whole dollars handed in, within $1, except the three shortages planted
         ends = [r for r in ShiftAttendant.objects.filter(approval="approved").select_related("user", "shift__station")]
-        diffs = {(r.shift.station.name, r.user.full_name): Decimal(end_summary(r)["cash_difference"]) for r in ends}
-        short = sorted(d for d in diffs.values() if abs(d) >= 1)  # 41.00, 23.50 and 12.20 short, plus the cents of the whole dollars
+        diffs = [Decimal(end_summary(r)["cash_difference"]) for r in ends]
+        short = sorted(d for d in diffs if abs(d) >= 1)  # 41.00, 23.50 and 12.20 short, plus the cents of the whole dollars
         assert len(short) == 3 and -42 < short[0] < -40 and -25 < short[1] < -22.5 and -13.5 < short[2] < -11, short
         assert len(diffs) > 80
         # approvals are stamped when the manager did them, not when the demo was loaded
