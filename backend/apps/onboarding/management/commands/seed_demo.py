@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.core.db import db_context
+from apps.onboarding import presentation
 from apps.onboarding.demo import DEMO_FILE, generate, load_file, reload_demo_tenant, seed_demo_tenant, write_file
 from apps.tenants.models import Tenant
 
@@ -17,10 +18,14 @@ class Command(BaseCommand):
         parser.add_argument("--file", default=str(DEMO_FILE), help="mock data file (default: mock_data/seed_demo.json)")
         parser.add_argument("--generate", dest="regenerate", action="store_true", help="regenerate the file first, with --end set to yesterday")
         parser.add_argument("--name", help="business name (default: the one in the file)")
+        parser.add_argument("--profile", choices=["standard", presentation.PROFILE], default="standard",
+                            help="presentation: the 8-station company for showing future clients, made up to now (no file)")
         parser.add_argument("--password", help="Required outside development for a NEW demo business: its logins are real logins, so pick a private one.")
 
-    def handle(self, *args, file, regenerate, name, password, **opts):
-        if regenerate:
+    def handle(self, *args, file, regenerate, name, password, profile, **opts):
+        if profile == presentation.PROFILE:
+            data = presentation.generate(name=name or presentation.NAME)
+        elif regenerate:
             data = generate()
             write_file(data, file)
             self.stdout.write(f"Regenerated {file} up to {data['end']}")
@@ -35,6 +40,8 @@ class Command(BaseCommand):
         if existing is not None:
             if not existing.is_demo:
                 raise CommandError(f"'{name}' is a real business. The demo loader never touches real businesses.")
+            if (existing.demo_profile or "standard") != profile:
+                raise CommandError(f"'{name}' is a {existing.demo_profile or 'standard'} demo. Pass --profile {existing.demo_profile or 'standard'}.")
             reload_demo_tenant(existing.id, data)
             self.stdout.write(self.style.SUCCESS(f"Demo business reloaded: {name} ({existing.slug}); logins unchanged."))
             return
@@ -42,7 +49,7 @@ class Command(BaseCommand):
             if not settings.DEBUG:
                 raise CommandError("Pass --password (demo accounts are real accounts; do not use a shared default).")
             password = "Demo-pass-2026"
-        info = seed_demo_tenant(name=name, password=password, data=data)
+        info = seed_demo_tenant(name=name, password=password, data=data, profile="" if profile == "standard" else profile)
         self.stdout.write(self.style.SUCCESS(f"Demo business ready: {name} ({info['slug']})"))
         for role, login in info["logins"].items():
             self.stdout.write(f"  {role:10} {login}")

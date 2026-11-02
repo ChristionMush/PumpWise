@@ -35,6 +35,9 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # Demo and trial businesses (Phase 12): never send real SMS/WhatsApp/email, use the billing sandbox, and are the
     # only tenants the demo loader may ever wipe and reload. A trial expires (suspended), then is removed if not converted.
     is_demo = models.BooleanField(default=False)
+    # Which demo data a demo business is reloaded with: "" the small standard demo, "presentation" the 8-station
+    # company for showing future clients (apps/onboarding/presentation.py).
+    demo_profile = models.CharField(max_length=20, blank=True, default="")
     trial_expires_at = models.DateField(null=True, blank=True)
 
     class Meta:

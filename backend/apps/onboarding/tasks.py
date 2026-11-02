@@ -20,11 +20,12 @@ def refresh_demo_tenants():
     except OSError:  # read-only image: the fresh data is still used below
         log.info("could not write %s; using the generated data in memory", demo.DEMO_FILE)
     with db_context(platform_admin=True):
-        ids = list(Tenant.objects.filter(is_demo=True, status=Tenant.Status.ACTIVE).values_list("id", flat=True))
+        tenants = list(Tenant.objects.filter(is_demo=True, status=Tenant.Status.ACTIVE))
     out = {"reloaded": 0, "failed": 0}
-    for tid in ids:
+    for tenant in tenants:
+        tid = tenant.id
         try:
-            demo.reload_demo_tenant(tid, data)
+            demo.reload_demo_tenant(tid, demo.data_for(tenant, data))  # the presentation company is made up to now
             out["reloaded"] += 1
         except Exception:  # noqa: BLE001 - one demo failing never stops the others
             out["failed"] += 1

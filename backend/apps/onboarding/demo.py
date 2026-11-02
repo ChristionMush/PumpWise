@@ -37,6 +37,8 @@ from apps.tenants.features import set_station_policy, set_tenant_features
 from apps.tenants.models import Subscription, Tenant
 from apps.tenants.services import DEFAULT_FUEL_TYPES, create_tenant_with_owner, get_settings
 
+from . import presentation
+
 log = logging.getLogger(__name__)
 DEMO_FILE = Path(settings.BASE_DIR) / "mock_data" / "seed_demo.json"
 TRIAL_DAYS, TRIAL_DELETE_AFTER_DAYS = 14, 30
@@ -103,6 +105,8 @@ def load_demo(tenant, data, *, password=None):
     """Replay the mock data into a demo business through the real services. Returns the staff logins."""
     if not tenant.is_demo:
         raise NotDemoTenant(str(tenant.pk))
+    if data.get("profile") == presentation.PROFILE:
+        return presentation.load(tenant, data, password=password)
     with db_context(tenant_id=tenant.id), deferred():
         owner = User.objects.filter(role=Role.OWNER).order_by("created_at").first()
         staff = {}
@@ -216,18 +220,31 @@ def reload_demo_tenant(tenant_id, data):
     return tenant
 
 
-def seed_demo_tenant(*, name="Demo Fuel Services", days=30, seed=7, password, data=None):
-    """Create a demo business and fill it (sales presentations, staging, tests). Deterministic for a given seed."""
+def data_for(tenant, standard=None):
+    """The data a demo business is (re)loaded with: its profile's, made now, or the standard demo's."""
+    if tenant.demo_profile == presentation.PROFILE:
+        return presentation.generate(name=tenant.name)
+    return standard or generate()
+
+
+def seed_demo_tenant(*, name="Demo Fuel Services", days=30, seed=7, password, data=None, profile=""):
+    """Create a demo business and fill it (sales presentations, staging, tests). Deterministic for a given seed;
+    profile "presentation" is the 8-station company, made up to now."""
+    if profile == presentation.PROFILE:
+        data = data or presentation.generate(days=days, name=name)
     data = data or generate(days=days, seed=seed, name=name)
     with db_context(platform_admin=True):
         tenant, owner, _ = create_demo_tenant(name=name, password=password)
+        if profile:
+            Tenant.objects.filter(pk=tenant.pk).update(demo_profile=profile)
+            tenant.refresh_from_db()
     staff = load_demo(tenant, data, password=password)
     from apps.billing.services import apply_payment
 
     with db_context(platform_admin=True):
         apply_payment(Tenant.objects.get(pk=tenant.id), provider="demo", event_id=f"demo-{tenant.id}", amount=D("86.00"), currency="USD", months=12)
     return {"tenant_id": str(tenant.id), "slug": tenant.slug, "password": password,
-            "logins": {"owner": owner.email, **{k: u.email for k, u in staff.items()}, "attendant": staff["att1"].email}}
+            "logins": {"owner": owner.email, **{k: u.email for k, u in staff.items()}, **({"attendant": staff["att1"].email} if "att1" in staff else {})}}
 
 
 # ---- trials -------------------------------------------------------------------------------------------------------
