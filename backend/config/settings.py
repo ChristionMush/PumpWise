@@ -207,6 +207,8 @@ CELERY_BEAT_SCHEDULE = {
     "monthly-exports": {"task": "apps.exports.tasks.run_monthly_exports", "schedule": crontab(day_of_month=1, hour=2, minute=0)},
     "purge-expired-exports": {"task": "apps.exports.tasks.purge_expired_exports", "schedule": crontab(hour=3, minute=30)},
     "demo-nightly": {"task": "apps.onboarding.tasks.refresh_demo_tenants", "schedule": crontab(hour=2, minute=15)},
+    # the presentation company again after each shift change (quiet times at the real stations), so it always shows today's shift
+    "demo-presentation": {"task": "apps.onboarding.tasks.refresh_demo_tenants", "schedule": crontab(hour="8,19", minute=30), "kwargs": {"profile": "presentation"}},
     "trials-daily": {"task": "apps.onboarding.tasks.run_trial_lifecycle", "schedule": crontab(hour=6, minute=30)},
 }
 # The nightly demo reload wipes and reloads every active demo business. A server where demo businesses are being used
