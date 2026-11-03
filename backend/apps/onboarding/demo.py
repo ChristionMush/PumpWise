@@ -229,7 +229,7 @@ def data_for(tenant, standard=None):
 
 def seed_demo_tenant(*, name="Demo Fuel Services", days=30, seed=7, password, data=None, profile=""):
     """Create a demo business and fill it (sales presentations, staging, tests). Deterministic for a given seed;
-    profile "presentation" is the 8-station company, made up to now."""
+    profile "presentation" is the 2-station presentation company, made up to now."""
     if profile == presentation.PROFILE:
         data = data or presentation.generate(days=days, name=name)
     data = data or generate(days=days, seed=seed, name=name)

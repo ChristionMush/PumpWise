@@ -1,8 +1,8 @@
 """The presentation company: a demo business big enough to show future clients (demo_profile = "presentation").
 
-Savanna Fuels (made up): 8 stations in Harare, Chitungwiza, Bulawayo, Mutare and Gweru, a manager at each, a day team
-(07:00-18:00) and a night team (18:00-07:00). Six stations have assigned pumps (the manager allocates every pump before
-each shift), two share their pumps with one attendant per shift. The manager closes each day a little after 21:00
+Savanna Fuels (made up): 2 stations, a manager at each, a day team (07:00-18:00) and a night team (18:00-07:00).
+Samora Machel Avenue (Harare) has assigned pumps: two attendants per shift, the manager allocates every pump before each
+shift. Bulawayo CBD shares its pumps with one attendant per shift. The manager closes each day a little after 21:00
 (every tank dipped, every pump's meter read), approves every end of shift, and orders fuel before a tank runs low.
 
 What it shows, all through the real services so every screen, report and alert behaves as for a real customer:
@@ -34,13 +34,7 @@ WEEKDAY_FACTOR = {4: 1.2, 5: 1.35, 6: 0.85}  # Fri, Sat busy; Sun quiet
 NIGHT_FACTOR, BEFORE_CLOSE = 0.55, D("0.35")  # night sells about half a day shift; a third of it before the 21:00 close
 STATIONS = [  # key, name, town, pumps, assigned pumps, size
     ("sam", "Samora Machel Avenue", "Harare", 4, True, 1.3),
-    ("bor", "Borrowdale Road", "Harare", 4, True, 1.2),
-    ("msa", "Msasa", "Harare", 3, True, 1.0),
-    ("ctg", "Chitungwiza", "Chitungwiza", 3, True, 0.9),
-    ("byo", "Bulawayo CBD", "Bulawayo", 4, True, 1.1),
-    ("ent", "Entumbane", "Bulawayo", 2, False, 0.7),
-    ("mut", "Mutare Main Street", "Mutare", 3, True, 0.9),
-    ("gwe", "Gweru Bypass", "Gweru", 2, False, 0.8),
+    ("byo", "Bulawayo CBD", "Bulawayo", 3, False, 1.1),
 ]
 FIRST = ["Tendai", "Rutendo", "Farai", "Nyasha", "Tatenda", "Chipo", "Kudakwashe", "Tafadzwa", "Rumbidzai", "Tinashe", "Vimbai",
          "Munyaradzi", "Chiedza", "Takudzwa", "Nokuthula", "Sipho", "Thandeka", "Bongani", "Lindiwe", "Simbarashe", "Ruvimbo",
@@ -52,11 +46,11 @@ LAST = ["Moyo", "Ncube", "Sibanda", "Dube", "Ndlovu", "Mpofu", "Chikore", "Mutas
         "Mazvita", "Chingono", "Mukwena"]
 
 # What it shows, by the day before the load (0 = yesterday) and shift
-SHORT = {(1, "day", "msa", "d2"): D("23.50"), (2, "night", "ctg", "n1"): D("41.00"), (0, "day", "ent", "d1"): D("12.20")}
+SHORT = {(1, "day", "sam", "d2"): D("23.50"), (2, "night", "byo", "n1"): D("41.00"), (0, "day", "byo", "d1"): D("12.20")}
 LOSS = (1, "byo", "PETROL", D(310))  # litres missing at that day's close
-LOW_TANK, LOW_FROM = "gwe-DIESEL", 10  # its last delivery is 10 days ago, sized to run low by now
-NOBODY = (1, "night", "bor", 3)  # Pump 4 not allocated for that night: nobody on it
-SENT_BACK = (2, "day", "mut", "d1")  # handed in without the EcoCash: sent back, fixed, approved
+LOW_TANK, LOW_FROM = "byo-DIESEL", 10  # its last delivery is 10 days ago, sized to run low by now
+NOBODY = (1, "night", "sam", 3)  # Pump 4 not allocated for that night: nobody on it
+SENT_BACK = (2, "day", "byo", "d1")  # handed in without the EcoCash: sent back, fixed, approved
 CHANGE = (1, "night", "sam", "n1")  # put the swipe money under cash: asks to change it, allowed, fixed, approved
 
 
@@ -103,8 +97,6 @@ def generate(*, now=None, days=30, seed=11, name=NAME):
         for who in team["day"] + team["night"]:
             staff.append({"key": f"{key}-{who}", "role": "attendant", "full_name": next(names), "station": key})
         cap = {"PETROL": 35000 if size >= 1.1 else 25000, "DIESEL": 30000 if size >= 1.1 else 20000}
-        if key == "gwe":
-            cap["DIESEL"] = 15000
         tanks = [{"key": f"{key}-{code}", "name": f"{code.title()} tank", "fuel": code, "capacity": str(cap[code]), "reserve": "1500",
                   "calibration": [[0, 0], [500, int(cap[code] * 0.3)], [1000, int(cap[code] * 0.66)], [1500, cap[code]]]} for code in ("PETROL", "DIESEL")]
         pumps, meters = [], {}

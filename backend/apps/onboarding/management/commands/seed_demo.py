@@ -19,7 +19,7 @@ class Command(BaseCommand):
         parser.add_argument("--generate", dest="regenerate", action="store_true", help="regenerate the file first, with --end set to yesterday")
         parser.add_argument("--name", help="business name (default: the one in the file)")
         parser.add_argument("--profile", choices=["standard", presentation.PROFILE], default="standard",
-                            help="presentation: the 8-station company for showing future clients, made up to now (no file)")
+                            help="presentation: the 2-station company for showing future clients, made up to now (no file)")
         parser.add_argument("--password", help="Required outside development for a NEW demo business: its logins are real logins, so pick a private one.")
 
     def handle(self, *args, file, regenerate, name, password, profile, **opts):
