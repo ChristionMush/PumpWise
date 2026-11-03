@@ -7,16 +7,20 @@ from decimal import Decimal
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.accounts.models import Role, User
 from apps.audit.models import AuditLog
 from apps.core.db import db_context
 from apps.onboarding import presentation
-from apps.onboarding.demo import data_for, seed_demo_tenant
+from apps.onboarding.demo import data_for, seed_demo_tenant, turn_into_presentation
 from apps.operations.approvals import end_summary
 from apps.operations.models import DayClose, ShiftAttendant, UndoRequest
 from apps.reports.pumps import pump_report
 from apps.reports.reconciliation import reconcile_tank_day
 from apps.stations.models import Station, Tank
+from apps.tenants.features import set_tenant_features
 from apps.tenants.models import Tenant
+
+from .helpers import PASSWORD, at, make_forecourt, make_user, run_shift, two_tenants
 
 
 def test_the_presentation_company_shows_smooth_days_problems_caught_and_approvals():
@@ -76,3 +80,35 @@ def test_the_presentation_data_is_made_up_to_now():
     stamps = [e["at"] for e in data["events"]]
     assert stamps == sorted(stamps) and stamps[-1] < timezone.localtime(now).strftime("%Y-%m-%dT%H:%M")
     assert len(data["stations"]) == 2 and len(data["staff"]) == 8
+
+
+def test_an_existing_business_becomes_the_litrix_presentation_with_its_own_people_and_logins():
+    a, b = two_tenants()
+    tenant = a["tenant"]
+    with db_context(platform_admin=True):
+        set_tenant_features(tenant=tenant, multi_attendant=True, pump_assignment=True)
+    rose = make_user(tenant, Role.MANAGER, full_name="Rose", phone="+263770000101")
+    stewart = make_user(tenant, Role.ATTENDANT, full_name="Stewart", phone="+263770000102")
+    thabani = make_user(tenant, Role.ATTENDANT, full_name="Thabani", phone="+263770000103")
+    fc = make_forecourt(tenant)  # its old test records
+    run_shift(tenant, a[Role.ATTENDANT], fc, [0, 0], [10, 0], started_at=at(2026, 10, 1, 5), ended_at=at(2026, 10, 1, 15), cash=[("cash", "USD", 15)])
+    other = make_forecourt(b["tenant"], name="Not Litrix")
+    with db_context(tenant_id=tenant.id):
+        people = set(User.objects.values_list("pk", flat=True))
+
+    turn_into_presentation(tenant.id, "litrix", days=3)
+
+    with db_context(platform_admin=True):
+        tenant.refresh_from_db()
+    assert tenant.is_demo and tenant.demo_profile == "litrix" and data_for(tenant)["company"] == "litrix"  # the nightly reload keeps it
+    with db_context(tenant_id=tenant.id):
+        assert set(User.objects.values_list("pk", flat=True)) == people  # nobody new
+        assert [s.name for s in Station.objects.all()] == ["Cowdray Park Station"]
+        assert set(ShiftAttendant.objects.values_list("user_id", flat=True)) == {stewart.pk, thabani.pk}  # the old test shift is gone
+        assert AuditLog.objects.filter(action="shift_end_approved", actor=rose).exists()
+        assert AuditLog.objects.filter(action="shift_end_sent_back").exists() and UndoRequest.objects.get().status == "used"
+    with db_context(tenant_id=b["tenant"].id):
+        assert Station.objects.filter(pk=other.station.pk).exists()  # another business is never touched
+    # their logins still work
+    login = APIClient().post("/api/auth/login/", {"identifier": "+263770000101", "password": PASSWORD}, format="json")
+    assert login.status_code == 200, login.content

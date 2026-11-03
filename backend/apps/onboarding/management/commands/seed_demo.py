@@ -18,13 +18,13 @@ class Command(BaseCommand):
         parser.add_argument("--file", default=str(DEMO_FILE), help="mock data file (default: mock_data/seed_demo.json)")
         parser.add_argument("--generate", dest="regenerate", action="store_true", help="regenerate the file first, with --end set to yesterday")
         parser.add_argument("--name", help="business name (default: the one in the file)")
-        parser.add_argument("--profile", choices=["standard", presentation.PROFILE], default="standard",
-                            help="presentation: the 2-station company for showing future clients, made up to now (no file)")
+        parser.add_argument("--profile", choices=["standard", *presentation.COMPANIES], default="standard",
+                            help="a presentation company for showing future clients (presentation, litrix), made up to now (no file)")
         parser.add_argument("--password", help="Required outside development for a NEW demo business: its logins are real logins, so pick a private one.")
 
     def handle(self, *args, file, regenerate, name, password, profile, **opts):
-        if profile == presentation.PROFILE:
-            data = presentation.generate(name=name or presentation.NAME)
+        if profile in presentation.COMPANIES:
+            data = presentation.generate(name=name, company=profile)
         elif regenerate:
             data = generate()
             write_file(data, file)

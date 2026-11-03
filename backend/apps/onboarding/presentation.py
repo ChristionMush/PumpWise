@@ -1,9 +1,13 @@
-"""The presentation company: a demo business big enough to show future clients (demo_profile = "presentation").
+"""Presentation companies: demo businesses for showing future clients (Tenant.demo_profile = a key of COMPANIES).
 
-Savanna Fuels (made up): 2 stations, a manager at each, a day team (07:00-18:00) and a night team (18:00-07:00).
-Samora Machel Avenue (Harare) has assigned pumps: two attendants per shift, the manager allocates every pump before each
-shift. Bulawayo CBD shares its pumps with one attendant per shift. The manager closes each day a little after 21:00
-(every tank dipped, every pump's meter read), approves every end of shift, and orders fuel before a tank runs low.
+* "presentation", Savanna Fuels (made up): 2 stations. Samora Machel Avenue (Harare) has assigned pumps, two attendants
+  per shift; Bulawayo CBD shares its pumps, one attendant per shift.
+* "litrix", Litrix: its own Cowdray Park Station and its own people (Rose the manager, Stewart on days, Thabani on
+  nights, both on all four pumps). Its logins are kept: the loader finds each person by name and role.
+
+Each station has a manager, a day team (07:00-18:00) and a night team (18:00-07:00). On assigned pumps the manager
+allocates every pump before each shift. The manager closes each day a little after 21:00 (every tank dipped, every
+pump's meter read), approves every end of shift, and orders fuel before a tank runs low.
 
 What it shows, all through the real services so every screen, report and alert behaves as for a real customer:
 * mostly smooth days: normal sales, cash within $1 (attendants hand in whole dollars), deliveries, every day closed;
@@ -16,7 +20,6 @@ The data is made for the moment it is loaded (`now`): everything before now happ
 Each event is replayed at its own time (the clock is set to it), so approvals, the audit trail and the day log show
 when things happened, not when the demo was loaded.
 """
-import math
 import random
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -26,32 +29,52 @@ from unittest import mock
 from django.utils import timezone
 
 D = Decimal
-PROFILE = "presentation"
+PROFILE = "presentation"  # data["profile"]: replayed by load() below
 NAME = "Savanna Fuels"
 ZWG_RATE = D("0.037")
-PRICES = {"PETROL": (D("1.52"), D("1.58")), "DIESEL": (D("1.55"), D("1.60"))}  # before and after the price rise
 WEEKDAY_FACTOR = {4: 1.2, 5: 1.35, 6: 0.85}  # Fri, Sat busy; Sun quiet
 NIGHT_FACTOR, BEFORE_CLOSE = 0.55, D("0.35")  # night sells about half a day shift; a third of it before the 21:00 close
-STATIONS = [  # key, name, town, pumps, assigned pumps, size
-    ("sam", "Samora Machel Avenue", "Harare", 4, True, 1.3),
-    ("byo", "Bulawayo CBD", "Bulawayo", 3, False, 1.1),
-]
-FIRST = ["Tendai", "Rutendo", "Farai", "Nyasha", "Tatenda", "Chipo", "Kudakwashe", "Tafadzwa", "Rumbidzai", "Tinashe", "Vimbai",
-         "Munyaradzi", "Chiedza", "Takudzwa", "Nokuthula", "Sipho", "Thandeka", "Bongani", "Lindiwe", "Simbarashe", "Ruvimbo",
-         "Panashe", "Fadzai", "Tapiwa", "Nomsa", "Mandla", "Shingai", "Tsitsi", "Kudzai", "Chenai", "Ngoni", "Tonderai",
-         "Sibongile", "Anesu", "Ropafadzo", "Mufaro"]
-LAST = ["Moyo", "Ncube", "Sibanda", "Dube", "Ndlovu", "Mpofu", "Chikore", "Mutasa", "Banda", "Phiri", "Marufu", "Gumbo",
-        "Mlambo", "Nyathi", "Chirwa", "Madziva", "Musoni", "Hove", "Mapfumo", "Mhlanga", "Zimuto", "Chari", "Makoni",
-        "Gwenzi", "Muzenda", "Tshuma", "Khumalo", "Mudzingwa", "Chinembiri", "Rusere", "Mavhunga", "Nyoni", "Sithole",
-        "Mazvita", "Chingono", "Mukwena"]
+FOUR = ["Pump 1", "Pump 2", "Pump 3", "Pump 4"]
+LOW_FROM = 10
 
-# What it shows, by the day before the load (0 = yesterday) and shift
-SHORT = {(1, "day", "sam", "d2"): D("23.50"), (2, "night", "byo", "n1"): D("41.00"), (0, "day", "byo", "d1"): D("12.20")}
-LOSS = (1, "byo", "PETROL", D(310))  # litres missing at that day's close
-LOW_TANK, LOW_FROM = "byo-DIESEL", 10  # its last delivery is 10 days ago, sized to run low by now
-NOBODY = (1, "night", "sam", 3)  # Pump 4 not allocated for that night: nobody on it
-SENT_BACK = (2, "day", "byo", "d1")  # handed in without the EcoCash: sent back, fixed, approved
-CHANGE = (1, "night", "sam", "n1")  # put the swipe money under cash: asks to change it, allowed, fixed, approved
+# Stories, by the day before the load (0 = yesterday), the shift, the station and who:
+# short: handed in that much too little; loss: litres missing at that day's close; low: the tank's last delivery is
+# LOW_FROM days ago, sized to run low by now; nobody: that pump not allocated for the shift; sent_back: handed in
+# without the EcoCash, sent back, fixed, approved; change: put the swipe money under cash, asks to change it, allowed.
+COMPANIES = {
+    "presentation": {
+        "name": NAME, "summary_phone": "+263770000002", "supplier": ("Kariba Fuel Supplies", "KFS"), "price_change": None,
+        "prices": {"PETROL": ("1.52", "1.58"), "DIESEL": ("1.55", "1.60")},
+        "stations": [
+            {"key": "sam", "name": "Samora Machel Avenue", "address": "Samora Machel Avenue, Harare", "size": 1.3, "assigned": True, "pumps": FOUR,
+             "tanks": {"PETROL": ("Petrol tank", 35000, 1500, True), "DIESEL": ("Diesel tank", 30000, 1500, True)},
+             "teams": {"day": {"d1": [0, 1], "d2": [2, 3]}, "night": {"n1": [0, 1], "n2": [2, 3]}},
+             "staff": {"mgr": "Tendai Dube", "d1": "Rutendo Marufu", "d2": "Farai Hove", "n1": "Nyasha Muzenda", "n2": "Tatenda Nyoni"}},
+            {"key": "byo", "name": "Bulawayo CBD", "address": "Bulawayo CBD, Bulawayo", "size": 1.1, "assigned": False, "pumps": FOUR[:3],
+             "tanks": {"PETROL": ("Petrol tank", 35000, 1500, True), "DIESEL": ("Diesel tank", 30000, 1500, True)},
+             "teams": {"day": {"d1": [0, 1, 2]}, "night": {"n1": [0, 1, 2]}},
+             "staff": {"mgr": "Chipo Sibanda", "d1": "Kudakwashe Phiri", "n1": "Tafadzwa Musoni"}},
+        ],
+        "stories": {"short": {(1, "day", "sam", "d2"): "23.50", (2, "night", "byo", "n1"): "41.00", (0, "day", "byo", "d1"): "12.20"},
+                    "loss": (1, "byo", "PETROL", 310), "low": "byo-DIESEL", "nobody": (1, "night", "sam", 3),
+                    "sent_back": (2, "day", "byo", "d1"), "change": (1, "night", "sam", "n1")},
+    },
+    "litrix": {
+        "name": "Litrix", "summary_phone": None, "supplier": ("Kariba Fuel Supplies", "KFS"),
+        "price_change": (2026, 10, 16, 18, 13),  # Litrix's own price change (16 Oct), between the shifts
+        "prices": {"PETROL": ("1.45", "1.48"), "DIESEL": ("1.52", "1.50")},
+        "stations": [
+            {"key": "cow", "name": "Cowdray Park Station", "address": "2930 Scara Street.", "size": 1.0, "assigned": True,
+             "pumps": ["Pump 1a", "Pump 1b", "Pump 2a", "Pump 2b"], "make": ("Gilbarco", "Encore 300", 2016),
+             "tanks": {"PETROL": ("Tank 1", 20000, 2000, False), "DIESEL": ("Tank 2", 30000, 3000, False)},
+             "teams": {"day": {"d1": [0, 1, 2, 3]}, "night": {"n1": [0, 1, 2, 3]}},
+             "staff": {"mgr": "Rose", "d1": "Stewart", "n1": "Thabani"}},
+        ],
+        "stories": {"short": {(1, "day", "cow", "d1"): "23.50", (2, "night", "cow", "n1"): "41.00", (0, "day", "cow", "d1"): "12.20"},
+                    "loss": (1, "cow", "PETROL", 310), "low": "cow-DIESEL", "nobody": (1, "night", "cow", 3),
+                    "sent_back": (2, "day", "cow", "d1"), "change": (1, "night", "cow", "n1")},
+    },
+}
 
 
 def _t(dt):
@@ -75,14 +98,18 @@ def cash_lines(handed, *, variant=None):
     return [{"payment_type": k[0], "currency": k[1], "amount": str(v)} for k, v in lines.items() if v or variant]
 
 
-def generate(*, now=None, days=30, seed=11, name=NAME):
-    """The presentation company's data up to `now` (local time), as plain JSON values."""
+def generate(*, now=None, days=30, seed=11, name=None, company=PROFILE):
+    """A presentation company's data up to `now` (local time), as plain JSON values."""
+    co = COMPANIES[company]
+    stories = co["stories"]
+    short_by = {k: D(v) for k, v in stories["short"].items()}
     now = timezone.localtime(now or timezone.now()).replace(tzinfo=None, second=0, microsecond=0)
     rnd = random.Random(seed)
     end = now.date() - timedelta(days=1)  # the last full day
     first = end - timedelta(days=days - 1)
-    rise_at = datetime.combine(end - timedelta(days=11), datetime.min.time()) + timedelta(hours=18, minutes=13)  # between the shifts
-    names = iter(f"{FIRST[i]} {LAST[(i * 7 + 3) % len(LAST)]}" for i in range(len(FIRST)))
+    rise_at = (datetime(*co["price_change"]) if co["price_change"]
+               else datetime.combine(end - timedelta(days=11), datetime.min.time()) + timedelta(hours=18, minutes=13))  # between the shifts
+    prices_by = {code: (D(old), D(new)) for code, (old, new) in co["prices"].items()}
     staff, stations, state, events = [], [], {}, []
 
     def ev(at, **kw):
@@ -91,34 +118,36 @@ def generate(*, now=None, days=30, seed=11, name=NAME):
             return True
         return False
 
-    for key, sname, town, n_pumps, assigned, size in STATIONS:
-        team = {"day": ["d1", "d2"] if assigned else ["d1"], "night": ["n1", "n2"] if assigned else ["n1"]}
-        staff.append({"key": f"{key}-mgr", "role": "manager", "full_name": next(names), "station": key})
-        for who in team["day"] + team["night"]:
-            staff.append({"key": f"{key}-{who}", "role": "attendant", "full_name": next(names), "station": key})
-        cap = {"PETROL": 35000 if size >= 1.1 else 25000, "DIESEL": 30000 if size >= 1.1 else 20000}
-        tanks = [{"key": f"{key}-{code}", "name": f"{code.title()} tank", "fuel": code, "capacity": str(cap[code]), "reserve": "1500",
-                  "calibration": [[0, 0], [500, int(cap[code] * 0.3)], [1000, int(cap[code] * 0.66)], [1500, cap[code]]]} for code in ("PETROL", "DIESEL")]
+    for spec in co["stations"]:
+        key, assigned = spec["key"], spec["assigned"]
+        team = {slot: list(spec["teams"][slot]) for slot in ("day", "night")}
+        for who, full_name in spec["staff"].items():
+            staff.append({"key": f"{key}-{who}", "role": "manager" if who == "mgr" else "attendant", "full_name": full_name, "station": key})
+        tanks = [{"key": f"{key}-{code}", "name": tname, "fuel": code, "capacity": str(cap), "reserve": str(reserve),
+                  "calibration": [[0, 0], [500, int(cap * 0.3)], [1000, int(cap * 0.66)], [1500, cap]] if chart else []}
+                 for code, (tname, cap, reserve, chart) in spec["tanks"].items()]
         pumps, meters = [], {}
-        for i in range(n_pumps):
+        for i, pname in enumerate(spec["pumps"]):
             pkey = f"{key}-p{i + 1}"
             nozzles = []
             for number, code in ((1, "PETROL"), (2, "DIESEL")):
                 meters[f"{pkey}:{number}"] = D(rnd.randint(150000, 900000)) + _q(rnd.random())
                 nozzles.append({"number": number, "tank": f"{key}-{code}"})
-            holder = {s: team[s][0] if (not assigned or i < math.ceil(n_pumps / 2)) else team[s][1] for s in ("day", "night")}
-            pumps.append({"key": pkey, "name": f"Pump {i + 1}", "brand": rnd.choice(["Wayne", "Gilbarco", "Tokheim"]), "model": f"M{rnd.randint(100, 900)}",
-                          "year": rnd.randint(2010, 2022), "nozzles": nozzles, "holder": holder, **({"assigned_to": f"{key}-{holder['day']}"} if assigned else {})})
+            holder = {slot: next(who for who, mine in spec["teams"][slot].items() if i in mine) for slot in ("day", "night")}
+            brand, model, year = spec.get("make") or (rnd.choice(["Wayne", "Gilbarco", "Tokheim"]), f"M{rnd.randint(100, 900)}", rnd.randint(2010, 2022))
+            pumps.append({"key": pkey, "name": pname, "brand": brand, "model": model, "year": year, "nozzles": nozzles, "holder": holder,
+                          **({"assigned_to": f"{key}-{holder['day']}"} if assigned else {})})
         prices = [{"fuel": code, "currency": "USD", "price": str(p), "from": _t(when)}
-                  for code, (old, new) in PRICES.items() for p, when in ((old, datetime.combine(first, datetime.min.time()) - timedelta(days=20)), (new, rise_at))]
-        stations.append({"key": key, "name": sname, "address": f"{sname}, {town}", "pricing_currency": "USD",
+                  for code, (old, new) in prices_by.items() for p, when in ((old, datetime.combine(first, datetime.min.time()) - timedelta(days=20)), (new, rise_at))]
+        stations.append({"key": key, "name": spec["name"], "address": spec["address"], "pricing_currency": "USD",
                          "attendants_mode": "multiple" if assigned else "single", "assignment_mode": "assigned" if assigned else "shared",
                          "tanks": tanks, "pumps": pumps, "prices": prices})
-        state[key] = {"size": size, "assigned": assigned, "team": team, "pumps": pumps, "meters": meters, "sold": {t["key"]: [] for t in tanks},
-                      "levels": {f"{key}-PETROL": D(cap["PETROL"]) * D("0.7"), f"{key}-DIESEL": D(cap["DIESEL"]) * D("0.6")}, "cap": cap}
+        state[key] = {"size": spec["size"], "assigned": assigned, "team": team, "pumps": pumps, "meters": meters, "sold": {t["key"]: [] for t in tanks},
+                      "levels": {f"{key}-{code}": D(t[1]) * D("0.7" if code == "PETROL" else "0.6") for code, t in spec["tanks"].items()},
+                      "cap": {code: t[1] for code, t in spec["tanks"].items()}, "reserve": {f"{key}-{code}": D(t[2]) for code, t in spec["tanks"].items()}}
 
     def price(fuel, at):
-        return PRICES[fuel][1 if at >= rise_at else 0]
+        return prices_by[fuel][1 if at >= rise_at else 0]
 
     day = first
     while datetime.combine(day, datetime.min.time()) + timedelta(hours=7) < now:
@@ -128,18 +157,18 @@ def generate(*, now=None, days=30, seed=11, name=NAME):
             begin = datetime.combine(day, datetime.min.time()) + timedelta(hours=7 if slot == "day" else 18)
             if begin >= now:
                 break
-            for key, *_ in STATIONS:
+            for key in state:
                 st = state[key]
                 mgr = f"{key}-mgr"
                 if st["assigned"]:  # the manager allocates every pump before the shift
                     for i, p in enumerate(st["pumps"]):
-                        if (ago, slot, key, i) != NOBODY:
+                        if (ago, slot, key, i) != stories["nobody"]:
                             ev(begin - timedelta(minutes=rnd.randint(15, 35)), type="assign", by=mgr, pump=p["key"], to=f"{key}-{p['holder'][slot]}")
                 close_at = datetime.combine(day, datetime.min.time()) + timedelta(hours=21, minutes=rnd.randint(5, 30)) if slot == "night" else None
                 before_close = {}
                 for who in st["team"][slot]:
                     person = f"{key}-{who}"
-                    mine = [p for i, p in enumerate(st["pumps"]) if p["holder"][slot] == who and (ago, slot, key, i) != NOBODY]
+                    mine = [p for i, p in enumerate(st["pumps"]) if p["holder"][slot] == who and (ago, slot, key, i) != stories["nobody"]]
                     start = begin + timedelta(minutes=rnd.randint(15, 40) if slot == "day" else rnd.randint(15, 35))
                     nks = [f"{p['key']}:{n['number']}" for p in mine for n in p["nozzles"]]
                     if not ev(start, type="start", station=key, who=person, readings={nk: str(st["meters"][nk]) for nk in nks}):
@@ -158,17 +187,17 @@ def generate(*, now=None, days=30, seed=11, name=NAME):
                             expected += litres * price(fuel, start)
                     stop = (datetime.combine(day, datetime.min.time()) + timedelta(hours=18, minutes=rnd.randint(-4, 12)) if slot == "day"
                             else datetime.combine(day + timedelta(days=1), datetime.min.time()) + timedelta(hours=7, minutes=rnd.randint(-6, 10)))
-                    short = SHORT.get((ago, slot, key, who), D(0))
+                    short = short_by.get((ago, slot, key, who), D(0))
                     handed = (expected.quantize(D(1), ROUND_FLOOR if rnd.random() < 0.5 else ROUND_HALF_UP)) - short
                     story = (ago, slot, key, who)
-                    variant = "no_ecocash" if story == SENT_BACK else "swipe_as_cash" if story == CHANGE else None
+                    variant = "no_ecocash" if story == stories["sent_back"] else "swipe_as_cash" if story == stories["change"] else None
                     if not ev(stop, type="end", who=person, readings=ends, cash=cash_lines(handed, variant=variant)):
                         continue
-                    if story == SENT_BACK:
+                    if story == stories["sent_back"]:
                         ev(stop + timedelta(minutes=30), type="send_back", by=mgr, who=person, note="Your EcoCash total is missing. Add it and send again.")
                         ev(stop + timedelta(minutes=48), type="fix", who=person, cash=cash_lines(handed))
                         ev(stop + timedelta(minutes=70), type="approve", by=mgr, who=person)
-                    elif story == CHANGE:
+                    elif story == stories["change"]:
                         ev(stop + timedelta(minutes=12), type="ask", who=person, kind="cash", reason="I put the swipe money under cash.")
                         ev(stop + timedelta(minutes=35), type="allow", by=mgr, who=person, note="OK, put it under swipe.")
                         ev(stop + timedelta(minutes=44), type="fix", who=person, cash=cash_lines(handed))
@@ -186,8 +215,8 @@ def generate(*, now=None, days=30, seed=11, name=NAME):
                     today_sold = sum((litres for s, litres in st["sold"][t] if s == "day"), D(0))
                     night_before = sum((litres for nk, (_, litres) in before_close.items() if nk.split(":")[1] == ("1" if t.endswith("PETROL") else "2")), D(0))
                     st["levels"][t] -= today_sold + night_before
-                    if (ago, key, t.split("-")[1]) == LOSS[:3]:
-                        st["levels"][t] -= LOSS[3]
+                    if (ago, key, t.split("-")[1]) == stories["loss"][:3]:
+                        st["levels"][t] -= stories["loss"][3]
                     levels[t] = st["levels"][t]
                     st["sold"][t] = [("night_rest", sum((litres for s, litres in st["sold"][t] if s == "night"), D(0)) - night_before)]
                 if ev(close_at, type="close", station=key, by=mgr, dips={t: str(_q(v + D(str(round(rnd.uniform(-8, 8), 1))), "0.1")) for t, v in levels.items()},
@@ -197,13 +226,13 @@ def generate(*, now=None, days=30, seed=11, name=NAME):
                         st["sold"][t] = []
                         daily = _daily_use(st, t)
                         deliver = None
-                        if t == LOW_TANK and ago == LOW_FROM:
-                            deliver = _thousands(daily * D(13) + D(1500) - st["levels"][t])
-                        elif not (t == LOW_TANK and ago < LOW_FROM) and st["levels"][t] < D(1500) + daily * 5:
+                        if t == stories["low"] and ago == LOW_FROM:
+                            deliver = _thousands(daily * D(13) + st["reserve"][t] - st["levels"][t])
+                        elif not (t == stories["low"] and ago < LOW_FROM) and st["levels"][t] < st["reserve"][t] + daily * 5:
                             deliver = _thousands(st["cap"][t.split("-")[1]] * D("0.9") - st["levels"][t])
                         if deliver:
                             at = datetime.combine(day + timedelta(days=1), datetime.min.time()) + timedelta(hours=10, minutes=rnd.randint(0, 90))
-                            if ev(at, type="delivery", by=mgr, tank=t, litres=str(deliver), supplier="Kariba Fuel Supplies", note_number=f"KFS-{rnd.randint(10000, 99999)}"):
+                            if ev(at, type="delivery", by=mgr, tank=t, litres=str(deliver), supplier=co["supplier"][0], note_number=f"{co['supplier'][1]}-{rnd.randint(10000, 99999)}"):
                                 st["levels"][t] += deliver
                 else:
                     for t in st["levels"]:
@@ -211,8 +240,8 @@ def generate(*, now=None, days=30, seed=11, name=NAME):
         day += timedelta(days=1)
 
     events.sort(key=lambda e: e["at"])  # by time; the same minute keeps the order things were done in
-    return {"profile": PROFILE, "end": end.isoformat(), "now": _t(now), "days": days, "seed": seed,
-            "business": {"name": name, "summary_phone": "+263770000002"}, "staff": staff,
+    return {"profile": PROFILE, "company": company, "end": end.isoformat(), "now": _t(now), "days": days, "seed": seed,
+            "business": {"name": name or co["name"], "summary_phone": co["summary_phone"]}, "staff": staff,
             "exchange_rates": [{"from_currency": "ZWG", "to_currency": "USD", "rate": str(ZWG_RATE), "effective_from": _t(datetime.combine(first, datetime.min.time()) - timedelta(days=20))}],
             "stations": stations, "events": events}
 
@@ -261,8 +290,9 @@ def load(tenant, data, *, password=None):
     with db_context(tenant_id=tenant.id), deferred():
         owner = User.objects.filter(role=Role.OWNER).order_by("created_at").first()
         cfg = get_settings(tenant.id)
-        cfg.summary_phone, cfg.summary_channel = data["business"]["summary_phone"], "sms"
-        cfg.save()
+        if data["business"]["summary_phone"]:  # none given: the business keeps its own (Litrix)
+            cfg.summary_phone, cfg.summary_channel = data["business"]["summary_phone"], "sms"
+            cfg.save()
         fuel = {f.code: f for f in FuelType.objects.all()}
         for fname, code in DEFAULT_FUEL_TYPES:
             if code not in fuel:

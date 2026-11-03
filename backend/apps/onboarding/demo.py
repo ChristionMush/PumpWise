@@ -222,16 +222,16 @@ def reload_demo_tenant(tenant_id, data):
 
 def data_for(tenant, standard=None):
     """The data a demo business is (re)loaded with: its profile's, made now, or the standard demo's."""
-    if tenant.demo_profile == presentation.PROFILE:
-        return presentation.generate(name=tenant.name)
+    if tenant.demo_profile in presentation.COMPANIES:
+        return presentation.generate(company=tenant.demo_profile, name=tenant.name)
     return standard or generate()
 
 
 def seed_demo_tenant(*, name="Demo Fuel Services", days=30, seed=7, password, data=None, profile=""):
     """Create a demo business and fill it (sales presentations, staging, tests). Deterministic for a given seed;
-    profile "presentation" is the 2-station presentation company, made up to now."""
-    if profile == presentation.PROFILE:
-        data = data or presentation.generate(days=days, name=name)
+    profile: a presentation company (presentation.COMPANIES), made up to now."""
+    if profile in presentation.COMPANIES:
+        data = data or presentation.generate(days=days, name=name, company=profile)
     data = data or generate(days=days, seed=seed, name=name)
     with db_context(platform_admin=True):
         tenant, owner, _ = create_demo_tenant(name=name, password=password)
@@ -245,6 +245,21 @@ def seed_demo_tenant(*, name="Demo Fuel Services", days=30, seed=7, password, da
         apply_payment(Tenant.objects.get(pk=tenant.id), provider="demo", event_id=f"demo-{tenant.id}", amount=D("86.00"), currency="USD", months=12)
     return {"tenant_id": str(tenant.id), "slug": tenant.slug, "password": password,
             "logins": {"owner": owner.email, **{k: u.email for k, u in staff.items()}, **({"attendant": staff["att1"].email} if "att1" in staff else {})}}
+
+
+def turn_into_presentation(tenant_id, company, *, actor=None, days=30):
+    """Platform action, at the owner's request: an existing business becomes a presentation demo. Its people and logins
+    stay; its stations, shifts, readings, cash and dips are replaced by the presentation data, rebuilt every night,
+    and it never sends real messages again (it is a demo)."""
+    if company not in presentation.COMPANIES:
+        raise ValueError(f"Unknown presentation company {company!r}.")
+    with db_context(platform_admin=True), tenant_scope(tenant_id):
+        tenant = Tenant.objects.get(pk=tenant_id)
+        Tenant.objects.filter(pk=tenant.pk).update(is_demo=True, demo_profile=company)
+        audit.log("demo_profile_set", actor=actor, tenant_id=tenant.id, obj=tenant, via_platform=True,
+                  changes={"was_demo": tenant.is_demo, "profile": company})
+    tenant.refresh_from_db()
+    return reload_demo_tenant(tenant.id, presentation.generate(company=company, name=tenant.name, days=days))
 
 
 # ---- trials -------------------------------------------------------------------------------------------------------
