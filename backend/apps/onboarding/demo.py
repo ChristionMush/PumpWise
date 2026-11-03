@@ -258,7 +258,7 @@ def turn_into_presentation(tenant_id, company, *, actor=None, days=30):
         Tenant.objects.filter(pk=tenant.pk).update(is_demo=True, demo_profile=company)
         audit.log("demo_profile_set", actor=actor, tenant_id=tenant.id, obj=tenant, via_platform=True,
                   changes={"was_demo": tenant.is_demo, "profile": company})
-    tenant.refresh_from_db()
+        tenant.refresh_from_db()
     return reload_demo_tenant(tenant.id, presentation.generate(company=company, name=tenant.name, days=days))
 
 
