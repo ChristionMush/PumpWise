@@ -46,7 +46,7 @@ def test_the_presentation_company_shows_smooth_days_problems_caught_and_approval
         assert len(diffs) > 12
         # approvals are stamped when the manager did them, not when the demo was loaded
         row = ends[0]
-        assert row.left_at < row.approval_at < row.left_at + timedelta(hours=2)
+        assert row.cash_submitted_at < row.approval_at < row.cash_submitted_at + timedelta(hours=2)
 
         # sent back and fixed; a change asked for, allowed and made
         log = {a.action: a for a in AuditLog.objects.filter(action__in=["shift_end_sent_back", "shift_end_fixed", "undo_requested", "undo_allowed"])}
