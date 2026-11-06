@@ -10,23 +10,30 @@ export interface HeldStage {
   stage: "held"; end_id: string; shift_id: string; station: string; status: "pending" | "sent_back" | "approved"; ended_at: string; note: string;
   person: string; currency: string; meters: EndMeter[]; cash: EndCash[]; handed_in: string; expected: string | null; cash_difference: string | null;
   undo: UndoInfo | null; can_fix: { cash: boolean; meters: boolean };
+  checks?: string[]; // what looks wrong on it, and where a difference comes from
+  cash_received_by?: string | null; cash_received_at?: string | null;
 }
 
 const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["card", "Card / swipe"], ["credit", "Intercompany issue"]] as const;
 const LABEL: Record<string, string> = Object.fromEntries(TYPES);
 const time = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
 
-/** Meters and cash of one end of shift, with the cash difference when it is this person's own. */
-export function EndDetails({ end }: { end: Pick<HeldStage, "meters" | "cash" | "currency" | "handed_in" | "expected" | "cash_difference"> }) {
+/** Meters and cash of one end of shift, with the cash difference when it is this person's own, what looks wrong on
+ *  it (so whoever approves or fixes it sees where a difference comes from), and who received the cash. */
+export function EndDetails({ end }: { end: Pick<HeldStage, "meters" | "cash" | "currency" | "handed_in" | "expected" | "cash_difference" | "checks" | "cash_received_by" | "cash_received_at"> }) {
   return (
     <>
       {end.meters.map((m) => (
-        <p key={m.nozzle} className="muted">{m.pump} · {m.label}: {m.start ?? "?"} → {m.end ?? "not ended"}{m.litres ? ` · ${Number(m.litres).toLocaleString()} L` : ""}</p>
+        <p key={m.nozzle} className="muted">{m.pump} · {m.label}: {m.start ?? "?"} → {m.end ?? "not ended"}{m.litres ? ` · ${Number(m.litres).toLocaleString()} L` : ""}{m.amount ? ` · ${end.currency} ${m.amount}` : ""}</p>
       ))}
       <p>{end.cash.length ? end.cash.map((c) => `${LABEL[c.payment_type] ?? c.payment_type} ${c.currency} ${Number(c.amount).toFixed(2)}`).join(" · ") : "No cash handed in"}</p>
       {end.expected != null && (
         <p>Expected {end.currency} {Number(end.expected).toFixed(2)} · handed in {Number(end.handed_in).toFixed(2)} · cash difference <strong>{Number(end.cash_difference).toFixed(2)}</strong></p>
       )}
+      {(end.checks ?? []).length > 0 && (
+        <ul className="plain" aria-label="Check these">{end.checks!.map((c) => <li key={c} className="warn">{c}</li>)}</ul>
+      )}
+      {end.cash_received_by && <p className="muted">Cash received by {end.cash_received_by}{end.cash_received_at ? `, ${time(end.cash_received_at)}` : ""}</p>}
     </>
   );
 }

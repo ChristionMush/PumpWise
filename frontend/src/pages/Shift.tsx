@@ -108,6 +108,22 @@ function Stages({ current }: { current: 0 | 1 | 2 }) {
 // that company to the business (not cash received). Other currencies are switched off for now.
 const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["card", "Card / swipe"], ["credit", "Intercompany issue"]] as const;
 const money = (n: number) => n.toFixed(2);
+const MAX_LITRES_PER_HOUR = 3000, MIN_PLAUSIBLE_LITRES = 500; // the server's rule: one nozzle pumping without a pause
+
+/** End numbers that cannot be right: below the number the pump started from (the meter only goes up), or more litres
+ *  than a pump can pump since the start. */
+function endProblems(rows: { id: string; label: string; meter_max: string; pump: PumpInfo }[], starts: Record<string, number>, nums: Record<string, string>, since: string) {
+  const below: string[] = [], tooMuch: string[] = [];
+  const hours = Math.max(0, (Date.now() - new Date(since).getTime()) / 3600e3);
+  for (const n of rows) {
+    const start = starts[n.id], end = Number(nums[n.id]), max = Number(n.meter_max);
+    if (!nums[n.id] || start === undefined || Number.isNaN(end)) continue;
+    const wentRound = start > max * 0.9 && end < max * 0.1;
+    if (end < start && !wentRound) below.push(`${n.pump.name} · ${n.label}: ${nums[n.id]} is below the number it started from, ${start}.`);
+    else if (end - start > Math.max(MIN_PLAUSIBLE_LITRES, MAX_LITRES_PER_HOUR * hours)) tooMuch.push(`${n.pump.name} · ${n.label}: ${(end - start).toFixed(2)} L since the start is more than a pump can pump in that time. Check the number.`);
+  }
+  return { below, tooMuch };
+}
 
 export default function Shift() {
   const [stations, setStations] = useState<StationInfo[]>([]);
@@ -121,6 +137,10 @@ export default function Shift() {
   const [loaded, setLoaded] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [cashDue, setCashDue] = useState<CashDue | null>(null);
+  const [seen, setSeen] = useState<Record<string, string>>({}); // taking a pump over: the number it shows, if not the handover number
+  const [checking, setChecking] = useState<Record<string, boolean>>({});
+  const [belowOk, setBelowOk] = useState(false); // "the pump really shows these numbers" (an end below the start)
+  const [warned, setWarned] = useState<string | null>(null); // a big cash difference was pointed out for these numbers
   const { user } = useAuth();
   const canType = user?.role === "owner" || user?.role === "manager"; // attendants start from the last closing number
   const navigate = useNavigate();
@@ -182,10 +202,21 @@ export default function Shift() {
     // Assigned pumps: every nozzle of my free pumps. A pump still with the outgoing attendant is taken over only if
     // I enter its numbers (when they hand it to me).
     if (assigned && nozzles.some((n) => !n.pump.in_use_by && !readings.includes(n))) return setError("Enter the meter number of every nozzle on your pumps.");
+    // the pump shows another number than the handover: the start stays the handover number, and the manager is told
+    const shown = (n: (typeof nozzles)[number]) => (fixedStart(n) && seen[n.id] && Number(seen[n.id]) !== Number(startOf(n)) ? { seen: seen[n.id] } : {});
     const a: Active = { id: uuid(), station_id: station.id, started_at: new Date().toISOString(), starts: Object.fromEntries(readings.map((n) => [n.id, Number(startOf(n))])) };
     await kvSet("activeShift", a); // saved on the phone first
-    await enqueue("shift_start", { shift_id: a.id, station: station.id, started_at: a.started_at, readings: readings.map((n) => ({ nozzle: n.id, reading: startOf(n) })) });
-    setActive(a); setNums({}); setError(null);
+    await enqueue("shift_start", { shift_id: a.id, station: station.id, started_at: a.started_at, readings: readings.map((n) => ({ nozzle: n.id, reading: startOf(n), ...shown(n) })) });
+    setActive(a); setNums({}); setSeen({}); setChecking({}); setError(null);
+  };
+
+  /** Before meters go: numbers that cannot be right are refused, an end below the start only once the attendant says
+   *  the pump really shows it (the start is then what is wrong, and the manager corrects it). */
+  const metersWrong = () => {
+    const { below, tooMuch } = endProblems(rows, active!.starts, nums, active!.started_at);
+    if (tooMuch.length) return tooMuch.join(" ");
+    if (below.length && !belowOk) return `${below.join(" ")} Check the pump. If it really shows this, tick "The pump really shows these numbers" and end again: your manager corrects the start.`;
+    return null;
   };
 
   const join = async () => {
@@ -227,6 +258,16 @@ export default function Shift() {
     }
     const missing = rows.filter((n) => !nums[n.id]);
     if (missing.length) return setError(`Enter the end number for ${missing.length} more nozzle${missing.length > 1 ? "s" : ""}.`);
+    const wrong = metersWrong();
+    if (wrong) return setError(wrong);
+    // far more or less cash than the meters say: often an end number not read off the pump. Pointed out once.
+    const gap = calc ? calc.variance : 0, key = JSON.stringify([nums, cash]);
+    if (calc && Math.abs(gap) > Math.max(5, calc.expected * 0.01) && warned !== key) {
+      setWarned(key);
+      return setError(gap > 0
+        ? `Your cash is ${money(gap)} more than your meters say. Check each end number on the pump: one may be too low. Tap End shift again to send it as it is.`
+        : `Your cash is ${money(-gap)} short of what your meters say. Count the cash again and check each end number. Tap End shift again to send it as it is.`);
+    }
     await enqueue("shift_end", { shift_id: active.id, ended_at: new Date().toISOString(), readings: rows.map((n) => ({ nozzle: n.id, reading: nums[n.id] })), cash: cashLines() });
     return finish(assigned
       ? "Your part of the shift is saved. Your pumps pass to the next attendant. Your manager approves it before your next shift."
@@ -241,6 +282,8 @@ export default function Shift() {
     if (!active || !station) return;
     const missing = rows.filter((n) => !nums[n.id]);
     if (missing.length) return setError(`Enter the end number for ${missing.length} more nozzle${missing.length > 1 ? "s" : ""}.`);
+    const wrong = metersWrong();
+    if (wrong) return setError(wrong);
     const due: CashDue = { shift_id: active.id, station_id: active.station_id, expected: calc ? calc.expected : null,
       meters: rows.map((n) => ({ name: `${n.pump.name} · ${n.label}`, start: active.starts[n.id], end: nums[n.id] })) };
     await enqueue("shift_end", { shift_id: active.id, ended_at: new Date().toISOString(), readings: rows.map((n) => ({ nozzle: n.id, reading: nums[n.id] })), cash: [], cash_later: true });
@@ -352,10 +395,19 @@ export default function Shift() {
           <strong>{n.pump.name} · {n.label}</strong><span className="muted">{n.fuel_code}{active ? ` · started at ${active.starts[n.id]}` : n.last_reading ? ` · last ${n.last_reading}` : ""}</span>
           {/* an attendant starts from the last closing number on the pump; managers may type it (a repaired meter) */}
           {!active && fixedStart(n)
-            ? <><input value={n.last_reading ?? ""} readOnly aria-readonly="true" placeholder="Meter number" /><span className="muted small">From the last closing number</span></>
+            ? <><input value={n.last_reading ?? ""} readOnly aria-readonly="true" placeholder="Meter number" /><span className="muted small">From the last closing number</span>
+              {/* the incoming attendant checks the handover against the pump; a different number goes to the manager */}
+              {checking[n.id]
+                ? <><input inputMode="decimal" aria-label={`${n.pump.name} ${n.label}: number on the pump`} value={seen[n.id] ?? ""} placeholder="Number the pump shows"
+                    onChange={(e) => setSeen({ ...seen, [n.id]: e.target.value.replace(",", ".") })} />
+                  {seen[n.id] && Number(seen[n.id]) !== Number(n.last_reading) && <span className="muted small">You start from the handover number. Your manager is told the pump shows {seen[n.id]} and corrects the wrong one.</span>}</>
+                : <button type="button" className="link small" onClick={(e) => { e.preventDefault(); setChecking({ ...checking, [n.id]: true }); }}>The pump shows a different number</button>}</>
             : <input inputMode="decimal" value={nums[n.id] ?? ""} placeholder={active ? "Meter number now" : "Meter number"} onChange={(e) => setNums({ ...nums, [n.id]: e.target.value.replace(",", ".") })} />}
         </label>
       ))}
+      {active && !active.member && endProblems(rows, active.starts, nums, active.started_at).below.length > 0 && (
+        <label className="check"><input type="checkbox" checked={belowOk} onChange={(e) => setBelowOk(e.target.checked)} /> The pump really shows these numbers</label>
+      )}
       {active && assigned && !active.member && (<>
         <button className="btn big" onClick={() => void closeMeters()}>Close my meters (count my cash after)</button>
         <p className="muted">At the shift change: closes your meters now so your pumps pass to the next attendant and they can start. You count your cash next and hand it in on the screen that follows.</p>

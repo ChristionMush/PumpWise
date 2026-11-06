@@ -7,7 +7,7 @@ interface Reason { code: string; label: string; write_off: boolean }
 interface Summary { open: number; awaiting_approval: number; to_review: number; reasons: Record<string, Reason[]> }
 type Tab = "open" | "review" | "history";
 
-const KIND: Record<string, string> = { loss: "Fuel loss", cash: "Cash difference", low_stock: "Low stock", missed_reading: "Missed reading" };
+const KIND: Record<string, string> = { loss: "Fuel loss", cash: "Cash difference", low_stock: "Low stock", missed_reading: "Missed reading", meter: "Meter numbers", delivery: "Delivery check" };
 const STATUS: Record<string, [string, string]> = {
   open: ["Open", "suspended"], awaiting_approval: ["Waiting for owner approval", "past_due"],
   resolved: ["Resolved", "active"], auto_resolved: ["Closed by itself", "active"],

@@ -70,6 +70,31 @@ describe("end of shift approval", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/undo-requests/u1/allow/")).toBe(true));
   });
 
+  it("shows what is flagged on an end, needs a reason to approve it, and records receiving the cash", async () => {
+    const flagged = { id: "e1", shift_started_at: "2026-10-20T04:00:00Z", ...end, cash_difference: "427.02",
+      checks: ["3A Nozzle 1: the end number is the same as Tashinga's reading at Thu 22:59, so no fuel is counted on it for the last 8 hours."] };
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: manager, tenant } },
+      "GET /api/shift-ends/": { body: [flagged] },
+      "GET /api/approvals/summary/": { body: { ends: 1, undos: 0 } },
+      "GET /api/undo-requests/": { body: [] },
+      "GET /api/approvals/log/": { body: [] },
+      "POST /api/shift-ends/e1/approve/": { body: {} },
+      "POST /api/shift-ends/e1/cash-received/": { body: {} },
+    });
+    renderApp("/approvals");
+    const user = userEvent.setup();
+    expect(await screen.findByRole("list", { name: "Check these" })).toHaveTextContent("same as Tashinga's reading");
+    await user.click(screen.getByRole("button", { name: "I received the cash" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/api/shift-ends/e1/cash-received/")).toBe(true));
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Say why you approve Tendai's end as it is");
+    expect(calls.some((c) => c.path === "/api/shift-ends/e1/approve/")).toBe(false);
+    await user.type(screen.getByLabelText(/Why approve it as it is/), "Recounted: the end number was wrong");
+    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/shift-ends/e1/approve/")?.body).toEqual({ note: "Recounted: the end number was wrong" }));
+  });
+
   it("lets a manager approve an end, or send it back with a note", async () => {
     const { calls } = mockApi({
       "GET /api/auth/me/": { body: { user: manager, tenant } },

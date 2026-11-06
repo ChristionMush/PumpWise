@@ -349,7 +349,8 @@ def load(tenant, data, *, password=None):
                     row = ShiftAttendant.objects.filter(user=staff[e["who"]], left_at__isnull=True).select_related("shift").latest("joined_at")
                     ops.end_shift(user=staff[e["who"]], shift=row.shift, readings=readings(e["readings"]), cash=e["cash"], ended_at=at)
                 elif kind == "approve":
-                    approvals.approve(user=staff[e["by"]], row=last_part(staff[e["who"]]))
+                    row = last_part(staff[e["who"]])  # a flagged end is approved with the manager's reason, as in the app
+                    approvals.approve(user=staff[e["by"]], row=row, note="Counted with the attendant: approved as handed in" if approvals.end_summary(row)["checks"] else "")
                 elif kind == "send_back":
                     approvals.send_back(user=staff[e["by"]], row=last_part(staff[e["who"]]), note=e["note"])
                 elif kind == "fix":

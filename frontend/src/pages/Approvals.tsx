@@ -30,6 +30,7 @@ export default function Approvals() {
   const [undos, setUndos] = useState<Undo[]>([]);
   const [log, setLog] = useState<LogRow[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [reasons, setReasons] = useState<Record<string, string>>({}); // why a flagged end is approved as it is
   const [sending, setSending] = useState<string | null>(null); // the end being sent back
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -71,6 +72,13 @@ export default function Approvals() {
         <section key={e.id} className="card"><div className="row between"><strong>{e.person} · {e.station}</strong><span className="muted">ended {time(e.ended_at)}</span></div>
           <EndDetails end={e} />
           {e.undo?.status === "pending" && <p className="warn">Asked to {e.undo.kind_label.toLowerCase()}: see the request above.</p>}
+          {!e.cash_received_at && e.cash.length > 0 && (
+            <button className="btn" onClick={() => void act(`/api/shift-ends/${e.id}/cash-received/`, {}, `Recorded: you received ${e.person}'s cash.`)}>I received the cash</button>
+          )}
+          {(e.checks ?? []).length > 0 && sending !== e.id && (
+            <label>Why approve it as it is? (needed: something above is flagged)
+              <textarea value={reasons[e.id] ?? ""} onChange={(ev) => setReasons({ ...reasons, [e.id]: ev.target.value })} /></label>
+          )}
           {sending === e.id ? (
             <div className="form">
               <label>What needs fixing?<textarea value={notes[e.id] ?? ""} onChange={(ev) => setNotes({ ...notes, [e.id]: ev.target.value })} /></label>
@@ -79,7 +87,9 @@ export default function Approvals() {
             </div>
           ) : (
             <div className="row gap">
-              <button className="btn primary" onClick={() => void act(`/api/shift-ends/${e.id}/approve/`, {}, `Approved: ${e.person} can start their next shift.`)}>Approve</button>
+              <button className="btn primary" onClick={() => (e.checks ?? []).length && !(reasons[e.id] ?? "").trim()
+                ? setError(`Say why you approve ${e.person}'s end as it is, or send it back to fix.`)
+                : void act(`/api/shift-ends/${e.id}/approve/`, (e.checks ?? []).length ? { note: reasons[e.id].trim() } : {}, `Approved: ${e.person} can start their next shift.`)}>Approve</button>
               <button className="btn" onClick={() => setSending(e.id)}>Send back to fix</button>
             </div>
           )}

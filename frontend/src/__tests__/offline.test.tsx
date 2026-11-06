@@ -179,6 +179,62 @@ describe("attendant shift screen", () => {
     expect(await screen.findByPlaceholderText("Meter number")).toHaveValue("1000.00");
   });
 
+  it("refuses an end below the start until the attendant says the pump really shows it, and points out a big cash difference once", async () => {
+    signedIn(); localStorage.setItem("fs_tutorial_done", "1");
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: { id: "a", role: "attendant", full_name: "Tendai", must_change_password: false, tenant_id: "t" }, tenant: { id: "t", name: "Msasa", slug: "m", status: "active" } } },
+      "GET /api/shifts/prefill/": { body: { stations: [station] } },
+      "POST /api/sync/": (body) => ({ body: { results: body.ops.map((o: any) => ({ op_id: o.op_id, status: "applied" })) } }),
+    });
+    renderApp("/");
+    const user = userEvent.setup();
+    await screen.findByPlaceholderText("Meter number");
+    await user.click(screen.getByRole("button", { name: "Start shift" }));
+    await user.type(await screen.findByPlaceholderText("Meter number now"), "900");
+    await user.click(screen.getByRole("button", { name: "End shift" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("900 is below the number it started from, 1000");
+    await user.click(screen.getByLabelText("The pump really shows these numbers"));
+    await user.click(screen.getByRole("button", { name: "End shift" })); // no cash, nothing expected: it goes
+    expect(await screen.findByRole("heading", { name: "Shift saved" })).toBeInTheDocument();
+    await waitFor(() => expect(calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops).map((o: any) => o.kind)).toContain("shift_end"));
+  });
+
+  it("asks once more before sending cash far from what the meters say", async () => {
+    signedIn(); localStorage.setItem("fs_tutorial_done", "1");
+    mockApi({
+      "GET /api/auth/me/": { body: { user: { id: "a", role: "attendant", full_name: "Tendai", must_change_password: false, tenant_id: "t" }, tenant: { id: "t", name: "Msasa", slug: "m", status: "active" } } },
+      "GET /api/shifts/prefill/": { body: { stations: [station] } },
+      "POST /api/sync/": (body) => ({ body: { results: body.ops.map((o: any) => ({ op_id: o.op_id, status: "applied" })) } }),
+    });
+    renderApp("/");
+    const user = userEvent.setup();
+    await screen.findByPlaceholderText("Meter number");
+    await user.click(screen.getByRole("button", { name: "Start shift" }));
+    await user.type(await screen.findByPlaceholderText("Meter number now"), "1100"); // 100 L x 2.00 = 200 expected
+    await user.type(screen.getByLabelText("Cash"), "627");
+    await user.click(screen.getByRole("button", { name: "End shift" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your cash is 427.00 more than your meters say");
+    await user.click(screen.getByRole("button", { name: "End shift" }));
+    expect(await screen.findByRole("heading", { name: "Shift saved" })).toBeInTheDocument();
+  });
+
+  it("sends the number an incoming attendant finds on the pump when it is not the handover number", async () => {
+    signedIn(); localStorage.setItem("fs_tutorial_done", "1");
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: { id: "a", role: "attendant", full_name: "Tendai", must_change_password: false, tenant_id: "t" }, tenant: { id: "t", name: "Msasa", slug: "m", status: "active" } } },
+      "GET /api/shifts/prefill/": { body: { stations: [station] } },
+      "POST /api/sync/": (body) => ({ body: { results: body.ops.map((o: any) => ({ op_id: o.op_id, status: "applied" })) } }),
+    });
+    renderApp("/");
+    const user = userEvent.setup();
+    expect(await screen.findByPlaceholderText("Meter number")).toHaveValue("1000.00");
+    await user.click(screen.getByRole("button", { name: "The pump shows a different number" }));
+    await user.type(screen.getByLabelText("Pump 1 Nozzle 1: number on the pump"), "600");
+    await user.click(screen.getByRole("button", { name: "Start shift" }));
+    await waitFor(() => expect(calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops).find((o: any) => o.kind === "shift_start")?.payload.readings)
+      .toEqual([{ nozzle: "n1", reading: "1000.00", seen: "600" }]));
+  });
+
   it("shows the first-run tutorial once", async () => {
     signedIn();
     mockApi({
