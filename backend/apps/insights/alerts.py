@@ -2,13 +2,16 @@
 import json
 from datetime import timedelta
 
+from decimal import Decimal
+
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db.models import Q, Sum
 from django.utils import timezone
 
-from apps.operations.models import Shift, ShiftAttendant, TankReading
-from apps.operations.services import people_names
+from apps.operations.models import DayCloseReading, Delivery, PumpMeterReading, Shift, ShiftAttendant, TankReading, Transaction
+from apps.operations.services import people_names, went_round
 from apps.reports.reconciliation import cash_summary
-from apps.stations.models import Station, Tank
+from apps.stations.models import Nozzle, Station, Tank
 from apps.tenants.services import get_settings
 
 from .alert_actions import AUTO, AWAITING, OPEN, REOPEN_WITHIN, apply_patterns, log_event
@@ -20,7 +23,95 @@ MISSED_DIP_HOURS = 48
 LONG_SHIFT_HOURS = 16
 LONG_PART_HOURS = 14  # assigned pumps, one person's part: the longest shift (night, 18:00-07:00) is 13 hours
 LOOKBACK_DAYS = 3
+CASH_DUE_HOURS = 3  # meters closed at the shift change: the cash is counted and handed in well within this
+MISSING_DELIVERY_LITRES = Decimal(500)  # a tank rising this much between two dips with no delivery recorded
+DELIVERY_TOLERANCE = (Decimal(100), Decimal(3))  # litres, or percent of the delivery, whichever is more
 ASSIGNED = Station.AssignmentMode.ASSIGNED
+KIND_WORD = {PumpMeterReading.Kind.START: "start", PumpMeterReading.Kind.CHECKPOINT: "handover", PumpMeterReading.Kind.END: "end"}
+
+
+def _hhmm(dt):
+    return f"{timezone.localtime(dt):%a %d %b %H:%M}"
+
+
+def _num(v):
+    return f"{v:,.2f}"
+
+
+def _by(reading):
+    return reading.recorded_by.full_name if reading.recorded_by_id else "PumpWise"
+
+
+def meter_problems(since):
+    """Meter numbers that cannot all be right, per nozzle, from `since` on: a number below the one before it (the meter
+    only goes up; attendants' numbers and the manager's day close are read together), and a pump an incoming attendant
+    found at a different number than the handover. Returns ({key: alert kwargs}, every key looked at), so an alert
+    clears once its numbers are corrected."""
+    found, looked = {}, set()
+    for n in Nozzle.objects.select_related("pump__station"):
+        station, name = n.pump.station, f"{n.pump.name} {n}"
+        rows = list(PumpMeterReading.objects.filter(nozzle=n, reading_at__gte=since).select_related("recorded_by").order_by("reading_at", "created_at"))
+        closes = list(DayCloseReading.objects.filter(nozzle=n, day_close__closed_at__gte=since).select_related("day_close"))
+        if not rows and not closes:
+            continue
+        points, times = [], set()
+        for r in rows:
+            if r.reading_at not in times:  # two people at the same moment: "readings differ" deals with that
+                times.add(r.reading_at)
+                points.append((r.reading_at, r.reading, f"{_by(r)}'s {KIND_WORD.get(r.kind, r.kind)}"))
+        points += [(c.day_close.closed_at, c.reading, "the day close") for c in closes if c.day_close.closed_at not in times]
+        points.sort(key=lambda p: p[0])
+        before = PumpMeterReading.objects.filter(nozzle=n, reading_at__lt=since).select_related("recorded_by").order_by("-reading_at", "-created_at").first()
+        prev = (before.reading_at, before.reading, f"{_by(before)}'s {KIND_WORD.get(before.kind, before.kind)}") if before else None
+        for p in points:
+            key = f"meter:{n.pk}:{p[0].isoformat()}"
+            looked.add(key)
+            if prev and p[1] < prev[1] and not went_round(prev[1], p[1], n.meter_max):
+                found[key] = dict(kind="meter", severity="warning", station=station, data={"pump": name},
+                                  message=f"{station.name} {name}: {p[2]} {_num(p[1])} ({_hhmm(p[0])}) is below {prev[2]} {_num(prev[1])} "
+                                          f"({_hhmm(prev[0])}). The meter only goes up: one of them is wrong. Correct it so the litres and cash are right.")
+            prev = p
+        for r in rows:
+            seen = next((f.split(":", 1)[1] for f in r.flags if f.startswith(("pump_showed:", "start_from_last_closing:"))), None)
+            if seen is None:
+                continue
+            key = f"handover:{r.pk}"
+            looked.add(key)
+            if Decimal(seen) == r.reading:
+                continue  # the handover was corrected to what the pump showed
+            given = (PumpMeterReading.objects.filter(nozzle=n, reading_at__lte=r.reading_at, kind__in=[PumpMeterReading.Kind.END, PumpMeterReading.Kind.CHECKPOINT])
+                     .exclude(pk=r.pk).select_related("recorded_by").order_by("-reading_at", "-created_at").first())
+            source = f" ({_by(given)}, {_hhmm(given.reading_at)})" if given else ""
+            found[key] = dict(kind="meter", severity="warning", station=station, data={"pump": name, "seen": seen, "handover": str(r.reading)},
+                              message=f"{station.name} {name}: {_by(r)} found {_num(Decimal(seen))} on the pump when taking it over ({_hhmm(r.reading_at)}), "
+                                      f"but the handover number is {_num(r.reading)}{source}. Check the pump and correct the wrong number.")
+    return found, looked
+
+
+def delivery_problems(since):
+    """Between two dips of a tank: fuel came in (the dips rose more than was sold) with no delivery recorded, or a
+    delivery that does not match what the dips show. Returns ({key: alert kwargs}, every key looked at)."""
+    found, looked = {}, set()
+    for t in Tank.objects.select_related("station"):
+        dips = list(TankReading.objects.filter(tank=t, reading_at__gte=since).order_by("reading_at"))
+        prev = TankReading.objects.filter(tank=t, reading_at__lt=since).order_by("-reading_at").first()
+        seq = ([prev] if prev else []) + dips
+        for a, b in zip(seq, seq[1:], strict=False):
+            key = f"delivery:{t.pk}:{b.pk}"
+            looked.add(key)
+            delivered = Delivery.objects.filter(tank=t, delivered_at__gt=a.reading_at, delivered_at__lte=b.reading_at).aggregate(s=Sum("litres_received"))["s"] or Decimal(0)
+            sold = Transaction.objects.filter(nozzle__tank=t, occurred_at__gt=a.reading_at, occurred_at__lte=b.reading_at).aggregate(s=Sum("litres"))["s"] or Decimal(0)
+            came_in = b.litres - a.litres + sold
+            between = f"between the dips at {_hhmm(a.reading_at)} and {_hhmm(b.reading_at)}"
+            data = {"delivered": str(delivered), "came_in": str(came_in.quantize(Decimal(1))), "from": a.reading_at, "to": b.reading_at}
+            if delivered == 0 and came_in > MISSING_DELIVERY_LITRES:
+                found[key] = dict(kind="delivery", severity="warning", station=t.station, tank=t, data=data,
+                                  message=f"{t.station.name} {t.name}: about {came_in:,.0f} L came in {between}, but no delivery is recorded. Record the delivery.")
+            elif delivered > 0 and abs(came_in - delivered) > max(DELIVERY_TOLERANCE[0], delivered * DELIVERY_TOLERANCE[1] / 100):
+                found[key] = dict(kind="delivery", severity="warning", station=t.station, tank=t, data=data,
+                                  message=f"{t.station.name} {t.name}: {delivered:,.0f} L delivered {between}, but the dips show about {came_in:,.0f} L came in. "
+                                          "Check the delivery note and the dips.")
+    return found, looked
 
 
 def evaluate_tenant(tenant_id, now=None):
@@ -48,13 +139,17 @@ def evaluate_tenant(tenant_id, now=None):
     for s in long_shifts.select_related("station"):
         want(f"openshift:{s.pk}", kind="missed_reading", severity="warning", station=s.station, message=f"{s.station.name}: the shift ({', '.join(people_names(s)) or 'no one'}) has been open since {timezone.localtime(s.started_at):%d %b %H:%M}.", data={})
     # Assigned pumps: the shift stays open all day while people come and go, so look at each person still on it instead.
-    long_parts = ShiftAttendant.objects.filter(shift__status="open", shift__station__assignment_mode=ASSIGNED, left_at__isnull=True,
-                                               joined_at__lt=now - timedelta(hours=LONG_PART_HOURS))
+    # The alert stays until the part is really over: closing the meters is not enough while the cash is still to come.
+    due = ShiftAttendant.Approval.CASH_DUE
+    long_parts = ShiftAttendant.objects.filter(shift__station__assignment_mode=ASSIGNED).filter(
+        Q(shift__status="open", left_at__isnull=True, joined_at__lt=now - timedelta(hours=LONG_PART_HOURS))
+        | Q(approval=due, left_at__lt=now - timedelta(hours=CASH_DUE_HOURS)) | Q(approval=due, joined_at__lt=now - timedelta(hours=LONG_PART_HOURS)))
     for a in long_parts.select_related("shift__station", "user"):
         station = a.shift.station
-        want(f"openpart:{a.pk}", kind="missed_reading", severity="warning", station=station,
-             message=f"{station.name}: {a.user.full_name} has been on shift since {timezone.localtime(a.joined_at):%d %b %H:%M} and has not ended their part.",
-             data={"person": a.user.full_name})
+        message = (f"{station.name}: {a.user.full_name} closed their meters at {timezone.localtime(a.left_at):%d %b %H:%M} and has not handed in their cash."
+                   if a.left_at else
+                   f"{station.name}: {a.user.full_name} has been on shift since {timezone.localtime(a.joined_at):%d %b %H:%M} and has not ended their part.")
+        want(f"openpart:{a.pk}", kind="missed_reading", severity="warning", station=station, message=message, data={"person": a.user.full_name})
 
     # Fuel gains and losses are not alerts: they are tracked as each tank's running difference (Reports, Fuel check, and
     # the accounting pack), where a loss and the matching gain from a dip taken while pumps were in use cancel out.
@@ -69,6 +164,14 @@ def evaluate_tenant(tenant_id, now=None):
             who = [p["name"] for p in c["by_attendant"] if p.get("flagged")] or people_names(s)  # the people it concerns
             want(f"cash:{s.pk}", kind="cash", severity="warning", station=s.station, message=f"{s.station.name}, {', '.join(people_names(s))}: cash difference of {c['variance']} {c['currency']}.",
                  data={**c, "people": who})
+
+    # Meter numbers out of order, a handover the incoming attendant did not find on the pump, and deliveries the dips do
+    # not agree with. Each clears by itself once its numbers are corrected (its key is looked at and no longer found).
+    since = now - timedelta(days=LOOKBACK_DAYS)
+    for found, looked in (meter_problems(since), delivery_problems(since)):
+        for key, kw in found.items():
+            want(key, **kw)
+        checked |= looked
 
     open_alerts = {a.dedupe_key: a for a in Alert.objects.filter(status__in=[OPEN, AWAITING])}
     created = resolved = reopened = 0

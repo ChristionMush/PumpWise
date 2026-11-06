@@ -9,6 +9,7 @@
   be made once. "Ended by mistake" puts them back on the shift as soon as it is allowed.
 Managers and the owner correct directly. Every step is in the audit log, and the approvals log shows it (approval_log).
 """
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction as db_tx
@@ -68,17 +69,54 @@ def _cash(row):
     return CashSubmission.objects.filter(Q(part=row) | Q(part__isnull=True, shift=row.shift, attendant=row.user)).order_by("payment_type")
 
 
+STALE_AFTER_HOURS = 2  # an end number repeating a reading taken this long before it: the pump was not read again
+
+
+def _hhmm(dt):
+    return f"{timezone.localtime(dt):%a %H:%M}"
+
+
+def _who(reading):
+    return reading.recorded_by.full_name if reading.recorded_by_id else "PumpWise"
+
+
+def _below_start(row, n, start, end):
+    """The end is below the start: one of the two numbers is wrong (often the start, from someone's mistyped handover)."""
+    if end.reading >= start.reading or services.went_round(start.reading, end.reading, n.meter_max):
+        return []
+    given = (PumpMeterReading.objects.filter(nozzle=n, reading=start.reading, reading_at__lte=start.reading_at)
+             .exclude(recorded_by=row.user).select_related("recorded_by").order_by("reading_at").first()) or start
+    return [f"{n.pump.name} {n}: the end {end.reading} is below the start {start.reading} (from {_who(given)}'s number, {_hhmm(given.reading_at)}). "
+            "If the pump shows the end number, the start number is wrong: correct it."]
+
+
+def _repeated_end(row, n, start, end):
+    """The end repeats someone else's reading taken hours before (a day close, say), after fuel was sold on the pump: the
+    pump was likely not read again. Only worth saying when the cash is over what the meters say (end_summary)."""
+    same = (PumpMeterReading.objects.filter(nozzle=n, reading=end.reading, reading_at__gt=start.reading_at, reading_at__lt=end.reading_at)
+            .exclude(recorded_by=row.user).exclude(pk=end.pk).select_related("recorded_by").order_by("reading_at").first())
+    if same is None or same.reading <= start.reading or end.reading_at - same.reading_at < timedelta(hours=STALE_AFTER_HOURS):
+        return []
+    hours = int((end.reading_at - same.reading_at).total_seconds() // 3600)
+    return [f"{n.pump.name} {n}: the end number is the same as {_who(same)}'s reading at {_hhmm(same.reading_at)}, so no fuel is counted on it "
+            f"for the last {hours} hours. Check the end number on the pump."]
+
+
 def end_summary(row):
     """Meters (start, end, litres, amount at the price in force), cash by payment type, and the cash difference when it
-    can be worked out for this one person (assigned pumps, or alone on the shift)."""
+    can be worked out for this one person (assigned pumps, or alone on the shift). `checks`: what looks wrong, in words
+    (a number below the start, an end that repeats an old reading, a cash difference over the limit), so whoever
+    approves or fixes it sees where a difference comes from."""
     shift, station = row.shift, row.shift.station
     currency = station.pricing_currency
-    meters, expected, known = [], Decimal(0), True
+    meters, expected, known, checks, repeated = [], Decimal(0), True, [], []
     for n, start, ends, _, _ in _end_points(row).values():
         end = ends[0] if ends else None
         line = {"nozzle": str(n.pk), "pump": n.pump.name, "label": str(n), "fuel_code": n.tank.fuel_type.code,
                 "start": str(start.reading) if start else None, "end": str(end.reading) if end else None, "litres": None, "amount": None}
         if start and end:
+            checks += _below_start(row, n, start, end)
+            repeated += _repeated_end(row, n, start, end)
             litres = services.dispensed_litres(start.reading, end.reading, n.meter_max, [])
             price = price_at(station.pk, n.tank.fuel_type_id, currency, start.reading_at)
             line["litres"] = str(litres.quantize(THREE))
@@ -102,12 +140,27 @@ def end_summary(row):
             handed += (c.amount * rate).quantize(TWO)
     alone = shift.attendants.values("user").distinct().count() == 1  # one person, maybe in two parts
     mine = bool(meters) and (_periods(row).exists() or alone)
+    difference = (handed - expected).quantize(TWO)
+    if mine and known and row.cash_submitted_at is not None and abs(difference) > cash_limit(row.tenant_id, expected):
+        checks += repeated if difference > 0 else []
+        checks.append(f"The cash is {difference} more than the meters say: an end number may be too low, or a start number too high."
+                      if difference > 0 else
+                      f"The cash is {-difference} short of what the meters say: check the cash count, then the start and end numbers.")
     return {
         "person": row.user.full_name, "currency": currency, "meters": meters, "cash": cash,
         "handed_in": str(handed.quantize(TWO)),
         "expected": str(expected.quantize(TWO)) if (mine and known) else None,
-        "cash_difference": str((handed - expected).quantize(TWO)) if (mine and known) else None,
+        "cash_difference": str(difference) if (mine and known) else None,
+        "checks": checks,
     }
+
+
+def cash_limit(tenant_id, expected):
+    """The cash difference allowed before it is flagged (the business's setting, as in the shift's cash check)."""
+    from apps.tenants.services import get_settings
+
+    cfg = get_settings(tenant_id)
+    return max(cfg.cash_variance_amount, expected * cfg.cash_variance_pct / 100)
 
 
 def _undo_json(req):
@@ -123,6 +176,7 @@ def end_card(row):
             # ended: when they handed in their cash, or (meters closed, still counting) when they closed their meters
             "status": row.approval or APPROVAL.APPROVED, "ended_at": row.cash_submitted_at or row.left_at, "shift_started_at": row.shift.started_at,
             "note": row.approval_note, "approved_by": row.approval_by.full_name if row.approval_by_id else None, "approved_at": row.approval_at,
+            "cash_received_by": row.cash_received_by.full_name if row.cash_received_by_id else None, "cash_received_at": row.cash_received_at,
             "undo": _undo_json(last) if last else None, **end_summary(row)}
 
 
@@ -164,16 +218,40 @@ def get_end(user, pk):
 
 # ---- the manager --------------------------------------------------------------------------------------------------
 
-def approve(*, user, row, request=None):
+def approve(*, user, row, note="", request=None):
+    """Approve an end of shift. When something on it is flagged (end_summary checks: a big cash difference, a number
+    below the start, ...), the manager says why it is approved anyway; the reason is kept with it and in the log."""
     require(user, "approve_shift_end", "Only a manager or the owner approves the end of a shift.")
     if row.approval != APPROVAL.PENDING:
         raise ValidationError({"detail": "This end of shift is not waiting for approval."})
+    note = (note or "").strip()
+    checks = end_summary(row)["checks"]
+    if checks and not note:
+        raise ValidationError({"note": "Something on this end is flagged: " + " ".join(checks) +
+                                       " Fix it (send it back), or say why you approve it as it is."})
     row.approval, row.approval_by, row.approval_at = APPROVAL.APPROVED, user, timezone.now()
-    row.save(update_fields=["approval", "approval_by", "approval_at", "updated_at"])
+    row.approval_note = note
+    row.save(update_fields=["approval", "approval_by", "approval_at", "approval_note", "updated_at"])
     # approved as it stands: a change allowed earlier and not made is settled, so the phone goes back to "Start shift"
     UndoRequest.objects.filter(attendant=row, status=STATUS.ALLOWED, kind__in=[KIND.CASH, KIND.METERS]).update(
         status=STATUS.USED, used_at=row.approval_at, updated_at=row.approval_at)
-    audit.log("shift_end_approved", actor=user, obj=row.shift, request=request, changes={"who": row.user.full_name})
+    audit.log("shift_end_approved", actor=user, obj=row.shift, request=request,
+              changes={"who": row.user.full_name, **({"note": note, "flagged": checks} if checks or note else {})})
+    return row
+
+
+def receive_cash(*, user, row, request=None):
+    """The manager (or the owner) took the attendant's cash in hand: who and when is kept on the end and in the log."""
+    require(user, "approve_shift_end", "Only a manager or the owner receives the cash.")
+    if row.cash_submitted_at is None:
+        raise ValidationError({"detail": "No cash has been handed in on this end yet."})
+    if row.cash_received_at is not None:
+        return row  # already received (a second tap, a retry)
+    row.cash_received_by, row.cash_received_at = user, timezone.now()
+    row.save(update_fields=["cash_received_by", "cash_received_at", "updated_at"])
+    summary = end_summary(row)
+    audit.log("cash_received", actor=user, obj=row.shift, request=request,
+              changes={"who": row.user.full_name, "handed_in": summary["handed_in"], "cash": summary["cash"]})
     return row
 
 
@@ -211,6 +289,11 @@ def fix_end(*, user, row, cash=(), readings=(), request=None):
         if point is None or not point[2]:
             raise ValidationError({"readings": f"{item['nozzle'].pump.name} is not one of the pumps you ended on."})
         value = Decimal(str(item["reading"])).quantize(TWO)
+        start = point[1]
+        if (start and value < start.reading and not services.went_round(start.reading, value, item["nozzle"].meter_max)
+                and not can(user, "manage_shift")):
+            raise ValidationError({"readings": f"{item['nozzle'].pump.name}: {value} is below the number you started from, {start.reading}. "
+                                               f"If the pump really shows {value}, the start number is wrong: ask your manager to correct it."})
         if value != point[2][0].reading:
             changes.append((point, value))
     if not cash and not changes and row.approval != APPROVAL.SENT_BACK:
@@ -353,7 +436,8 @@ def undo_requests_for(user, status=STATUS.PENDING):
 # ---- what has been done under approvals (managers: their stations; the owner: all) --------------------------------
 
 LOG_ACTIONS = {
-    "shift_end_approved": lambda c: f"Approved {c.get('who')}'s end of shift",
+    "shift_end_approved": lambda c: f"Approved {c.get('who')}'s end of shift" + (f": {c['note']}" if c.get("note") else ""),
+    "cash_received": lambda c: f"Received {c.get('who')}'s cash ({c.get('handed_in')})",
     "shift_end_sent_back": lambda c: f"Sent {c.get('who')}'s end back to fix: {c.get('note', '')}",
     "shift_end_fixed": lambda c: f"{c.get('who')} fixed their end and sent it again",
     "cash_corrected": lambda c: f"Cash changed for {c.get('who')}",

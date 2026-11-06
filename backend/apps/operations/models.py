@@ -65,7 +65,10 @@ class ShiftAttendant(TenantOwnedModel):
     approval = models.CharField(max_length=10, choices=Approval.choices, default="", blank=True)
     approval_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
     approval_at = models.DateTimeField(null=True, blank=True)
-    approval_note = models.TextField(blank=True, default="")  # the manager's reason when sending it back
+    approval_note = models.TextField(blank=True, default="")  # the manager's reason when sending it back, or approving a flagged end
+    # the manager (or owner) who took the cash in hand, and when
+    cash_received_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    cash_received_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["joined_at"]

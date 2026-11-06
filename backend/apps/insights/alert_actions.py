@@ -48,6 +48,18 @@ REASONS = {
         ("shift_closed", "Shift closed", False),
         ("other", "Other (explain in the note)", False),
     ],
+    "meter": [
+        ("meter_typo", "A meter number was mistyped: corrected", False),
+        ("pump_checked", "Checked on the pump: the numbers are right", False),
+        ("other", "Other (explain in the note)", False),
+    ],
+    "delivery": [
+        ("delivery_added", "The delivery was recorded", False),
+        ("note_checked", "Delivery note checked: litres corrected", False),
+        ("dip_misread", "A dip was misread: re-dipped", False),
+        ("real_loss", "Real loss: fuel is missing", True),
+        ("other", "Other (explain in the note)", False),
+    ],
 }
 
 

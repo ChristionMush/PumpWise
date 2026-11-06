@@ -695,7 +695,17 @@ class ShiftEndApproveView(APIView):
     permission_classes = [Allow("approve_shift_end")]
 
     def post(self, request, pk):
-        row = approvals.approve(user=request.user, row=approvals.get_end(request.user, pk), request=request)
+        row = approvals.approve(user=request.user, row=approvals.get_end(request.user, pk), note=request.data.get("note", ""), request=request)
+        return Response(approvals.end_card(row))
+
+
+class ShiftEndCashReceivedView(APIView):
+    """The manager or the owner took this attendant's cash in hand."""
+
+    permission_classes = [Allow("approve_shift_end")]
+
+    def post(self, request, pk):
+        row = approvals.receive_cash(user=request.user, row=approvals.get_end(request.user, pk), request=request)
         return Response(approvals.end_card(row))
 
 

@@ -10,6 +10,8 @@ class Alert(TenantOwnedModel):
         LOSS = "loss", "Unexplained fuel loss"
         CASH = "cash", "Cash difference"
         MISSED_READING = "missed_reading", "Missed reading"
+        METER = "meter", "Meter numbers"
+        DELIVERY = "delivery", "Delivery check"
 
     class Severity(models.TextChoices):
         INFO = "info", "Info"

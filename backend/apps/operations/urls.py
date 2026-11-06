@@ -22,6 +22,7 @@ urlpatterns = [
     path("shift-ends/<str:pk>/", views.ShiftEndDetailView.as_view()),
     path("shift-ends/<str:pk>/approve/", views.ShiftEndApproveView.as_view()),
     path("shift-ends/<str:pk>/send-back/", views.ShiftEndSendBackView.as_view()),
+    path("shift-ends/<str:pk>/cash-received/", views.ShiftEndCashReceivedView.as_view()),
     path("shift-ends/<str:pk>/fix/", views.ShiftEndFixView.as_view()),
     path("shift-ends/<str:pk>/undo/", views.ShiftEndUndoView.as_view()),
     path("undo-requests/", views.UndoRequestListView.as_view()),

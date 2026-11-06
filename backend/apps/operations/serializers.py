@@ -13,6 +13,8 @@ NUM = {"max_digits": 14, "decimal_places": 2, "min_value": Decimal(0)}
 class ReadingInput(serializers.Serializer):
     nozzle = serializers.PrimaryKeyRelatedField(queryset=Nozzle.objects.select_related("pump", "tank__fuel_type").all())
     reading = serializers.DecimalField(**NUM)
+    # taking a pump over: the number the attendant found on the pump, when it is not the handover number (kept for the manager)
+    seen = serializers.DecimalField(**NUM, required=False, allow_null=True)
 
 
 class CashInput(serializers.Serializer):
