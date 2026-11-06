@@ -152,3 +152,48 @@ def test_batch_size_is_limited_and_op_ids_are_per_business():
     ra = client_for(a[Role.ATTENDANT]).post("/api/sync/", {"ops": [op("shift_start", shift_ops(fa, str(uuid.uuid4()))[0]["payload"], same)]}, format="json").json()["results"][0]
     rb = client_for(b[Role.ATTENDANT]).post("/api/sync/", {"ops": [op("shift_start", shift_ops(fb, str(uuid.uuid4()))[0]["payload"], same)]}, format="json").json()["results"][0]
     assert ra["status"] == rb["status"] == "applied" and not rb.get("duplicate")  # B is not told A used this id
+
+
+def test_an_entry_made_by_someone_else_on_a_shared_phone_is_held_until_they_sign_in():
+    """Two attendants share a phone: an end saved by one must never be applied under the other's login."""
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"])
+    maker, signed_in = make_user(a["tenant"], Role.ATTENDANT, full_name="Maker"), a[Role.ATTENDANT]
+    start = {**shift_ops(fc, str(uuid.uuid4()))[0], "user": str(maker.pk)}
+    held = client_for(signed_in).post("/api/sync/", {"ops": [start]}, format="json").json()["results"][0]
+    assert held["status"] == "held" and held["op_id"] == start["op_id"]
+    with db_context(tenant_id=a["tenant"].id):
+        assert Shift.objects.count() == 0 and not SyncOperation.objects.filter(op_id=start["op_id"]).exists()  # nothing kept
+    applied = client_for(maker).post("/api/sync/", {"ops": [start]}, format="json").json()["results"][0]
+    assert applied["status"] == "applied"  # sent again once its maker signs in
+    with db_context(tenant_id=a["tenant"].id):
+        assert Shift.objects.get().attendants.get().user == maker
+
+
+def test_on_assigned_pumps_an_end_with_no_number_for_their_own_pumps_is_refused():
+    """An end that names none of the person's own pumps would close them with no meters and count the cash as theirs."""
+    from apps.operations.models import PumpAssignment, ShiftAttendant
+    from apps.stations.models import Pump
+
+    from .helpers import platform_client
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    att = a[Role.ATTENDANT]
+    platform = platform_client()
+    platform.patch(f"/api/platform/tenants/{a['tenant'].id}/features/", {"multi_attendant_enabled": True, "pump_assignment_enabled": True}, format="json")
+    platform.patch(f"/api/platform/tenants/{a['tenant'].id}/stations/{fc.station.pk}/policy/", {"attendants_mode": "multiple", "assignment_mode": "assigned"}, format="json")
+    with db_context(tenant_id=a["tenant"].id):
+        Pump.objects.filter(pk=fc.pump.pk).update(assigned_to=att)
+    c = client_for(att)
+    sid = c.post("/api/shifts/start/", {"station": str(fc.station.pk), "readings": [{"nozzle": str(n.pk), "reading": "1000"} for n in fc.nozzles]}, format="json").json()["id"]
+    cash = [{"payment_type": "cash", "currency": "USD", "amount": "365"}]
+    empty = op("shift_end", {"shift_id": sid, "readings": [], "cash": cash})
+    r = c.post("/api/sync/", {"ops": [empty]}, format="json").json()["results"][0]
+    assert r["status"] == "rejected" and "No meter numbers" in r["error"] and fc.pump.name in r["error"]
+    with db_context(tenant_id=a["tenant"].id):
+        row = ShiftAttendant.objects.get(shift_id=sid)
+        assert row.left_at is None and row.cash_submitted_at is None  # still on shift, nothing counted as theirs
+        assert PumpAssignment.objects.filter(shift_id=sid, user=att, ended_at__isnull=True).exists()  # pump still with them
+    good = op("shift_end", {"shift_id": sid, "readings": [{"nozzle": str(n.pk), "reading": "1100"} for n in fc.nozzles], "cash": cash})
+    assert c.post("/api/sync/", {"ops": [good]}, format="json").json()["results"][0]["status"] == "applied"

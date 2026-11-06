@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { ApiError, errorMessage } from "../api";
 import { useAuth } from "../auth";
 import { ErrorNote, Footer, PasswordInput } from "../components";
+import { OthersWaiting } from "../components2";
 import { t } from "../i18n";
 
 export default function Login() {
@@ -31,6 +32,7 @@ export default function Login() {
     <div className="app narrow">
       <main className="main center-col">
         <h1 aria-label="PumpWise"><img src="/icon.svg" className="login-logo" alt="PumpWise logo" width="200" height="200" /></h1>
+        <OthersWaiting />
         <form onSubmit={submit} className="card form">
           <h2>{t("login.title")}</h2>
           <label>{t("login.identifier")}

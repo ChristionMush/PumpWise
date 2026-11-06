@@ -3,14 +3,17 @@
 import { api, ApiError } from "./api";
 
 export type OpKind = "shift_start" | "checkpoint" | "shift_end" | "shift_join" | "shift_leave" | "shift_cash" | "shift_close" | "pump_reassign" | "tank_dip" | "delivery";
-export interface QueuedOp { op_id: string; kind: OpKind; payload: any; queued_at: number }
-export type SyncState = { pending: number; syncing: boolean; online: boolean; lastError: string | null; rejected: number };
+/** `user_id`: who made the entry. It is sent only while that person is signed in on this phone (a shared phone). */
+export interface QueuedOp { op_id: string; kind: OpKind; payload: any; queued_at: number; user_id?: string; user_name?: string }
+/** `pending`: this person's entries still to send. `others`: names of other people whose entries wait on this phone. */
+export type SyncState = { pending: number; syncing: boolean; online: boolean; lastError: string | null; rejected: number; others: string[] };
 
 const DB = "fuelstation", OPS = "ops", KV = "kv";
 let memory: { ops: QueuedOp[]; kv: Record<string, unknown> } = { ops: [], kv: {} }; // fallback when IndexedDB is unavailable
 let inflight: Promise<void> | null = null;
 const listeners = new Set<(s: SyncState) => void>();
-let state: SyncState = { pending: 0, syncing: false, online: typeof navigator === "undefined" ? true : navigator.onLine, lastError: null, rejected: 0 };
+let state: SyncState = { pending: 0, syncing: false, online: typeof navigator === "undefined" ? true : navigator.onLine, lastError: null, rejected: 0, others: [] };
+let phoneUser: { id: string; name: string } | null = null; // who is signed in on this phone now
 
 let dbp: Promise<IDBDatabase | null> | null = null;
 function open(): Promise<IDBDatabase | null> {
@@ -40,6 +43,15 @@ export async function allOps(): Promise<QueuedOp[]> {
   const ops = db ? await wrap<QueuedOp[]>(db.transaction(OPS).objectStore(OPS).getAll()) : memory.ops;
   return [...ops].sort((a, b) => a.queued_at - b.queued_at);
 }
+/** Entries the person signed in now may send: their own (and entries saved before entries carried a name). */
+const mine = (o: QueuedOp) => !o.user_id || o.user_id === phoneUser?.id;
+export async function myOps(): Promise<QueuedOp[]> {
+  return (await allOps()).filter(mine);
+}
+async function counts(): Promise<Pick<SyncState, "pending" | "others">> {
+  const ops = await allOps();
+  return { pending: ops.filter(mine).length, others: [...new Set(ops.filter((o) => !mine(o)).map((o) => o.user_name || "Someone else"))] };
+}
 async function putOp(op: QueuedOp) {
   const db = await open();
   if (!db) { memory.ops.push(op); return; }
@@ -55,7 +67,8 @@ async function delOps(ids: string[]) {
 export async function resetOffline() {
   memory = { ops: [], kv: {} };
   inflight = null;
-  state = { pending: 0, syncing: false, online: true, lastError: null, rejected: 0 };
+  state = { pending: 0, syncing: false, online: true, lastError: null, rejected: 0, others: [] };
+  phoneUser = null;
   if (dbp) { (await dbp)?.close(); dbp = null; }
   if (typeof indexedDB !== "undefined") await new Promise((r) => { const q = indexedDB.deleteDatabase(DB); q.onsuccess = q.onerror = q.onblocked = () => r(null); });
 }
@@ -65,11 +78,18 @@ export const getSyncState = () => state;
 export function onSyncState(fn: (s: SyncState) => void) { listeners.add(fn); fn(state); return () => { listeners.delete(fn); }; }
 export const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => { const r = (Math.random() * 16) | 0; return (c === "x" ? r : (r & 3) | 8).toString(16); }));
 
+/** Someone signed in (or out) on this phone: only their own saved entries are sent from now on. */
+export async function setPhoneUser(user: { id: string; full_name: string } | null) {
+  phoneUser = user && { id: user.id, name: user.full_name };
+  emit(await counts());
+  if (phoneUser) void syncNow();
+}
+
 /** Save locally first (instant, works with no signal), then try to sync in the background. */
 export async function enqueue(kind: OpKind, payload: any): Promise<string> {
-  const op: QueuedOp = { op_id: uuid(), kind, payload, queued_at: Date.now() };
+  const op: QueuedOp = { op_id: uuid(), kind, payload, queued_at: Date.now(), ...(phoneUser && { user_id: phoneUser.id, user_name: phoneUser.name }) };
   await putOp(op);
-  emit({ pending: (await allOps()).length });
+  emit(await counts());
   void syncNow();
   return op.op_id;
 }
@@ -86,7 +106,8 @@ export function nextBatch(ops: QueuedOp[], max = 50): QueuedOp[] {
   return out;
 }
 
-/** Send the queue in order. Applied or rejected entries leave the queue (rejections are kept on the server for a manager). */
+/** Send this person's queue in order. Applied or rejected entries leave the queue (rejections are kept on the server for
+ *  a manager); another person's entries stay on the phone until they sign in here, and the server holds any it is sent. */
 export function syncNow(): Promise<void> {
   inflight ??= runSync().finally(() => { inflight = null; }); // callers join a sync already in progress and wait for it
   return inflight;
@@ -94,23 +115,25 @@ export function syncNow(): Promise<void> {
 async function runSync(): Promise<void> {
   try {
     for (;;) {
-      const ops = nextBatch(await allOps());
+      const ops = nextBatch(await myOps());
       if (!ops.length) break;
       emit({ syncing: true, lastError: null });
       let res: { results: { op_id: string; status: string; error?: string }[] };
       try {
-        res = await api("/api/sync/", { method: "POST", body: { ops: ops.map(({ op_id, kind, payload }) => ({ op_id, kind, payload })) } });
+        res = await api("/api/sync/", { method: "POST", body: { ops: ops.map(({ op_id, kind, payload, user_id }) => ({ op_id, kind, payload, ...(user_id && { user: user_id }) })) } });
       } catch (e) {
         if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 401) emit({ lastError: "Some entries need a manager's help." });
         else emit({ lastError: "Waiting for signal." });
         break; // keep everything; try again later
       }
-      const done = res.results.filter((r) => r.op_id).map((r) => r.op_id);
-      await delOps(done.length ? done : ops.map((o) => o.op_id));
+      const held = res.results.filter((r) => r.status === "held").map((r) => r.op_id);
+      const done = res.results.filter((r) => r.op_id && r.status !== "held").map((r) => r.op_id);
+      await delOps(done.length || held.length ? done : ops.map((o) => o.op_id));
       emit({ rejected: state.rejected + res.results.filter((r) => r.status === "rejected").length });
+      if (held.length) break; // signed in as someone else since: they wait for their own person
     }
   } finally {
-    emit({ syncing: false, pending: (await allOps()).length });
+    emit({ syncing: false, ...(await counts()) });
   }
 }
 
@@ -119,7 +142,7 @@ export function startAutoSync() {
   window.addEventListener("online", on);
   window.addEventListener("offline", () => emit({ online: false }));
   const timer = setInterval(() => { if (navigator.onLine) void syncNow(); }, 30000);
-  void allOps().then((o) => { emit({ pending: o.length }); if (o.length) void syncNow(); });
+  void counts().then((c) => { emit(c); if (c.pending) void syncNow(); });
   return () => { window.removeEventListener("online", on); clearInterval(timer); };
 }
 

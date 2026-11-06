@@ -584,7 +584,9 @@ class SyncView(APIView):
     Each entry carries a client-made op_id, so retrying is always safe. Rules: entries apply in the order sent; a repeated
     op_id returns the stored result and changes nothing; meter numbers that look odd are saved and flagged, never refused;
     a second person's different number is kept and flagged "readings differ"; entries for a reviewed shift are rejected and
-    listed for a manager. Two phones on one shift each send their own batch; totals come from the merged data."""
+    listed for a manager. Two phones on one shift each send their own batch; totals come from the merged data.
+    A shared phone: an entry names who made it ("user"); made by someone else than who is signed in now, it is held
+    (not applied, not stored) and stays on the phone until that person signs in, so it is never saved under another name."""
 
     permission_classes = [IsTenantUser]
 
@@ -598,6 +600,9 @@ class SyncView(APIView):
                 op_id = uuid.UUID(str(op.get("op_id")))
             except (ValueError, AttributeError):
                 results.append({"op_id": None, "status": "rejected", "error": "Missing or invalid op_id."})
+                continue
+            if op.get("user") and str(op["user"]) != str(request.user.pk):
+                results.append({"op_id": str(op_id), "status": "held", "error": "Made by someone else on this phone: it is sent when they sign in."})
                 continue
             prior = SyncOperation.objects.filter(op_id=op_id).first()
             if prior:

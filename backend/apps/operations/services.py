@@ -677,6 +677,11 @@ def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request,
         needed = set(Nozzle.objects.filter(pump_id__in=held).values_list("pk", flat=True))
         if needed - {r["nozzle"].pk for r in keep}:
             raise ValidationError({"readings": "Enter the meter number of every nozzle on your pumps."})
+    if holding and not keep:
+        # not a number for any of their own pumps (an end made for other pumps, e.g. someone else's on a shared phone):
+        # ending the part would close their pumps with no meters and count the cash as theirs
+        names = ", ".join(sorted(a.pump.name for a in holding))
+        raise ValidationError({"readings": f"No meter numbers for {person.full_name}'s pumps ({names}). Enter their end numbers to end the part."})
     last = not [a for a in active_attendants(shift) if a.user_id != person.pk and not a.done]
     _record_many(shift, PumpMeterReading.Kind.END if last else PumpMeterReading.Kind.CHECKPOINT, keep, ended_at, user)
     passed = []

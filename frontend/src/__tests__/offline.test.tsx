@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
-import { allOps, enqueue, expectedVsHanded, kvGet, litres, priceAt, resetOffline, syncNow, type PriceRow } from "../offline";
+import { allOps, enqueue, expectedVsHanded, getSyncState, kvGet, litres, myOps, priceAt, resetOffline, setPhoneUser, syncNow, type PriceRow } from "../offline";
 import { mockApi, renderApp, signedIn } from "./helpers";
 
 const prices: PriceRow[] = [
@@ -77,6 +77,41 @@ describe("offline queue", () => {
     await enqueue("shift_end", { shift_id: "old" });
     await syncNow();
     expect(await allOps()).toEqual([]);
+  });
+
+  it("a shared phone: one person's saved end is never sent while someone else is signed in", async () => {
+    signedIn();
+    const sent: any[] = [];
+    let online = false;
+    const { fetchMock } = mockApi({});
+    fetchMock.mockImplementation(async (_u: any, init?: RequestInit) => {
+      if (!online) throw new TypeError("Failed to fetch");
+      const body = JSON.parse(String(init?.body));
+      sent.push(...body.ops);
+      return new Response(JSON.stringify({ results: body.ops.map((o: any) => ({ op_id: o.op_id, status: "applied" })) }), { status: 200 });
+    });
+    await setPhoneUser({ id: "noku", full_name: "Nokutenda Gapa" });
+    await enqueue("shift_end", { shift_id: "s1", readings: [{ nozzle: "a3", reading: "158223" }], cash: [{ payment_type: "cash", currency: "USD", amount: "325" }] });
+    online = true;
+    await setPhoneUser({ id: "jo", full_name: "Josephine Machikicha" }); // signal is back, but Josephine signed in
+    await syncNow();
+    expect(sent).toEqual([]);
+    expect(await myOps()).toEqual([]);
+    expect(getSyncState().others).toEqual(["Nokutenda Gapa"]);
+    await setPhoneUser({ id: "noku", full_name: "Nokutenda Gapa" });
+    await syncNow();
+    expect(sent.map((o) => [o.kind, o.user])).toEqual([["shift_end", "noku"]]); // sent under its maker, who the server checks
+    expect(await allOps()).toEqual([]);
+    expect(getSyncState().others).toEqual([]);
+  });
+
+  it("keeps an entry the server holds as someone else's", async () => {
+    signedIn();
+    mockApi({ "POST /api/sync/": (body) => ({ body: { results: body.ops.map((o: any) => ({ op_id: o.op_id, status: "held" })) } }) });
+    await setPhoneUser({ id: "noku", full_name: "Nokutenda Gapa" });
+    await enqueue("shift_cash", { shift_id: "s1" });
+    await syncNow();
+    expect((await allOps()).map((o) => o.kind)).toEqual(["shift_cash"]);
   });
 });
 

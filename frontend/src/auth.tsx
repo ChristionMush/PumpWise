@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, tokens } from "./api";
+import { setPhoneUser } from "./offline";
 import type { TenantInfo, User } from "./types";
 
 interface AuthState {
@@ -41,6 +42,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, []);
+
+  // a shared phone: entries saved on it are sent only while the person who made them is signed in
+  useEffect(() => { void setPhoneUser(user); }, [user]);
 
   useEffect(() => {
     if (tokens.access) void reload();

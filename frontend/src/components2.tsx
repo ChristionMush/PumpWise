@@ -10,6 +10,20 @@ export function SyncBadge() {
   return <button className={`sync ${!s.online ? "off" : s.pending ? "wait" : "ok"}`} onClick={() => void syncNow()} aria-label="Sync status">{text}</button>;
 }
 
+/** A shared phone: another person's saved entries (an end of shift, cash) wait here until they sign in on it again. */
+export function OthersWaiting() {
+  const [s, setS] = useState<SyncState>(getSyncState());
+  useEffect(() => onSyncState(setS), []);
+  if (!s.others.length) return null;
+  const who = s.others.join(" and ");
+  return (
+    <section className="card" role="alert">
+      <p className="warn">Not sent yet: {who}'s entries are saved on this phone.</p>
+      <p>{s.others.length > 1 ? "Each of them" : who} must sign in on this phone to send them. They are never sent under someone else's name.</p>
+    </section>
+  );
+}
+
 const STEPS = [
   ["Start your shift", "Tap Shift, check the meter numbers on each pump, and press Start. The last numbers are already filled in."],
   ["End your shift", "Enter the new meter numbers and the money you hand in. The app shows if it adds up."],

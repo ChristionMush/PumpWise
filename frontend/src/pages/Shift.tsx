@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
-import { allOps, enqueue, expectedVsHanded, kvGet, kvSet, uuid, type PriceRow } from "../offline";
+import { enqueue, expectedVsHanded, kvGet, kvSet, myOps, uuid, type PriceRow } from "../offline";
 import HeldEnd, { type HeldStage } from "./HeldEnd";
 import { CashField, hasCents } from "../components";
+import { OthersWaiting } from "../components2";
 
 /** Each nozzle draws from its own tank, so the fuel (and its price) is per nozzle. */
 export interface Nozzle { id: string; number: number; label: string; meter_max: string; last_reading: string | null; fuel_type: string; fuel_code: string }
@@ -57,12 +58,11 @@ export async function loadPrefill(): Promise<StationInfo[]> {
 }
 
 /** The phone keeps one person's working copy. When someone else signs in on it, the previous person's saved
- *  stations and open shift are dropped (their queued entries still sync). */
+ *  stations, open shift and shift notes are dropped (their queued entries stay, and are sent when they sign in again). */
 async function forgetOtherUser(userId: string) {
   const owner = await kvGet<string>("phoneUser");
   if (owner && owner !== userId) {
-    await kvSet("prefill", null);
-    await kvSet("activeShift", null);
+    for (const key of ["prefill", "activeShift", "lastEnded", "cashDue"]) await kvSet(key, null);
   }
   await kvSet("phoneUser", userId);
 }
@@ -70,7 +70,7 @@ async function forgetOtherUser(userId: string) {
 /** The screen this phone should show. The server knows where the person is (even after signing out and in, or on
  *  another phone); only entries this phone has not sent yet can be newer than what the server knows. */
 async function settle(local: Active | undefined, st: StationInfo[], fresh: boolean): Promise<{ active: Active | null; waiting: boolean }> {
-  const pending = await allOps();
+  const pending = await myOps();
   if (local && !st.some((s) => s.id === local!.station_id)) local = undefined; // a station this person no longer has
   if (local) {
     const unsent = pending.some((o) => o.payload?.shift_id === local!.id);
@@ -138,7 +138,7 @@ export default function Shift() {
       setActive(a); setWaiting(settled.waiting);
       // meters closed, cash still to hand in: this phone's note stands until the server has it, then the server's stage wins
       const due = await kvGet<CashDue>("cashDue");
-      const queued = (await allOps()).length > 0;
+      const queued = (await myOps()).length > 0;
       if (due && fresh && !queued && !st.some((s) => s.my_stage?.stage === "cash_due")) await kvSet("cashDue", null);
       else setCashDue(due ?? null);
       setStationId(a?.station_id ?? st[0]?.id ?? "");
@@ -329,6 +329,7 @@ export default function Shift() {
   return (
     <>
       <Stages current={active ? 1 : 0} />
+      <OthersWaiting />
       <div className="row between"><h1>{title}</h1>{active && <Badge kind="active">open</Badge>}</div>
       {active && <p className="muted">Started {new Date(active.started_at).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}. Enter the numbers now and what you hand in, then end the shift.</p>}
       {!active && stations.length > 1 && (
