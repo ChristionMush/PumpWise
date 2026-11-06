@@ -17,6 +17,7 @@ Several people can work one shift (PLAN.md section 4):
 import contextvars
 from datetime import timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 from django.db import IntegrityError
 from django.db import transaction as db_tx
@@ -30,7 +31,7 @@ from apps.stations.models import FuelType, Nozzle, Pump, Station, Tank
 from apps.stations.services import litres_from_dip, price_at
 
 from .adapters import AdapterNotAvailable, get_adapter
-from .models import CashSubmission, Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, TankReading, Transaction, UndoRequest
+from .models import CashSubmission, DayCloseReading, Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, TankReading, Transaction, UndoRequest
 
 TWO = Decimal("0.01")
 THREE = Decimal("0.001")
@@ -212,12 +213,27 @@ def dispensed_litres(start, end, meter_max, flags):
     return Decimal(0)
 
 
+def _or_later_day_close(nozzle, row, at=None):
+    """The manager's day close, when it is later than this closing number: the pump sold on after the last person ended
+    (nobody on shift), so the next person starts from the day close, not from fuel that was sold before they came."""
+    qs = DayCloseReading.objects.filter(nozzle=nozzle).select_related("day_close")
+    if at is not None:
+        qs = qs.filter(day_close__closed_at__lte=at)
+    if row is not None:
+        qs = qs.filter(day_close__closed_at__gt=row.reading_at)
+    close = qs.order_by("-day_close__closed_at").first()
+    if close is None:
+        return row
+    return SimpleNamespace(reading=close.reading, reading_at=close.day_close.closed_at, kind="day_close", recorded_by=close.day_close.closed_by)
+
+
 def last_end_reading(nozzle, exclude_shift=None):
-    """The nozzle's latest closing number: a shift's end, or a handover inside a shift (assigned pumps)."""
+    """The nozzle's latest closing number: a shift's end, a handover inside a shift (assigned pumps), or the day close if
+    that is later."""
     qs = PumpMeterReading.objects.filter(nozzle=nozzle, kind__in=[PumpMeterReading.Kind.END, PumpMeterReading.Kind.CHECKPOINT])
     if exclude_shift is not None:
         qs = qs.exclude(shift=exclude_shift)
-    return qs.order_by("-reading_at", "created_at").first()
+    return _or_later_day_close(nozzle, qs.order_by("-reading_at", "created_at").first())
 
 
 # Set while an attendant starts from the app (views.do_shift_start): their start numbers come from the pump's last
@@ -227,8 +243,9 @@ FROM_LAST_CLOSING = contextvars.ContextVar("from_last_closing", default=False)
 
 def closing_before(nozzle, at):
     """The pump's latest closing number before a moment: an end, a handover or a day close, on any shift."""
-    return (PumpMeterReading.objects.filter(nozzle=nozzle, kind__in=[PumpMeterReading.Kind.END, PumpMeterReading.Kind.CHECKPOINT], reading_at__lte=at)
-            .order_by("-reading_at", "-created_at").first())
+    row = (PumpMeterReading.objects.filter(nozzle=nozzle, kind__in=[PumpMeterReading.Kind.END, PumpMeterReading.Kind.CHECKPOINT], reading_at__lte=at)
+           .order_by("-reading_at", "-created_at").first())
+    return _or_later_day_close(nozzle, row, at)
 
 
 MAX_LITRES_PER_HOUR = Decimal(3000)  # one nozzle pumping without a pause (50 L a minute); more is a mistyped number

@@ -196,3 +196,26 @@ def test_a_tank_that_rises_with_no_delivery_or_more_than_the_delivery_note_is_al
 
         Delivery.objects.update(litres_received=Decimal(6000))  # the note was misread
     assert open_alerts(a["tenant"], "delivery") == {}
+
+
+# ---- a day close with nobody on the pump ----------------------------------------------------------------------------
+
+def test_after_a_day_close_with_nobody_on_the_pump_the_next_start_comes_from_the_day_close():
+    """Usheokunze, Tue 3 Nov: 4B sold about 99 L after Latifah ended at 18:46 and before the 01:13 day close, with nobody
+    on shift. Abel's morning start came from Latifah's number, so those litres were counted as his."""
+    from apps.operations import dayclose
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    now = timezone.now()
+    run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [400, 0], started_at=now - timedelta(hours=20), ended_at=now - timedelta(hours=14),
+              cash=[("cash", "USD", 600)])
+    with db_context(tenant_id=a["tenant"].id):
+        dayclose.close_day(user=a[Role.MANAGER], station=fc.station, dips=[{"tank": fc.tank, "litres": Decimal(5000)}],
+                           meters=[{"nozzle": fc.nozzles[0], "reading": Decimal(450)}, {"nozzle": fc.nozzles[1], "reading": Decimal(0)}], at=now - timedelta(hours=10))
+    att = client_for(a[Role.ATTENDANT])
+    nozzles = {n["id"]: n for p in att.get("/api/shifts/prefill/").json()["stations"][0]["pumps"] for n in p["nozzles"]}
+    assert nozzles[str(fc.nozzles[0].pk)]["last_reading"] == "450.00"  # the phone prefills the day close
+    sid = att.post("/api/shifts/start/", body(fc, [400, 0]), format="json").json()["id"]  # a phone still showing the old number
+    with db_context(tenant_id=a["tenant"].id):
+        assert PumpMeterReading.objects.get(shift_id=sid, nozzle=fc.nozzles[0], kind="start").reading == Decimal(450)
