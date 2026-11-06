@@ -31,7 +31,18 @@ from apps.stations.models import FuelType, Nozzle, Pump, Station, Tank
 from apps.stations.services import litres_from_dip, price_at
 
 from .adapters import AdapterNotAvailable, get_adapter
-from .models import CashSubmission, DayCloseReading, Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, TankReading, Transaction, UndoRequest
+from .models import (
+    CashSubmission,
+    DayCloseReading,
+    Delivery,
+    PumpAssignment,
+    PumpMeterReading,
+    Shift,
+    ShiftAttendant,
+    TankReading,
+    Transaction,
+    UndoRequest,
+)
 
 TWO = Decimal("0.01")
 THREE = Decimal("0.001")
