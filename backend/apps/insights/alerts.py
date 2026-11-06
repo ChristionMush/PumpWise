@@ -1,7 +1,6 @@
 """Alert rules. `evaluate_tenant` is idempotent: run it as often as you like."""
 import json
 from datetime import timedelta
-
 from decimal import Decimal
 
 from django.core.serializers.json import DjangoJSONEncoder
