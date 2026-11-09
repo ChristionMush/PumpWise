@@ -251,7 +251,7 @@ def test_in_pesnat_mode_the_dipper_closes_the_day_whenever_they_dip(site):
     assert [(n["pump"], n["last_reading"]) for n in status["nozzles"]] == [("Pump 1", "100.00"), ("Pump 1", "50.00")]
     made = att.post("/api/day-close/", body, format="json")
     assert made.status_code == 201, made.content
-    assert made.json()[0]["closed"]["closed_by"] == a[Role.ATTENDANT].full_name and made.json()[0]["latest"] is None
+    assert made.json()["closed"]["closed_by"] == a[Role.ATTENDANT].full_name and made.json()["latest"] is None  # no levels back either
     with db_context(tenant_id=a["tenant"].id):
         close = DayClose.objects.get()
         assert str(close.day) == "2026-10-02" and close.closed_by_id == a[Role.ATTENDANT].pk

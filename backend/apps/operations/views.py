@@ -809,6 +809,11 @@ class ApprovalLogView(APIView):
         return Response(approvals.approval_log(request.user))
 
 
+def _close_status_for(user, station):
+    """Managers and owners see the closes in full (dips included); an attendant allowed to dip never sees tank levels."""
+    return dayclose.close_status(station) if can(user, "tank_records") else dayclose.dipper_status(station)
+
+
 class DayCloseView(APIView):
     """Managers (their stations) and the owner: GET ?station= shows the day to close now and the last closes; POST closes
     the trading day with every tank's dip and every pump's meter (dayclose.py). In Pesnat mode an attendant allowed to
@@ -821,8 +826,7 @@ class DayCloseView(APIView):
         stations = [station] if station else list(scope(Station.objects.filter(status="active"), request.user, "id"))
         for st in stations:
             _check_station(request.user, st)
-        status_of = dayclose.close_status if can(request.user, "tank_records") else dayclose.dipper_status
-        return Response([status_of(st) for st in stations])
+        return Response([_close_status_for(request.user, st) for st in stations])
 
     def post(self, request):
         data = DayCloseInput(data=request.data)
@@ -830,7 +834,7 @@ class DayCloseView(APIView):
         d = data.validated_data
         _check_station(request.user, d["station"])
         dayclose.close_day(user=request.user, station=d["station"], dips=d["dips"], meters=d["meters"], at=d.get("at"), note=d["note"], request=request)
-        return Response(dayclose.close_status(d["station"]), status=status.HTTP_201_CREATED)
+        return Response(_close_status_for(request.user, d["station"]), status=status.HTTP_201_CREATED)
 
 
 class DayCloseCorrectView(APIView):

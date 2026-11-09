@@ -292,7 +292,7 @@ describe("Pesnat mode: the owner lets an attendant dip (manager not on site)", (
     const { calls } = mockApi({
       "GET /api/auth/me/": { body: { user: dipper, tenant: pesnat } }, "GET /api/shifts/prefill/": { body: { stations: [station] } },
       "GET /api/day-close/": { body: [open] }, "POST /api/sync/": { body: { results: [] } },
-      "POST /api/day-close/": { status: 201, body: [{ ...open, closed: { id: "c1", day: "2026-11-10", closed_at: "2026-11-10T08:15:00Z", closed_by: "Tendai" } }] },
+      "POST /api/day-close/": { status: 201, body: { ...open, closed: { id: "c1", day: "2026-11-10", closed_at: "2026-11-10T08:15:00Z", closed_by: "Tendai" } } },
     });
     renderApp("/dip");
     expect(await screen.findByRole("heading", { name: "Dip and close the day" })).toBeInTheDocument();
