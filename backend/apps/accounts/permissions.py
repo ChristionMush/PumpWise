@@ -9,7 +9,8 @@ Tank side (dips, deliveries, tank levels, reconciliation) is for managers and ow
 who sells fuel does not also measure what is left in the tank, so attendants are refused even read
 access, and `strip_restricted` removes tank fields from anything an attendant receives. The one exception
 is the owner's choice, in Pesnat mode only: an attendant the owner allows to dip (User.can_dip, see GRANTS)
-records dips, and only that: no levels, history, deliveries or day close.
+records dips and closes the day whenever they dip (every tank and every pump's meter), and only that: no levels,
+history, deliveries, or correcting a close.
 """
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -44,6 +45,7 @@ CAPABILITIES = {
     # tank side: never attendants (rule 11)
     "tank_records": {O, M},  # dips and deliveries, create and read
     "record_dips": {O, M},  # record a dip (also attendants the owner allows, see GRANTS)
+    "close_day": {O, M},  # close the trading day: every tank's dip and every pump's meter (also attendants allowed to dip)
     "view_tank_levels": {O, M},
     "view_reconciliation": {O, M},
     "view_reports": {O, M},
@@ -54,7 +56,7 @@ CAPABILITIES = {
 
 # Granted to one attendant by the owner, on top of their role, while the business is in Pesnat mode:
 # capability -> the User flag that grants it.
-GRANTS = {"record_dips": "can_dip"}
+GRANTS = {"record_dips": "can_dip", "close_day": "can_dip"}
 
 # When a tenant is suspended these roles are locked behind "pay to reactivate"; attendants keep recording.
 LOCKED_WHEN_SUSPENDED = {O, M}

@@ -10,6 +10,8 @@ interface CloseCard { id: string; day: string; closed_at: string; closed_by: str
 interface CloseStatus {
   station: string; day: string; closed: CloseCard | null; recent: CloseCard[];
   latest: (CloseCard & { dips: { tank: string; dip_mm: string | null; litres: string }[]; meters: { nozzle: string; reading: string }[] }) | null;
+  // Pesnat, an attendant allowed to dip: every pump's nozzles (their own phone lists only their pumps)
+  nozzles?: { id: string; pump: string; label: string; fuel_code: string; last_reading: string | null }[];
 }
 
 const dayName = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
@@ -19,10 +21,12 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-di
 
 /** Managers: close the trading day at about 21:00 (every tank's dip and every pump's meter in one go), record fuel
  * deliveries, and take a spot dip if needed. The day close is what the daily figures and the daily report run on.
- * An attendant the owner allows to dip sees only the dip form (no levels, deliveries or day close). */
+ * Pesnat mode (no manager on site): no set time, the day closes whenever they dip; an attendant the owner allows to
+ * dip closes it the same way and may take a spot dip (no levels, past closes or deliveries). */
 export default function Dip() {
-  const { user } = useAuth();
+  const { user, tenant } = useAuth();
   const dipOnly = user?.role === "attendant";
+  const pesnat = Boolean(tenant?.pesnat_mode);
   const [stations, setStations] = useState<StationInfo[]>([]);
   const [stationId, setStationId] = useState("");
   const [status, setStatus] = useState<CloseStatus[]>([]);
@@ -41,12 +45,14 @@ export default function Dip() {
   const loadStatus = () => api<CloseStatus[]>("/api/day-close/").then(setStatus).catch(() => undefined);
   useEffect(() => {
     void loadPrefill().then((s) => { setStations(s); setStationId(s[0]?.id ?? ""); setTankId(s[0]?.tanks?.[0]?.id ?? ""); });
-    if (!dipOnly) void loadStatus();
-  }, [dipOnly]);
+    void loadStatus();
+  }, []);
   const station = stations.find((s) => s.id === stationId);
   const stationTanks = station?.tanks ?? [];
-  const nozzles = (station?.pumps ?? []).flatMap((p) => p.nozzles.map((n) => ({ ...n, pump: p })));
   const today = status.find((s) => s.station === stationId);
+  const nozzles = today?.nozzles
+    ? today.nozzles.map((n) => ({ id: n.id, label: n.label, fuel_code: n.fuel_code, last_reading: n.last_reading, pump: { name: n.pump } }))
+    : (station?.pumps ?? []).flatMap((p) => p.nozzles.map((n) => ({ ...n, pump: p })));
   const tanks = stations.flatMap((s) => (s.tanks ?? []).map((t) => ({ ...t, station: s.name })));
   const tank = tanks.find((t) => t.id === tankId);
 
@@ -134,11 +140,54 @@ export default function Dip() {
       <label>{tank?.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={litres} onChange={(e) => setLitres(e.target.value)} /></label>
       <button className="btn">Save dip</button></form>
   );
+  const closeForm = (
+    <form onSubmit={closeDay} className="card form" aria-label="Close the day">
+      <h2>{correcting && today?.latest ? `Correct the day close of ${dayName(today.latest.day)}` : `Close the day${today ? `: ${dayName(today.day)}` : ""}`}</h2>
+      {!correcting && today?.closed && <p className="ok-note">Closed at {time(today.closed.closed_at)}{today.closed.closed_by ? ` by ${today.closed.closed_by}` : ""}.</p>}
+      {correcting && today?.latest ? (
+        <div className="row gap">
+          <p className="muted" style={{ flex: "1 1 220px" }}>Closed at {time(today.latest.closed_at)}{today.latest.closed_by ? ` by ${today.latest.closed_by}` : ""}. Change only what was wrong. Each change is recorded in Dip history.</p>
+          <button type="button" className="btn" onClick={stopCorrecting}>Cancel</button>
+        </div>
+      ) : today?.latest && <button type="button" className="btn" onClick={startCorrecting}>Correct the last close ({dayName(today.latest.day)})</button>}
+      {(correcting || !today?.closed) && (<>
+        {!correcting && <p className="muted">{pesnat ? "Whenever you dip" : "At about 21:00"}, pause the pumps, dip every tank and read every pump's meter, then close the day. The day's sales, fuel check and report run from one close to the next.</p>}
+        <h3>Tank dips</h3>
+        {stationTanks.map((t) => (
+          <div key={t.id} className="row gap">
+            <strong>{t.name} <span className="muted">· {t.fuel_code}</span></strong>
+            <label>Dip (mm)<input inputMode="decimal" value={dips[t.id]?.mm ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: e.target.value, litres: dips[t.id]?.litres ?? "" } })} /></label>
+            <label>{t.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={dips[t.id]?.litres ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: dips[t.id]?.mm ?? "", litres: e.target.value } })} /></label>
+          </div>
+        ))}
+        <h3>Pump meters</h3>
+        {[...new Set(nozzles.map((n) => n.fuel_code))].map((fuel) => (
+          <fieldset key={fuel} className="fuel-group" aria-label={`${fuelName(fuel)} pump meters`}>
+            <legend>{fuelName(fuel)}</legend>
+            {nozzles.filter((n) => n.fuel_code === fuel).map((n) => (
+              <label key={n.id}>{n.pump.name} · {n.label}{n.last_reading && !correcting ? <span className="muted"> (last {n.last_reading})</span> : null}
+                <input inputMode="decimal" value={meters[n.id] ?? ""} onChange={(e) => setMeters({ ...meters, [n.id]: e.target.value.replace(",", ".") })} />
+              </label>
+            ))}
+          </fieldset>
+        ))}
+        <label>{correcting ? "What was wrong (optional)" : "Note (optional)"}<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+        <button className="btn primary" disabled={busy}>{correcting ? "Save the correction" : "Close the day"}</button>
+        <p className="muted">Needs signal. Attendants on shift keep working their pumps: their part and their cash are not affected.</p>
+      </>)}
+      {today && today.recent.length > 0 && (
+        <details><summary className="muted">Last closes</summary>
+          <ul className="plain">{today.recent.map((c) => <li key={c.id}>{dayName(c.day)}: {time(c.closed_at)}{c.closed_by ? ` · ${c.closed_by}` : ""}</li>)}</ul></details>
+      )}
+    </form>
+  );
   if (dipOnly) {
     return (
       <>
-        <h1>Tank dip</h1>
-        <section className="card form">{dipForm}</section>
+        <h1>Dip and close the day</h1>
+        {stations.length > 1 && <label>Station<select value={stationId} onChange={(e) => setStationId(e.target.value)}>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
+        {closeForm}
+        <details className="card form"><summary><strong>Spot dip</strong> <span className="muted">· a dip that does not close the day</span></summary>{dipForm}</details>
         <ErrorNote message={error} />{msg && <p role="status" className="ok-note">{msg}</p>}
       </>
     );
@@ -149,45 +198,7 @@ export default function Dip() {
       <div className="row between"><h1>Day close, dips and deliveries</h1><Link to="/dip-history">See dip history</Link></div>
       {stations.length > 1 && <label>Station<select value={stationId} onChange={(e) => setStationId(e.target.value)}>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
 
-      <form onSubmit={closeDay} className="card form" aria-label="Close the day">
-        <h2>{correcting && today?.latest ? `Correct the day close of ${dayName(today.latest.day)}` : `Close the day${today ? `: ${dayName(today.day)}` : ""}`}</h2>
-        {!correcting && today?.closed && <p className="ok-note">Closed at {time(today.closed.closed_at)}{today.closed.closed_by ? ` by ${today.closed.closed_by}` : ""}.</p>}
-        {correcting && today?.latest ? (
-          <div className="row gap">
-            <p className="muted" style={{ flex: "1 1 220px" }}>Closed at {time(today.latest.closed_at)}{today.latest.closed_by ? ` by ${today.latest.closed_by}` : ""}. Change only what was wrong. Each change is recorded in Dip history.</p>
-            <button type="button" className="btn" onClick={stopCorrecting}>Cancel</button>
-          </div>
-        ) : today?.latest && <button type="button" className="btn" onClick={startCorrecting}>Correct the last close ({dayName(today.latest.day)})</button>}
-        {(correcting || !today?.closed) && (<>
-          {!correcting && <p className="muted">At about 21:00, pause the pumps, dip every tank and read every pump's meter, then close the day. The day's sales, fuel check and report run from one close to the next.</p>}
-          <h3>Tank dips</h3>
-          {stationTanks.map((t) => (
-            <div key={t.id} className="row gap">
-              <strong>{t.name} <span className="muted">· {t.fuel_code}</span></strong>
-              <label>Dip (mm)<input inputMode="decimal" value={dips[t.id]?.mm ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: e.target.value, litres: dips[t.id]?.litres ?? "" } })} /></label>
-              <label>{t.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={dips[t.id]?.litres ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: dips[t.id]?.mm ?? "", litres: e.target.value } })} /></label>
-            </div>
-          ))}
-          <h3>Pump meters</h3>
-          {[...new Set(nozzles.map((n) => n.fuel_code))].map((fuel) => (
-            <fieldset key={fuel} className="fuel-group" aria-label={`${fuelName(fuel)} pump meters`}>
-              <legend>{fuelName(fuel)}</legend>
-              {nozzles.filter((n) => n.fuel_code === fuel).map((n) => (
-                <label key={n.id}>{n.pump.name} · {n.label}{n.last_reading && !correcting ? <span className="muted"> (last {n.last_reading})</span> : null}
-                  <input inputMode="decimal" value={meters[n.id] ?? ""} onChange={(e) => setMeters({ ...meters, [n.id]: e.target.value.replace(",", ".") })} />
-                </label>
-              ))}
-            </fieldset>
-          ))}
-          <label>{correcting ? "What was wrong (optional)" : "Note (optional)"}<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
-          <button className="btn primary" disabled={busy}>{correcting ? "Save the correction" : "Close the day"}</button>
-          <p className="muted">Needs signal. Attendants on shift keep working their pumps: their part and their cash are not affected.</p>
-        </>)}
-        {today && today.recent.length > 0 && (
-          <details><summary className="muted">Last closes</summary>
-            <ul className="plain">{today.recent.map((c) => <li key={c.id}>{dayName(c.day)}: {time(c.closed_at)}{c.closed_by ? ` · ${c.closed_by}` : ""}</li>)}</ul></details>
-        )}
-      </form>
+      {closeForm}
 
       <form onSubmit={saveDelivery} className="card form"><h2>Fuel delivery received</h2>
         <label>Fuel received<select value={delivered.fuel} onChange={(e) => setDelivered({ ...delivered, fuel: e.target.value, tank: "" })}>

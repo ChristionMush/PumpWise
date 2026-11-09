@@ -279,22 +279,37 @@ describe("Pesnat mode: the owner lets an attendant dip (manager not on site)", (
     expect(screen.queryByLabelText("Tendai may dip tanks")).not.toBeInTheDocument();
   });
 
-  it("gives an attendant allowed to dip a Dip screen with only the dip on it", async () => {
+  it("lets an attendant allowed to dip close the day whenever they dip, with every pump's meter", async () => {
     signedIn();
     localStorage.setItem("fs_tutorial_done", "1");
     const dipper = { ...tendai, must_change_password: false, tenant_id: "t1", can_dip: true };
-    const station = { id: "st1", name: "Main", pricing_currency: "USD", open_shift_id: null, pumps: [], prices: [],
+    // on assigned pumps their own phone lists only their pump; the close lists every pump at the station
+    const station = { id: "st1", name: "Main", pricing_currency: "USD", open_shift_id: null, prices: [],
+      pumps: [{ id: "pu1", name: "Pump 1", nozzles: [{ id: "n1", number: 1, label: "Petrol", meter_max: "99999999.99", last_reading: "1000.00", fuel_type: "p", fuel_code: "PETROL" }] }],
       tanks: [{ id: "tk1", name: "Tank 1", fuel_code: "PETROL", has_calibration: true }] };
-    mockApi({ "GET /api/auth/me/": { body: { user: dipper, tenant: pesnat } }, "GET /api/shifts/prefill/": { body: { stations: [station] } }, "POST /api/sync/": { body: { results: [] } } });
+    const open = { station: "st1", day: "2026-11-10", closed: null, recent: [], latest: null,
+      nozzles: [{ id: "n1", pump: "Pump 1", label: "Petrol", fuel_code: "PETROL", last_reading: "1000.00" }, { id: "n2", pump: "Pump 2", label: "Petrol", fuel_code: "PETROL", last_reading: "2000.00" }] };
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: dipper, tenant: pesnat } }, "GET /api/shifts/prefill/": { body: { stations: [station] } },
+      "GET /api/day-close/": { body: [open] }, "POST /api/sync/": { body: { results: [] } },
+      "POST /api/day-close/": { status: 201, body: [{ ...open, closed: { id: "c1", day: "2026-11-10", closed_at: "2026-11-10T08:15:00Z", closed_by: "Tendai" } }] },
+    });
     renderApp("/dip");
-    expect(await screen.findByRole("heading", { name: "Tank dip" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Dip and close the day" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dip" })).toBeInTheDocument();
-    expect(screen.queryByText(/Close the day/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Whenever you dip, pause the pumps/)).toBeInTheDocument();
     expect(screen.queryByText(/Fuel delivery received/)).not.toBeInTheDocument();
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText("Dip height (mm)"), "500");
-    await user.click(screen.getByRole("button", { name: "Save dip" }));
-    expect(await screen.findByText("Dip saved.")).toBeInTheDocument();
+    await user.type(await screen.findByLabelText("Dip (mm)"), "1200");
+    await user.type(screen.getByLabelText(/Pump 1 · Petrol/), "1100");
+    await user.type(screen.getByLabelText(/Pump 2 · Petrol/), "2050");
+    await user.click(screen.getByRole("button", { name: "Close the day" }));
+    expect(await screen.findByText("Main: the day is closed.")).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "POST" && c.path === "/api/day-close/")!.body).toEqual({
+      station: "st1", note: "", dips: [{ tank: "tk1", dip_mm: "1200" }], meters: [{ nozzle: "n1", reading: "1100" }, { nozzle: "n2", reading: "2050" }] });
+    // a dip that does not close the day is still there
+    await user.click(screen.getByText("Spot dip"));
+    expect(screen.getByRole("button", { name: "Save dip" })).toBeInTheDocument();
   });
 
   it("keeps an attendant off the Dip screen once Pesnat mode is off", async () => {

@@ -213,7 +213,6 @@ def test_an_attendant_allowed_to_dip_records_dips_and_nothing_else_on_the_tank_s
     for url in tank_get_endpoints(site):  # still no levels, history, deliveries or reports
         assert att.get(url).status_code == 403, url
     assert att.post("/api/deliveries/", {**body, "supplier": "Zuva", "note_number": "N-9"}, format="json").status_code == 403
-    assert att.post("/api/day-close/", {"station": str(fc.station.pk), "dips": [], "meters": []}, format="json").status_code == 403
     # the phone learns which tanks to dip, never their levels
     tanks = att.get("/api/shifts/prefill/").json()["stations"][0]["tanks"]
     assert tanks == [{"id": str(fc.tank.pk), "name": fc.tank.name, "fuel_code": fc.fuel.code, "has_calibration": True}]
@@ -234,3 +233,31 @@ def test_turning_pesnat_mode_off_stops_attendants_dipping_and_on_again_restores_
     assert att.get("/api/auth/me/").json()["tenant"]["pesnat_mode"] is False
     pesnat(site)  # the owner's choice was kept
     assert att.post("/api/tank-readings/", body, format="json").status_code == 201
+
+
+def test_in_pesnat_mode_the_dipper_closes_the_day_whenever_they_dip(site):
+    """No set 21:00: the day ends when the attendant allowed to dip dips every tank and reads every pump."""
+    from apps.operations.models import DayClose
+
+    a, fc = site["a"], site["fc"]
+    body = {"station": str(fc.station.pk), "at": "2026-10-02T13:30:00Z",  # 15:30 in Harare: ends 2 Oct's trading day then, not at 21:00
+            "dips": [{"tank": str(fc.tank.pk), "dip_mm": "500"}],
+            "meters": [{"nozzle": str(n.pk), "reading": v} for n, v in zip(fc.nozzles, ("120", "60"), strict=True)]}
+    plain = client_for(a[Role.ATTENDANT])
+    assert plain.post("/api/day-close/", body, format="json").status_code == 403  # not allowed to dip: never closes
+    att = allow_dipping(site)
+    status = att.get("/api/day-close/").json()[0]
+    assert status["latest"] is None and status["recent"] == [] and "dips" not in str(status)  # no past dips or levels
+    assert [(n["pump"], n["last_reading"]) for n in status["nozzles"]] == [("Pump 1", "100.00"), ("Pump 1", "50.00")]
+    made = att.post("/api/day-close/", body, format="json")
+    assert made.status_code == 201, made.content
+    assert made.json()[0]["closed"]["closed_by"] == a[Role.ATTENDANT].full_name and made.json()[0]["latest"] is None
+    with db_context(tenant_id=a["tenant"].id):
+        close = DayClose.objects.get()
+        assert str(close.day) == "2026-10-02" and close.closed_by_id == a[Role.ATTENDANT].pk
+    again = att.post("/api/day-close/", body, format="json")
+    assert again.status_code == 400 and "already closed" in str(again.json())
+    # correcting a close stays with the manager and the owner
+    assert att.patch(f"/api/day-close/{close.pk}/", {"dips": [], "meters": [], "note": ""}, format="json").status_code == 403
+    pesnat(site, on=False)
+    assert att.get("/api/day-close/").status_code == 403

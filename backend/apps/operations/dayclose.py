@@ -1,5 +1,6 @@
 """Closing the trading day at a station (about 21:00): the pumps pause, the manager dips every tank and reads every
-pump's meter, all in one entry. That moment ends the day (tradingday.py) for the sales, the fuel check and the daily
+pump's meter, all in one entry. In Pesnat mode (no manager on site) there is no set time: an attendant the owner
+allows to dip closes the day whenever they dip, with the same entry. That moment ends the day (tradingday.py) for the sales, the fuel check and the daily
 report, so the tanks and the meters line up exactly.
 
 * Every tank and every nozzle at the station is needed; a meter lower than its last number is refused (a typo), unless
@@ -48,7 +49,7 @@ def working_at(nozzle, at):
 def close_day(*, user, station, dips, meters, at=None, note="", request=None):
     """dips: [{"tank", "litres" | "dip_mm"}] for every tank; meters: [{"nozzle", "reading"}] for every nozzle.
     at: when the close was done; an earlier day can be closed afterwards (its sales are re-split at that moment)."""
-    require(user, "tank_records", "Only a manager or the owner closes the day.")
+    require(user, "close_day", "Only a manager or the owner closes the day.")
     now = timezone.now()
     at = at or now
     if at > now + timedelta(minutes=5):
@@ -186,6 +187,21 @@ def correct_close(*, user, close, dips, meters, note="", request=None):
 
 def _txt(v):
     return format(Decimal(v).normalize(), "f") if v is not None else None
+
+
+def dipper_status(station):
+    """Close status for an attendant allowed to dip (Pesnat mode): whether the day is closed, and every pump's nozzles
+    with their last number (on assigned pumps their own phone lists only their pumps). Never tank levels or past dips."""
+    day = tradingday.day_of_close(timezone.now())
+    current = DayClose.objects.filter(station=station, day=day).select_related("closed_by").first()
+    nozzles = []
+    for n in Nozzle.objects.filter(pump__station=station).select_related("pump", "tank__fuel_type").order_by("pump__name", "number"):
+        last = services.last_end_reading(n)
+        nozzles.append({"id": str(n.pk), "pump": n.pump.name, "label": str(n), "fuel_code": n.tank.fuel_type.code,
+                        "last_reading": str(last.reading) if last else None})
+    closed = {"id": str(current.pk), "day": current.day.isoformat(), "closed_at": current.closed_at,
+              "closed_by": current.closed_by.full_name if current.closed_by_id else None} if current else None
+    return {"station": str(station.pk), "day": day.isoformat(), "closed": closed, "recent": [], "latest": None, "nozzles": nozzles}
 
 
 def close_status(station):
