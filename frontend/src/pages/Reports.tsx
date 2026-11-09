@@ -37,7 +37,7 @@ export default function Reports() {
       {user?.role === "owner" && <AccountingPack stations={stations} />}
       {!data && !error && <p className="muted center">Loading…</p>}
       {data && tab === "days" && (data.days.length ? (<>
-        <p className="muted">Each trading day runs 21:00 to 21:00 and is named by the day it closes. Open a day's shifts for the detail.</p>
+        <p className="muted">Each trading day runs from one daily dip (day close) to the next and is named by the day it closes. Open a day's shifts for the detail.</p>
         {data.days.map((r: any) => <DayReport key={`${r.day}-${r.station}`} r={r} />)}</>)
         : <p className="muted center">No days in this period.</p>)}
       {data && tab === "sales" && (<>

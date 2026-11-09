@@ -82,7 +82,7 @@ function DailyReports() {
       onTouchEnd={(e) => { const dx = e.changedTouches[0].clientX - touchX.current; if (reports.length > 1 && Math.abs(dx) > 60) choose(index + (dx < 0 ? 1 : -1)); }}>
       {picked || r.closed
         ? <DayReport r={r} of={{ index: index + 1, count: reports.length }} />
-        : <p className="card muted">{r.station_name}: no day has been closed yet. The manager closes the day on the Dip screen at about 21:00.</p>}
+        : <p className="card muted">{r.station_name}: no day has been closed yet. The day closes on the Dip screen when the daily dip is recorded.</p>}
     </div>
   </>);
 }

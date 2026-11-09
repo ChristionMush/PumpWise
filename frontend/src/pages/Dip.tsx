@@ -19,14 +19,14 @@ const dayName = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(
 const fuelName = (code: string) => code.charAt(0) + code.slice(1).toLowerCase();
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-/** Managers: close the trading day at about 21:00 (every tank's dip and every pump's meter in one go), record fuel
+/** Managers: close the trading day with the day's dip, once a day at the time the business dips (every tank's dip and
+ * every pump's meter in one go), record fuel
  * deliveries, and take a spot dip if needed. The day close is what the daily figures and the daily report run on.
  * Pesnat mode (no manager on site): no set time, the day closes whenever they dip; an attendant the owner allows to
  * dip closes it the same way and may take a spot dip (no levels, past closes or deliveries). */
 export default function Dip() {
-  const { user, tenant } = useAuth();
+  const { user } = useAuth();
   const dipOnly = user?.role === "attendant";
-  const pesnat = Boolean(tenant?.pesnat_mode);
   const [stations, setStations] = useState<StationInfo[]>([]);
   const [stationId, setStationId] = useState("");
   const [status, setStatus] = useState<CloseStatus[]>([]);
@@ -151,7 +151,7 @@ export default function Dip() {
         </div>
       ) : today?.latest && <button type="button" className="btn" onClick={startCorrecting}>Correct the last close ({dayName(today.latest.day)})</button>}
       {(correcting || !today?.closed) && (<>
-        {!correcting && <p className="muted">{pesnat ? "Whenever you dip" : "At about 21:00"}, pause the pumps, dip every tank and read every pump's meter, then close the day. The day's sales, fuel check and report run from one close to the next.</p>}
+        {!correcting && <p className="muted">The dip is recorded once a day: pause the pumps, dip every tank and read every pump's meter, then close the day. The day's sales, fuel check and report run from one close to the next.</p>}
         <h3>Tank dips</h3>
         {stationTanks.map((t) => (
           <div key={t.id} className="row gap">

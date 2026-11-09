@@ -297,7 +297,7 @@ describe("Pesnat mode: the owner lets an attendant dip (manager not on site)", (
     renderApp("/dip");
     expect(await screen.findByRole("heading", { name: "Dip and close the day" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dip" })).toBeInTheDocument();
-    expect(screen.getByText(/Whenever you dip, pause the pumps/)).toBeInTheDocument();
+    expect(screen.getByText(/The dip is recorded once a day: pause the pumps/)).toBeInTheDocument();
     expect(screen.queryByText(/Fuel delivery received/)).not.toBeInTheDocument();
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText("Dip (mm)"), "1200");
