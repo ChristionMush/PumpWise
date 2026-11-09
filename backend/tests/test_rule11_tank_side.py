@@ -172,7 +172,6 @@ def allow_dipping(site, on=True):
     att = site["a"][Role.ATTENDANT]
     res = client_for(site["a"][Role.OWNER]).patch(f"/api/users/{att.pk}/", {"can_dip": on}, format="json")
     assert res.status_code == 200 and res.json()["can_dip"] is on
-    att.refresh_from_db()
     return client_for(att)
 
 

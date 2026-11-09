@@ -9,7 +9,7 @@ from apps.audit.models import AuditLog
 from apps.core.db import db_context
 from apps.operations import rota
 from apps.operations.models import PumpRota, PumpRotaHolder
-from apps.stations.models import Pump
+from apps.stations.models import Pump, Station
 
 from .helpers import client_for, make_user, platform_client
 from .test_multi_attendant import T0, T_SWAP, assigned_site, cash, readings, start
@@ -198,13 +198,14 @@ def test_a_pump_the_rota_allocated_is_not_listed_to_allocate():
     sid = start(ca, fc, [0, 0], started_at=T0).json()["id"]
     ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_SWAP, "readings": readings(fc.nozzles, [50, 0]), "cash": cash("75")}, format="json")
     with db_context(tenant_id=a["tenant"].id):
-        assert [g["pump_name"] for g in pump_gaps([fc.station]) if g["kind"] == "allocate"] == ["Pump 1"]
+        station = Station.objects.get(pk=fc.station.pk)  # now on assigned pumps (fc.station is the object from before)
+        assert [g["pump_name"] for g in pump_gaps([station]) if g["kind"] == "allocate"] == ["Pump 1"]
         # the hourly run gave Pump 1 to the night person for the shift coming up
         weekly = PumpRota.objects.get()
         nxt, part = rota.shift_at(timezone.now() + rota.LEAD)
         PumpRotaHolder.objects.create(tenant_id=a["tenant"].id, rota=weekly, pump=fc.pump, crew=rota.crew_of(weekly, nxt), part=part, user=night)
         Pump.objects.filter(pk=fc.pump.pk).update(assigned_to=night)
-        assert [g for g in pump_gaps([fc.station]) if g["kind"] == "allocate"] == []
+        assert [g for g in pump_gaps([station]) if g["kind"] == "allocate"] == []
 
 
 def test_the_rota_is_part_of_pesnat_mode_and_stops_without_it():

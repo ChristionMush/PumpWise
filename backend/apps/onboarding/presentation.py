@@ -137,8 +137,10 @@ def generate(*, now=None, days=30, seed=11, name=None, company=PROFILE):
             brand, model, year = spec.get("make") or (rnd.choice(["Wayne", "Gilbarco", "Tokheim"]), f"M{rnd.randint(100, 900)}", rnd.randint(2010, 2022))
             pumps.append({"key": pkey, "name": pname, "brand": brand, "model": model, "year": year, "nozzles": nozzles, "holder": holder,
                           **({"assigned_to": f"{key}-{holder['day']}"} if assigned else {})})
+        # the old price starts before both the data and a fixed price change (Litrix's 16 Oct falls before the data once it is weeks old)
+        old_from = min(datetime.combine(first, datetime.min.time()), rise_at) - timedelta(days=20)
         prices = [{"fuel": code, "currency": "USD", "price": str(p), "from": _t(when)}
-                  for code, (old, new) in prices_by.items() for p, when in ((old, datetime.combine(first, datetime.min.time()) - timedelta(days=20)), (new, rise_at))]
+                  for code, (old, new) in prices_by.items() for p, when in ((old, old_from), (new, rise_at))]
         stations.append({"key": key, "name": spec["name"], "address": spec["address"], "pricing_currency": "USD",
                          "attendants_mode": "multiple" if assigned else "single", "assignment_mode": "assigned" if assigned else "shared",
                          "tanks": tanks, "pumps": pumps, "prices": prices})

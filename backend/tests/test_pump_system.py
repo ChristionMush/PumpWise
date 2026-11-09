@@ -18,7 +18,7 @@ def test_a_business_created_with_assigned_pumps_gets_them_on_every_station():
     assert res.status_code == 201, res.content
     body = res.json()
     assert body["pump_system"] == "assigned"
-    assert body["features"] == {"multi_attendant_enabled": True, "pump_assignment_enabled": True}
+    assert body["features"] == {"multi_attendant_enabled": True, "pump_assignment_enabled": True, "pesnat_mode": False}
     assert {(s["attendants_mode"], s["assignment_mode"]) for s in body["stations"]} == {("multiple", "assigned")}
     # the owner cannot add a station; one the platform adds later follows the same system
     assert owner_of(body["id"]).post("/api/stations/", {"name": "Avondale"}, format="json").status_code == 403
@@ -52,7 +52,7 @@ def test_shared_pumps_with_several_attendants():
     assert res.status_code == 201, res.content
     body = res.json()
     assert body["pump_system"] == "shared_multi"
-    assert body["features"] == {"multi_attendant_enabled": True, "pump_assignment_enabled": False}
+    assert body["features"] == {"multi_attendant_enabled": True, "pump_assignment_enabled": False, "pesnat_mode": False}
     assert {(s["attendants_mode"], s["assignment_mode"]) for s in body["stations"]} == {("multiple", "shared")}
     # stations the platform adds later follow it
     added = c.post(f"/api/platform/tenants/{body['id']}/stations/", {"name": "Mabelreign"}, format="json")
