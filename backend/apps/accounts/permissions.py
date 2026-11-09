@@ -7,7 +7,9 @@ Hiding a button in the app is never the protection; this module is.
 
 Tank side (dips, deliveries, tank levels, reconciliation) is for managers and owners only. The person
 who sells fuel does not also measure what is left in the tank, so attendants are refused even read
-access, and `strip_restricted` removes tank fields from anything an attendant receives.
+access, and `strip_restricted` removes tank fields from anything an attendant receives. The one exception
+is the owner's choice, in Pesnat mode only: an attendant the owner allows to dip (User.can_dip, see GRANTS)
+records dips, and only that: no levels, history, deliveries or day close.
 """
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -41,6 +43,7 @@ CAPABILITIES = {
     "allow_undo": {O, M},  # allow or refuse an attendant's request to change what they handed in (managers: their stations)
     # tank side: never attendants (rule 11)
     "tank_records": {O, M},  # dips and deliveries, create and read
+    "record_dips": {O, M},  # record a dip (also attendants the owner allows, see GRANTS)
     "view_tank_levels": {O, M},
     "view_reconciliation": {O, M},
     "view_reports": {O, M},
@@ -48,6 +51,10 @@ CAPABILITIES = {
     "manage_alerts": {O, M},
     "onboarding": {O, M},
 }
+
+# Granted to one attendant by the owner, on top of their role, while the business is in Pesnat mode:
+# capability -> the User flag that grants it.
+GRANTS = {"record_dips": "can_dip"}
 
 # When a tenant is suspended these roles are locked behind "pay to reactivate"; attendants keep recording.
 LOCKED_WHEN_SUSPENDED = {O, M}
@@ -60,7 +67,12 @@ TANK_FIELDS = {"tanks", "tank_levels", "last_litres", "current_litres", "level_p
 def can(user, capability):
     if capability not in CAPABILITIES:
         raise KeyError(f"Unknown capability '{capability}'")
-    return bool(user and getattr(user, "is_authenticated", False) and user.role in CAPABILITIES[capability])
+    if not (user and getattr(user, "is_authenticated", False)):
+        return False
+    if user.role in CAPABILITIES[capability]:
+        return True
+    flag = GRANTS.get(capability)
+    return bool(flag and user.role == A and getattr(user, flag, False) and user.tenant.pesnat_mode)
 
 
 def require(user, capability, message=None):

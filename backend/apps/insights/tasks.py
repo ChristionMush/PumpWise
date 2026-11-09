@@ -28,6 +28,15 @@ def refresh_rollups():
     return for_each_tenant(refresh)
 
 
+
+@shared_task
+def apply_pump_rotas():
+    """Weekly pump rotas: an hour before each shift change, the pumps go to who that crew had on them last time."""
+    from apps.operations.rota import apply_tenant_rotas
+
+    return for_each_tenant(apply_tenant_rotas)
+
+
 def send_summary_for(tenant_id):
     from apps.tenants.services import get_settings
 

@@ -33,6 +33,8 @@ urlpatterns = [
     path("deliveries/", views.DeliveryView.as_view()),
     path("day-close/", views.DayCloseView.as_view()),
     path("day-close/<uuid:pk>/", views.DayCloseCorrectView.as_view()),
+    path("pump-rotas/", views.PumpRotaView.as_view()),
+    path("pump-rotas/<uuid:station>/", views.PumpRotaView.as_view()),
     path("readings/<str:kind>/<str:pk>/photo/", views.ReadingPhotoView.as_view()),
     path("media/<str:model>/<str:pk>/<str:field>/", views.MediaView.as_view()),
     path("sync/", views.SyncView.as_view()),

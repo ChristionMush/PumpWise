@@ -32,7 +32,7 @@ from .utils import normalize_identifier
 
 # Verifying a password for an unknown user costs the same as for a known one (no timing oracle).
 _DUMMY_HASH = make_password("not-a-real-password")
-AUDITED_USER_FIELDS = ("full_name", "email", "phone", "role", "is_active", "preferred_language")
+AUDITED_USER_FIELDS = ("full_name", "email", "phone", "role", "is_active", "preferred_language", "can_dip")
 
 
 def _branding():
@@ -107,7 +107,7 @@ class MeView(APIView):
         if user.tenant_id:
             t = user.tenant
             tenant = {"id": str(t.id), "name": t.name, "slug": t.slug, "status": t.status, "is_demo": t.is_demo,
-                      "trial_expires_at": t.trial_expires_at}
+                      "trial_expires_at": t.trial_expires_at, "pesnat_mode": t.pesnat_mode}
         branding = _branding()
         if user.tenant_id:
             from apps.tenants.models import TenantSettings

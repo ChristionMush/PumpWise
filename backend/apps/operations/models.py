@@ -134,6 +134,38 @@ class PumpAssignment(TenantOwnedModel):
         ]
 
 
+class PumpRota(TenantOwnedModel):
+    """Assigned pumps worked by two crews, one week on and one week off (each week some on day shift, some on night).
+    The manager assigns pumps by hand as usual; each assignment is remembered for its crew and shift (PumpRotaHolder)
+    and repeated by itself before every later shift change of that crew (see rota.py)."""
+
+    station = models.ForeignKey("stations.Station", on_delete=models.PROTECT, related_name="+")
+    on = models.BooleanField(default=True)
+    # The crews swap at 07:00 every 7 days from this day; the crew on that week is crew A.
+    week_starts = models.DateField()
+    applied_slot = models.CharField(max_length=20, blank=True, default="")  # the last shift the pumps were switched for
+
+    class Meta:
+        constraints = [models.UniqueConstraint(F("station"), condition=Q(deleted_at__isnull=True), name="pumprota_one_per_station")]
+
+
+class PumpRotaHolder(TenantOwnedModel):
+    """Who a crew has on a pump for its day or night shift, learned from the manager's last assignment for it."""
+
+    class Part(models.TextChoices):
+        DAY = "day", "Day shift"
+        NIGHT = "night", "Night shift"
+
+    rota = models.ForeignKey(PumpRota, on_delete=models.PROTECT, related_name="holders")
+    pump = models.ForeignKey("stations.Pump", on_delete=models.PROTECT, related_name="+")
+    crew = models.CharField(max_length=1, choices=[("a", "Crew A"), ("b", "Crew B")])
+    part = models.CharField(max_length=5, choices=Part.choices)
+    user = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(F("rota"), F("pump"), "crew", "part", condition=Q(deleted_at__isnull=True), name="pumprotaholder_one_per_slot")]
+
+
 class PumpMeterReading(TenantOwnedModel):
     class Kind(models.TextChoices):
         START = "start", "Shift start"

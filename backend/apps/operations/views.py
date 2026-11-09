@@ -22,8 +22,19 @@ from apps.stations.access import scope, visible_station_ids
 from apps.stations.models import FuelPrice, Pump, Station, StationAssignment, Tank
 from apps.stations.views import validate_image
 
-from . import approvals, dayclose, imports, services
-from .models import DayClose, Delivery, PumpAssignment, PumpMeterReading, Shift, ShiftAttendant, SyncOperation, TankReading, UndoRequest
+from . import approvals, dayclose, imports, rota, services
+from .models import (
+    DayClose,
+    Delivery,
+    PumpAssignment,
+    PumpMeterReading,
+    PumpRota,
+    Shift,
+    ShiftAttendant,
+    SyncOperation,
+    TankReading,
+    UndoRequest,
+)
 from .serializers import (
     CashInput,
     CashInputOnly,
@@ -212,6 +223,9 @@ class PrefillView(APIView):
                     last = TankReading.objects.filter(tank=t).first()
                     tanks.append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres), "has_calibration": t.calibration.count() >= 2, "last_litres": str(last.litres) if last else None})
                 entry["tanks"] = tanks
+            elif can(user, "record_dips"):  # an attendant the owner allows to dip: which tanks, never their levels
+                entry["tanks"] = [{"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "has_calibration": t.calibration.count() >= 2}
+                                  for t in Tank.objects.filter(station=st).select_related("fuel_type")]
             out.append(entry)
         return Response({"stations": out, "server_time": timezone.now()})
 
@@ -415,22 +429,25 @@ class ReadingPhotoView(APIView):
         if model is None or "photo" not in request.FILES:
             raise ValidationError({"detail": "Send a photo."})
         if model is not PumpMeterReading:
-            require(request.user, "tank_records")
+            require(request.user, "record_dips" if model is TankReading else "tank_records")
         try:
             row = model.objects.filter(pk=pk).first()
         except DjangoValidationError:
             row = None
         if row is None or (model is PumpMeterReading and not can(request.user, "see_all_shifts") and not services.attendant_row(row.shift, request.user)):
             raise NotFound()
+        if model is TankReading and not can(request.user, "tank_records") and row.recorded_by_id != request.user.pk:
+            raise NotFound()  # an attendant allowed to dip adds a photo to their own dips only
         row.photo = validate_image(request.FILES["photo"])
         row.save(update_fields=["photo", "updated_at"])
         return Response({"ok": True})
 
 
 class TankDipView(APIView):
-    """Dips: managers (their stations) and owners only. Attendants are refused, even to look (rule 11)."""
+    """Dips: managers (their stations) and owners. Attendants are refused, even to look (rule 11), except that one the
+    owner allows to dip may record a dip (never list them)."""
 
-    permission_classes = [TankRecords]
+    permission_classes = [Allow("record_dips", read="tank_records")]
 
     def get(self, request):
         qs = scope(TankReading.objects.select_related("recorded_by"), request.user, "tank__station_id")
@@ -531,7 +548,10 @@ def _apply(user, kind, p):
                 result["client_shift_id"] = shift.merged_from  # later entries from that phone use this id
         return result
     if kind in ("tank_dip", "delivery"):
-        require(user, "tank_records", "Dips and deliveries are recorded by a manager.")
+        if kind == "tank_dip":
+            require(user, "record_dips", "Dips are recorded by a manager, or an attendant the owner allows to dip.")
+        else:
+            require(user, "tank_records", "Deliveries are recorded by a manager.")
         if kind == "tank_dip":
             d = _valid(TankDipInput, p)
             _check_station(user, d["tank"].station)
@@ -826,3 +846,53 @@ class DayCloseCorrectView(APIView):
         d = data.validated_data
         dayclose.correct_close(user=request.user, close=close, dips=d["dips"], meters=d["meters"], note=d["note"], request=request)
         return Response(dayclose.close_status(close.station))
+
+
+class RotaInput(serializers.Serializer):
+    on = serializers.BooleanField()
+    week_starts = serializers.DateField(required=False)  # the day this week's crew started (crew A); default today
+
+
+class PumpRotaView(APIView):
+    """Weekly pump rotas (rota.py, Pesnat mode only), managers and owners: GET lists each assigned-pump station's rota with what it has
+    learned; PUT /pump-rotas/<station>/ turns it on (from the day this week's crew started) or off."""
+
+    permission_classes = [IsTenantUser]
+
+    def get(self, request):
+        require(request.user, "manage_shift", "Only a manager or the owner sees the pump rota.")
+        if not request.user.tenant.pesnat_mode:
+            return Response([])  # the rota is part of Pesnat mode
+        out = []
+        for st in scope(Station.objects.filter(status="active"), request.user, "id"):
+            if not services.is_assigned_station(st):
+                continue
+            r = PumpRota.objects.filter(station=st).first()
+            entry = rota.describe(r, Pump.objects.filter(station=st).order_by("name")) if r else {"on": False, "week_starts": None}
+            out.append({"station": str(st.pk), "station_name": st.name, **entry})
+        return Response(out)
+
+    def put(self, request, station):
+        require(request.user, "manage_shift", "Only a manager or the owner sets the pump rota.")
+        if not request.user.tenant.pesnat_mode:
+            raise ValidationError({"detail": "The weekly pump rotation is part of Pesnat mode. Ask PumpWise to turn it on."})
+        st = Station.objects.filter(pk=station).first()
+        if st is None:
+            raise NotFound()
+        _check_station(request.user, st)
+        if not services.is_assigned_station(st):
+            raise ValidationError({"detail": "Pumps are shared at this station: there is nothing to rotate."})
+        data = RotaInput(data=request.data)
+        data.is_valid(raise_exception=True)
+        d = data.validated_data
+        with transaction.atomic():
+            r = PumpRota.objects.filter(station=st).first()
+            week_starts = d.get("week_starts") or (r.week_starts if r else timezone.localdate())
+            if r is None:
+                r = PumpRota.objects.create(tenant_id=st.tenant_id, station=st, on=d["on"], week_starts=week_starts)
+            else:
+                # a new start day or turning it back on: switch the pumps at the next hourly run for the crew now on
+                r.on, r.week_starts, r.applied_slot = d["on"], week_starts, ""
+                r.save(update_fields=["on", "week_starts", "applied_slot", "updated_at"])
+            audit.log("pump_rota_set", actor=request.user, obj=r, request=request, changes={"station": st.name, "on": r.on, "week_starts": str(r.week_starts)})
+        return Response({"station": str(st.pk), "station_name": st.name, **rota.describe(r, Pump.objects.filter(station=st).order_by("name"))})

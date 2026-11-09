@@ -251,3 +251,59 @@ describe("daily report on the Today dashboard", () => {
     expect(localStorage.getItem("pumpwise.report.station")).toBe("s2");
   });
 });
+
+describe("Pesnat mode: the owner lets an attendant dip (manager not on site)", () => {
+  const pesnat = { ...tenant, pesnat_mode: true };
+  const inPesnat = (user: any) => ({ ...settings(user), "GET /api/auth/me/": { body: { user, tenant: pesnat } } });
+
+  it("ticks 'May dip tanks' for an attendant", async () => {
+    signedIn();
+    const { calls } = mockApi({ ...inPesnat(ownerUser), "PATCH /api/users/a1/": { body: { ...tendai, can_dip: true } } });
+    renderApp("/settings");
+    const user = userEvent.setup();
+    await user.click(await screen.findByLabelText("Tendai may dip tanks"));
+    await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ can_dip: true }));
+    expect(await screen.findByText("Tendai may now record tank dips.")).toBeInTheDocument();
+  });
+
+  it("is not offered to a manager, nor outside Pesnat mode", async () => {
+    signedIn();
+    mockApi(inPesnat(manager));
+    const first = renderApp("/settings");
+    await screen.findByText(/Tendai/);
+    expect(screen.queryByLabelText("Tendai may dip tanks")).not.toBeInTheDocument();
+    first.unmount();
+    mockApi(settings(ownerUser));
+    renderApp("/settings");
+    await screen.findByText(/Tendai/);
+    expect(screen.queryByLabelText("Tendai may dip tanks")).not.toBeInTheDocument();
+  });
+
+  it("gives an attendant allowed to dip a Dip screen with only the dip on it", async () => {
+    signedIn();
+    localStorage.setItem("fs_tutorial_done", "1");
+    const dipper = { ...tendai, must_change_password: false, tenant_id: "t1", can_dip: true };
+    const station = { id: "st1", name: "Main", pricing_currency: "USD", open_shift_id: null, pumps: [], prices: [],
+      tanks: [{ id: "tk1", name: "Tank 1", fuel_code: "PETROL", has_calibration: true }] };
+    mockApi({ "GET /api/auth/me/": { body: { user: dipper, tenant: pesnat } }, "GET /api/shifts/prefill/": { body: { stations: [station] } }, "POST /api/sync/": { body: { results: [] } } });
+    renderApp("/dip");
+    expect(await screen.findByRole("heading", { name: "Tank dip" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dip" })).toBeInTheDocument();
+    expect(screen.queryByText(/Close the day/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Fuel delivery received/)).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Dip height (mm)"), "500");
+    await user.click(screen.getByRole("button", { name: "Save dip" }));
+    expect(await screen.findByText("Dip saved.")).toBeInTheDocument();
+  });
+
+  it("keeps an attendant off the Dip screen once Pesnat mode is off", async () => {
+    signedIn();
+    localStorage.setItem("fs_tutorial_done", "1");
+    mockApi({ "GET /api/auth/me/": { body: { user: { ...tendai, must_change_password: false, tenant_id: "t1", can_dip: true }, tenant } },
+      "GET /api/shifts/prefill/": { body: { stations: [] } } });
+    renderApp("/dip");
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Tank dip" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("link", { name: "Dip" })).not.toBeInTheDocument();
+  });
+});

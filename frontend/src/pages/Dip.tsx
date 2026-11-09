@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api, errorMessage } from "../api";
+import { useAuth } from "../auth";
 import { ErrorNote } from "../components";
 import { enqueue, uuid } from "../offline";
 import { loadPrefill, type StationInfo } from "./Shift";
@@ -17,8 +18,11 @@ const fuelName = (code: string) => code.charAt(0) + code.slice(1).toLowerCase();
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /** Managers: close the trading day at about 21:00 (every tank's dip and every pump's meter in one go), record fuel
- * deliveries, and take a spot dip if needed. The day close is what the daily figures and the daily report run on. */
+ * deliveries, and take a spot dip if needed. The day close is what the daily figures and the daily report run on.
+ * An attendant the owner allows to dip sees only the dip form (no levels, deliveries or day close). */
 export default function Dip() {
+  const { user } = useAuth();
+  const dipOnly = user?.role === "attendant";
   const [stations, setStations] = useState<StationInfo[]>([]);
   const [stationId, setStationId] = useState("");
   const [status, setStatus] = useState<CloseStatus[]>([]);
@@ -37,8 +41,8 @@ export default function Dip() {
   const loadStatus = () => api<CloseStatus[]>("/api/day-close/").then(setStatus).catch(() => undefined);
   useEffect(() => {
     void loadPrefill().then((s) => { setStations(s); setStationId(s[0]?.id ?? ""); setTankId(s[0]?.tanks?.[0]?.id ?? ""); });
-    void loadStatus();
-  }, []);
+    if (!dipOnly) void loadStatus();
+  }, [dipOnly]);
   const station = stations.find((s) => s.id === stationId);
   const stationTanks = station?.tanks ?? [];
   const nozzles = (station?.pumps ?? []).flatMap((p) => p.nozzles.map((n) => ({ ...n, pump: p })));
@@ -123,6 +127,23 @@ export default function Dip() {
     setDelivered({ fuel: "", tank: "", litres: "", supplier: "", note: "" }); setError(null); setMsg("Delivery saved.");
   };
 
+  const dipForm = (
+    <form onSubmit={saveDip} className="form">
+      <label>Tank<select value={tankId} onChange={(e) => setTankId(e.target.value)}>{tanks.map((t) => <option key={t.id} value={t.id}>{t.station} · {t.name} ({t.fuel_code})</option>)}</select></label>
+      <label>Dip height (mm)<input inputMode="decimal" value={dipMm} onChange={(e) => setDipMm(e.target.value)} /></label>
+      <label>{tank?.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={litres} onChange={(e) => setLitres(e.target.value)} /></label>
+      <button className="btn">Save dip</button></form>
+  );
+  if (dipOnly) {
+    return (
+      <>
+        <h1>Tank dip</h1>
+        <section className="card form">{dipForm}</section>
+        <ErrorNote message={error} />{msg && <p role="status" className="ok-note">{msg}</p>}
+      </>
+    );
+  }
+
   return (
     <>
       <div className="row between"><h1>Day close, dips and deliveries</h1><Link to="/dip-history">See dip history</Link></div>
@@ -182,11 +203,7 @@ export default function Dip() {
         <button className="btn">Save delivery</button></form>
 
       <details className="card form"><summary><strong>Spot dip</strong> <span className="muted">· a dip outside the day close</span></summary>
-        <form onSubmit={saveDip} className="form">
-          <label>Tank<select value={tankId} onChange={(e) => setTankId(e.target.value)}>{tanks.map((t) => <option key={t.id} value={t.id}>{t.station} · {t.name} ({t.fuel_code})</option>)}</select></label>
-          <label>Dip height (mm)<input inputMode="decimal" value={dipMm} onChange={(e) => setDipMm(e.target.value)} /></label>
-          <label>{tank?.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={litres} onChange={(e) => setLitres(e.target.value)} /></label>
-          <button className="btn">Save dip</button></form>
+        {dipForm}
       </details>
       <ErrorNote message={error} />{msg && <p role="status" className="ok-note">{msg}</p>}
     </>

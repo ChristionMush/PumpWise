@@ -10,6 +10,8 @@ import { loadPrefill, type PumpInfo, type StationInfo } from "./Shift";
  *  - swap now: the meter numbers taken now end it for one person and start it for the other, on the same shift.
  * Every pump keeps an attendant's name. Once someone closes their meter numbers on a pump, the manager allocates it for
  * the next shift (saving the same person again counts); until then it is listed here and at the top of Today.
+ * With the weekly rotation on, each of those assignments is also remembered for its crew's day or night shift and
+ * repeated by itself (see RotaCard).
  */
 export default function Pumps() {
   const [stations, setStations] = useState<StationInfo[]>([]);
@@ -20,11 +22,14 @@ export default function Pumps() {
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<{ pump: string; message: string } | null>(null);
   const [toAllocate, setToAllocate] = useState<Record<string, string>>({}); // pump id -> why it needs allocating
+  const [rotas, setRotas] = useState<Record<string, Rota>>({}); // station id -> its weekly rotation
 
   const load = async () => {
     setStations(await loadPrefill());
     const gaps = await api<{ pump_gaps?: { pump: string; message: string }[] }>("/api/dashboard/").then((d) => d.pump_gaps ?? []).catch(() => []);
     setToAllocate(Object.fromEntries(gaps.map((g) => [g.pump, g.message])));
+    const list = await api<Rota[]>("/api/pump-rotas/").catch(() => []);
+    setRotas(Object.fromEntries(list.map((r) => [r.station, r])));
   };
   useEffect(() => { void load(); }, []);
 
@@ -102,9 +107,71 @@ export default function Pumps() {
               </div>
             );
           })}
+          {rotas[station.id] && <RotaCard rota={rotas[station.id]} onSaved={(r) => setRotas({ ...rotas, [station.id]: r })} />}
         </section>
       ))}
       {note && <p role="status" className="ok-note">{note}</p>}
     </>
+  );
+}
+
+interface RotaHolder { id: string; name: string }
+interface Rota {
+  station: string; station_name: string; on: boolean; week_starts: string | null;
+  crew_now?: "a" | "b"; part_now?: "day" | "night";
+  pumps?: { id: string; name: string; holders: Record<string, RotaHolder | null> }[];
+}
+
+const SLOTS = [["a_day", "Crew A day"], ["a_night", "Crew A night"], ["b_day", "Crew B day"], ["b_night", "Crew B night"]] as const;
+const today = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in the phone's own time
+
+/**
+ * Two crews, one week on and one week off. With the rotation on, every pump the manager assigns is remembered for that
+ * crew's day or night shift, and an hour before each later shift change the pumps switch by themselves. The table shows
+ * what has been learned so far; a manual change replaces it.
+ */
+function RotaCard({ rota, onSaved }: { rota: Rota; onSaved: (r: Rota) => void }) {
+  const [weekStarts, setWeekStarts] = useState(rota.week_starts ?? today());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async (on: boolean) => {
+    setBusy(true); setError(null);
+    try {
+      onSaved(await api<Rota>(`/api/pump-rotas/${rota.station}/`, { method: "PUT", body: { on, week_starts: weekStarts } }));
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="pump-row">
+      <h3>Weekly rotation</h3>
+      {rota.on ? (
+        <>
+          <p className="muted">On now: Crew {rota.crew_now?.toUpperCase()}, {rota.part_now} shift. Crew A's week started {rota.week_starts}; the crews swap at 07:00 every 7 days.
+            Pumps you assign are remembered for that crew's shift and switch by themselves an hour before each shift change.</p>
+          <table className="table" aria-label={`Weekly rotation at ${rota.station_name}`}>
+            <thead><tr><th>Pump</th>{SLOTS.map(([key, label]) => <th key={key}>{label}</th>)}</tr></thead>
+            <tbody>
+              {(rota.pumps ?? []).map((p) => (
+                <tr key={p.id}><td>{p.name}</td>{SLOTS.map(([key]) => <td key={key}>{p.holders[key]?.name ?? <span className="muted">not yet</span>}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+          <button className="btn" disabled={busy} onClick={() => void save(false)}>Turn off weekly rotation</button>
+        </>
+      ) : (
+        <>
+          <p className="muted">For two crews working one week on and one week off. Turn it on, then assign pumps as usual for each crew's day and night shift:
+            every assignment is remembered and repeated by itself before each later shift change.</p>
+          <label>This week's crew (Crew A) started on<input type="date" value={weekStarts} onChange={(e) => setWeekStarts(e.target.value)} /></label>
+          <button className="btn" disabled={busy || !weekStarts} onClick={() => void save(true)}>Turn on weekly rotation</button>
+        </>
+      )}
+      <ErrorNote message={error} />
+    </div>
   );
 }

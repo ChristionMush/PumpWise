@@ -15,6 +15,7 @@ export default function CreateTenant() {
   const [paidThrough, setPaidThrough] = useState("");
   const [stations, setStations] = useState<StationRow[]>([{ name: "", address: "" }]);
   const [pumpSystem, setPumpSystem] = useState<PumpSystem | "">(""); // asked up front: no default
+  const [pesnat, setPesnat] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<(TenantSummary & { owner_credentials: Credentials }) | null>(null);
@@ -37,6 +38,7 @@ export default function CreateTenant() {
         paid_through: paidThrough || null,
         stations: stations.filter((s) => s.name.trim()).map((s) => ({ name: s.name.trim(), address: s.address.trim() })),
         pump_system: pumpSystem,
+        pesnat_mode: pesnat,
       };
       setCreated(await api("/api/platform/tenants/", { method: "POST", body }));
     } catch (err) {
@@ -75,6 +77,12 @@ export default function CreateTenant() {
         <label className="row gap"><input type="radio" name="pump_system" value="assigned" checked={pumpSystem === "assigned"} onChange={() => setPumpSystem("assigned")} />
           Assigned pumps: a manager gives each attendant their own pumps</label>
       </fieldset>
+      <section className="card form">
+        <h2>Pesnat mode</h2>
+        <label className="row gap"><input type="checkbox" checked={pesnat} onChange={(e) => setPesnat(e.target.checked)} /> Pesnat mode</label>
+        <p className="muted">For a business whose manager is remote. Turns on the weekly pump rotation (two crews, one week on and one week off, on assigned pumps)
+          and lets the owner allow attendants to dip tanks. Can be changed later on the business's page.</p>
+      </section>
       <section className="card form">
         <h2>Owner</h2>
         <label>Owner name<input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} required /></label>

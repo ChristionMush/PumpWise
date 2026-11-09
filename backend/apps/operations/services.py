@@ -30,6 +30,7 @@ from apps.audit import services as audit
 from apps.stations.models import FuelType, Nozzle, Pump, Station, Tank
 from apps.stations.services import litres_from_dip, price_at
 
+from . import rota
 from .adapters import AdapterNotAvailable, get_adapter
 from .models import (
     CashSubmission,
@@ -536,6 +537,8 @@ def assign_pump(*, user, pump, to_user, readings=(), at=None, strict=True, reque
         before = pump.assigned_to.full_name if pump.assigned_to_id else None
         pump.assigned_to = to_user
         pump.save(update_fields=["assigned_to", "updated_at"])
+        # weekly rota: remembered for this crew's shift and repeated by itself (a handover planned now is for the next shift)
+        rota.learn(pump=pump, to_user=to_user, at=at, handover=current is not None and not readings and current.user_id != to_user.pk)
         audit.log("pump_reassigned" if swapped else "pump_assigned", actor=user, obj=pump, request=request,
                   changes={"pump": pump.name, "from": before, "to": to_user.full_name if to_user else None, **({"swap": swapped} if swapped else {})})
     return pump
@@ -562,6 +565,7 @@ def pump_gaps(stations):
     for station in stations:
         if not is_assigned_station(station):
             continue
+        weekly = rota.rota_for(station)
         for pump in Pump.objects.filter(station=station).select_related("assigned_to").order_by("name"):
             gap = {"station": str(station.pk), "station_name": station.name, "pump": str(pump.pk), "pump_name": pump.name}
             if not (pump.assigned_to_id and pump.assigned_to.is_active):
@@ -572,6 +576,8 @@ def pump_gaps(stations):
             closed = PumpAssignment.objects.filter(pump=pump, ended_at__isnull=False).select_related("user").order_by("-ended_at").first()
             if closed is None:
                 continue
+            if weekly is not None and rota.planned_holder(weekly, pump) == pump.assigned_to_id:
+                continue  # the weekly rota already gave it to the next shift's person
             allocated = AuditLog.objects.filter(action__in=["pump_assigned", "pump_reassigned"], object_id=str(pump.pk),
                                                 created_at__gte=closed.updated_at).exists()
             if not allocated:

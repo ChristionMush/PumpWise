@@ -32,6 +32,9 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # One of PUMP_SYSTEMS, chosen by the platform owner when the business is created. New stations follow it.
     # "shared_multi" needs the several-attendants grant; "assigned" needs the pump assignment grant.
     pump_system = models.CharField(max_length=20, choices=PUMP_SYSTEMS, default="shared")
+    # Pesnat mode, set by the platform: for a business whose manager is remote. Turns on the weekly pump rotation
+    # (operations/rota.py) and lets the owner allow attendants to dip (User.can_dip). Off: both stop, nothing is deleted.
+    pesnat_mode = models.BooleanField(default=False)
     # Demo and trial businesses (Phase 12): never send real SMS/WhatsApp/email, use the billing sandbox, and are the
     # only tenants the demo loader may ever wipe and reload. A trial expires (suspended), then is removed if not converted.
     is_demo = models.BooleanField(default=False)

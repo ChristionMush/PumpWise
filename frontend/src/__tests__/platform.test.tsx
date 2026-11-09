@@ -68,12 +68,29 @@ describe("platform: create business", () => {
     expect(calls.find((c) => c.method === "POST" && c.path === "/api/platform/tenants/")?.body).toEqual({
       business_name: "Msasa Fuel Services", owner_name: "Rudo Chikwanha", owner_phone: "0772123456", owner_email: null,
       plan: "", paid_through: null, stations: [{ name: "Msasa Road", address: "" }, { name: "Borrowdale", address: "" }], pump_system: "assigned",
+      pesnat_mode: false,
     });
 
     await user.click(screen.getByRole("button", { name: "Copy" }));
     expect(writeText).toHaveBeenCalledWith("Login: +263772123456\nTemporary password: Kx7mQp3Rtw");
     expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open business" })).toHaveAttribute("href", "/platform/tenants/t9");
+  });
+
+  it("turns on Pesnat mode for a new business when ticked", async () => {
+    const user = userEvent.setup();
+    signedIn();
+    const { calls } = mockApi({
+      ...me,
+      "POST /api/platform/tenants/": { status: 201, body: { ...summary, owner_credentials: { login: "+263772123456", temporary_password: "Kx7mQp3Rtw" } } },
+    });
+    renderApp("/platform/new");
+    await screen.findByRole("heading", { name: "New business" });
+    await fill(user);
+    await user.click(screen.getByLabelText("Pesnat mode"));
+    await user.click(screen.getByRole("button", { name: "Create business" }));
+    await screen.findByTestId("temp-password");
+    expect(calls.find((c) => c.method === "POST" && c.path === "/api/platform/tenants/")?.body.pesnat_mode).toBe(true);
   });
 
   it("keeps what was typed and explains a duplicate owner", async () => {
@@ -138,6 +155,22 @@ describe("platform: business detail", () => {
     vi.spyOn(window, "confirm").mockReturnValueOnce(true);
     await user.click(screen.getByRole("button", { name: "Reset owner password" }));
     expect(await screen.findByTestId("temp-password")).toHaveTextContent("NewTemp4567");
+  });
+
+  it("switches Pesnat mode on a business's page", async () => {
+    const user = userEvent.setup();
+    signedIn();
+    const features = { multi_attendant_enabled: true, pump_assignment_enabled: true, pesnat_mode: false };
+    const { calls } = mockApi({
+      ...me,
+      "GET /api/platform/tenants/t9/": { body: { ...summary, features } },
+      "PATCH /api/platform/tenants/t9/features/": { body: { ...summary, features: { ...features, pesnat_mode: true } } },
+    });
+    renderApp("/platform/tenants/t9");
+    const box = await screen.findByLabelText("Pesnat mode");
+    expect(box).not.toBeChecked();
+    await user.click(box);
+    expect(calls.find((c) => c.path.endsWith("/features/"))?.body).toEqual({ pesnat_mode: true });
   });
 
   it("saves subscription changes and adds a station", async () => {

@@ -42,6 +42,7 @@ class TenantCreateSerializer(serializers.Serializer):
     stations = StationInputSerializer(many=True, required=False, default=list)
     # Asked on the platform's "New business" form: shared pumps, or each attendant works their own assigned pumps.
     pump_system = serializers.ChoiceField(choices=["shared", "shared_multi", "assigned"], required=False, default="shared")
+    pesnat_mode = serializers.BooleanField(required=False, default=False)  # remote manager: weekly pump rotation, attendants who dip
 
     def validate_business_name(self, value):
         value = " ".join(value.split())
@@ -99,6 +100,7 @@ class TenantSettingsSerializer(serializers.ModelSerializer):
 class FeaturesSerializer(serializers.Serializer):
     multi_attendant_enabled = serializers.BooleanField(required=False)
     pump_assignment_enabled = serializers.BooleanField(required=False)
+    pesnat_mode = serializers.BooleanField(required=False)
 
 
 class PumpSystemSerializer(serializers.Serializer):

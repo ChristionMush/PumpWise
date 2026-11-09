@@ -52,6 +52,9 @@ class User(UUIDModel, SoftDeleteModel, AbstractBaseUser):
     token_version = models.PositiveIntegerField(default=0)
     # Set when staff hand out a temporary password; every API call except change-password/me/logout is refused until changed.
     must_change_password = models.BooleanField(default=False)
+    # Attendants only, set by the owner: may record tank dips (where the manager is not on site). Deliveries, the day
+    # close and tank levels stay with managers and the owner.
+    can_dip = models.BooleanField(default=False)
 
     objects = UserManager()
     all_objects = AllUsersManager()

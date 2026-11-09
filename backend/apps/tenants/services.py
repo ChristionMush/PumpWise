@@ -28,7 +28,7 @@ def unique_slug(name):
 
 
 def create_tenant_with_owner(*, business_name, owner_name, owner_email=None, owner_phone=None, plan="", paid_through=None, stations=(), actor=None, request=None, source="platform",
-                             pump_system="shared"):
+                             pump_system="shared", pesnat_mode=False):
     """Create a business: tenant + subscription + owner login + stations + defaults, atomically.
 
     Must run inside a transaction with the platform context on (platform endpoints and the billing webhook do).
@@ -50,7 +50,7 @@ def create_tenant_with_owner(*, business_name, owner_name, owner_email=None, own
         raise ValueError("The owner needs an email or a valid phone number.")
     temporary_password = generate_temporary_password()
     with transaction.atomic():
-        tenant = Tenant.objects.create(name=business_name, slug=unique_slug(business_name))
+        tenant = Tenant.objects.create(name=business_name, slug=unique_slug(business_name), pesnat_mode=pesnat_mode)
         Subscription.objects.create(tenant=tenant, plan=plan, paid_through=paid_through)
         with tenant_scope(tenant.id):
             owner = User.objects.create_user(
@@ -64,7 +64,8 @@ def create_tenant_with_owner(*, business_name, owner_name, owner_email=None, own
             TenantSettings.objects.create(tenant_id=tenant.id, summary_phone=owner_phone or "")
             audit.log(
                 "tenant_created", actor=actor, tenant_id=tenant.id, obj=tenant, request=request, via_platform=source == "platform",
-                changes={"name": tenant.name, "owner": owner.full_name, "stations": [s["name"] for s in stations], "source": source, "pump_system": pump_system},
+                changes={"name": tenant.name, "owner": owner.full_name, "stations": [s["name"] for s in stations], "source": source, "pump_system": pump_system,
+                         **({"pesnat_mode": True} if pesnat_mode else {})},
             )
         if pump_system != "shared":
             from .features import set_pump_system

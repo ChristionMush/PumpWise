@@ -92,6 +92,27 @@ describe("assigned pumps", () => {
     expect(calls.find((c) => c.path === "/api/pumps/pu1/assign/")!.body).toEqual({ user: "b" }); // no meter numbers: not a swap
   });
 
+  it("turns on the weekly rotation and shows what it has learned for each crew and shift", async () => {
+    const holders = { a_day: { id: "a", name: "Tendai" }, a_night: { id: "b", name: "Rudo" }, b_day: null, b_night: null };
+    const on = { station: "st1", station_name: "Main", on: true, week_starts: "2026-11-09", crew_now: "a", part_now: "day", pumps: [{ id: "pu1", name: "Pump 1", holders }] };
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: manager }, "GET /api/shifts/prefill/": { body: { stations: [busyStation] } },
+      "GET /api/pump-rotas/": { body: [{ station: "st1", station_name: "Main", on: false, week_starts: null }] },
+      "PUT /api/pump-rotas/st1/": { body: on },
+    });
+    renderApp("/pumps");
+    const user = userEvent.setup();
+    const started = await screen.findByLabelText(/This week's crew \(Crew A\) started on/);
+    await user.clear(started);
+    await user.type(started, "2026-11-09");
+    await user.click(screen.getByRole("button", { name: "Turn on weekly rotation" }));
+    expect(await screen.findByText(/On now: Crew A, day shift/)).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/api/pump-rotas/st1/")!.body).toEqual({ on: true, week_starts: "2026-11-09" });
+    const table = screen.getByRole("table", { name: "Weekly rotation at Main" });
+    expect(table).toHaveTextContent("Pump 1TendaiRudonot yetnot yet");
+    expect(screen.getByRole("button", { name: "Turn off weekly rotation" })).toBeInTheDocument();
+  });
+
   it("lets a manager swap a pump in use at once, with the meter numbers taken now", async () => {
     const { calls } = mockApi({
       "GET /api/auth/me/": { body: manager }, "GET /api/shifts/prefill/": { body: { stations: [busyStation] } },

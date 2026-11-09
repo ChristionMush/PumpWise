@@ -155,6 +155,10 @@ export default function TenantDetail() {
           <label className="row gap"><input type="checkbox" checked={tenant.features.pump_assignment_enabled} disabled={!tenant.features.multi_attendant_enabled}
             onChange={(e) => setFeature({ pump_assignment_enabled: e.target.checked })} /> Pump assignment (cash checked per attendant)</label>
           <p className="muted">Removing a feature moves every station back to one attendant and shared pumps. Nothing is deleted. Not possible while a shift is open.</p>
+          <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.pesnat_mode)}
+            onChange={(e) => setFeature({ pesnat_mode: e.target.checked })} /> Pesnat mode</label>
+          <p className="muted">For a remote manager: the weekly pump rotation, and attendants the owner allows to dip. Turning it off stops both; the rota and the owner's
+            choices are kept for turning it back on.</p>
         </section>
       )}
 

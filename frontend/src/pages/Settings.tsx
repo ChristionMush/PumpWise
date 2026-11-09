@@ -5,7 +5,7 @@ import { useAuth } from "../auth";
 import { ErrorNote, PasswordInput } from "../components";
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, tenant } = useAuth();
   const owner = user?.role === "owner";
   const [editing, setEditing] = useState<string | null>(null); // the team member being edited
   const [s, setS] = useState<any>(null);
@@ -67,6 +67,12 @@ export default function Settings() {
                   return <option key={st.id} value={st.id} disabled={Boolean(other && other.id !== u.id)}>{st.name}{other && other.id !== u.id ? ` (managed by ${other.full_name})` : ""}</option>;
                 })}
               </select>
+            )}
+            {/* Pesnat mode, the owner's exception to rule 11: an attendant who records tank dips (the manager is remote) */}
+            {owner && tenant?.pesnat_mode && u.role === "attendant" && (
+              <label className="row gap"><input type="checkbox" aria-label={`${u.full_name} may dip tanks`} checked={Boolean(u.can_dip)}
+                onChange={(e) => void wrap(() => api(`/api/users/${u.id}/`, { method: "PATCH", body: { can_dip: e.target.checked } }),
+                  `${u.full_name} ${e.target.checked ? "may now record tank dips" : "no longer records tank dips"}.`)()} />May dip tanks</label>
             )}
           {owner && editing === u.id && (
             <MemberEditor member={u} self={u.id === user?.id} onClose={() => setEditing(null)}

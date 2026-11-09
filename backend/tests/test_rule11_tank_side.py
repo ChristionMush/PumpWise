@@ -156,3 +156,82 @@ def test_the_policy_table_never_gives_attendants_tank_side_capabilities():
     for cap in ("tank_records", "view_tank_levels", "view_reconciliation", "view_dashboard", "view_reports", "manage_shift"):
         assert Role.ATTENDANT not in CAPABILITIES[cap] and not can(attendant, cap)
     assert can(attendant, "record_shift")
+
+
+# ---- the owner's exception: an attendant allowed to dip (where the manager is not on site) ----------------------
+
+def pesnat(site, on=True):
+    from .helpers import platform_client
+
+    res = platform_client().patch(f"/api/platform/tenants/{site['a']['tenant'].id}/features/", {"pesnat_mode": on}, format="json")
+    assert res.status_code == 200 and res.json()["features"]["pesnat_mode"] is on
+
+
+def allow_dipping(site, on=True):
+    pesnat(site)
+    att = site["a"][Role.ATTENDANT]
+    res = client_for(site["a"][Role.OWNER]).patch(f"/api/users/{att.pk}/", {"can_dip": on}, format="json")
+    assert res.status_code == 200 and res.json()["can_dip"] is on
+    att.refresh_from_db()
+    return client_for(att)
+
+
+def test_only_the_owner_allows_an_attendant_to_dip_and_only_attendants(site):
+    a = site["a"]
+    att = a[Role.ATTENDANT]
+    assert client_for(a[Role.MANAGER]).patch(f"/api/users/{att.pk}/", {"can_dip": True}, format="json").status_code == 403
+    assert client_for(att).patch(f"/api/users/{att.pk}/", {"can_dip": True}, format="json").status_code == 403
+    outside = client_for(a[Role.OWNER]).patch(f"/api/users/{att.pk}/", {"can_dip": True}, format="json")
+    assert outside.status_code == 400 and "Pesnat mode" in str(outside.json())  # only in Pesnat mode
+    pesnat(site)
+    refused = client_for(a[Role.OWNER]).patch(f"/api/users/{a[Role.MANAGER].pk}/", {"can_dip": True}, format="json")
+    assert refused.status_code == 400 and "attendant" in str(refused.json())
+    allow_dipping(site)
+    from apps.audit.models import AuditLog
+
+    with db_context(tenant_id=a["tenant"].id):
+        assert AuditLog.objects.filter(action="user_updated", changes__can_dip__isnull=False).exists()
+    # made a manager, the flag goes (they dip anyway); made an attendant again, they start without it
+    owner = client_for(a[Role.OWNER])
+    assert owner.patch(f"/api/users/{att.pk}/", {"role": "manager"}, format="json").json()["can_dip"] is False
+    assert owner.patch(f"/api/users/{att.pk}/", {"role": "attendant"}, format="json").json()["can_dip"] is False
+
+
+def test_an_attendant_allowed_to_dip_records_dips_and_nothing_else_on_the_tank_side(site):
+    fc = site["fc"]
+    body = {"tank": str(fc.tank.pk), "litres": "4000"}
+    att = allow_dipping(site)
+    made = att.post("/api/tank-readings/", body, format="json")
+    assert made.status_code == 201 and made.json()["recorded_by"] == str(site["a"][Role.ATTENDANT].pk)
+    from .test_multi_attendant import op
+
+    synced = att.post("/api/sync/", {"ops": [op("tank_dip", {"client_id": str(uuid.uuid4()), "tank": str(fc.tank.pk), "dip_mm": "500"})]}, format="json")
+    assert synced.json()["results"][0]["status"] == "applied", synced.content
+    photo = lambda: SimpleUploadedFile("p.png", PNG, content_type="image/png")  # noqa: E731
+    assert att.post(f"/api/readings/dip/{made.json()['id']}/photo/", {"photo": photo()}, format="multipart").status_code == 200
+    assert att.post(f"/api/readings/dip/{site['dip'].pk}/photo/", {"photo": photo()}, format="multipart").status_code == 404  # the manager's dip
+    assert att.post(f"/api/readings/delivery/{site['delivery'].pk}/photo/", {"photo": photo()}, format="multipart").status_code == 403
+    for url in tank_get_endpoints(site):  # still no levels, history, deliveries or reports
+        assert att.get(url).status_code == 403, url
+    assert att.post("/api/deliveries/", {**body, "supplier": "Zuva", "note_number": "N-9"}, format="json").status_code == 403
+    assert att.post("/api/day-close/", {"station": str(fc.station.pk), "dips": [], "meters": []}, format="json").status_code == 403
+    # the phone learns which tanks to dip, never their levels
+    tanks = att.get("/api/shifts/prefill/").json()["stations"][0]["tanks"]
+    assert tanks == [{"id": str(fc.tank.pk), "name": fc.tank.name, "fuel_code": fc.fuel.code, "has_calibration": True}]
+    assert att.get("/api/auth/me/").json()["user"]["can_dip"] is True
+    # taken away again: refused like any attendant
+    att = allow_dipping(site, on=False)
+    assert att.post("/api/tank-readings/", body, format="json").status_code == 403
+    assert "tanks" not in att.get("/api/shifts/prefill/").json()["stations"][0]
+
+
+def test_turning_pesnat_mode_off_stops_attendants_dipping_and_on_again_restores_it(site):
+    body = {"tank": str(site["fc"].tank.pk), "litres": "4000"}
+    att = allow_dipping(site)
+    assert att.post("/api/tank-readings/", body, format="json").status_code == 201
+    pesnat(site, on=False)
+    assert att.post("/api/tank-readings/", body, format="json").status_code == 403
+    assert "tanks" not in att.get("/api/shifts/prefill/").json()["stations"][0]
+    assert att.get("/api/auth/me/").json()["tenant"]["pesnat_mode"] is False
+    pesnat(site)  # the owner's choice was kept
+    assert att.post("/api/tank-readings/", body, format="json").status_code == 201
