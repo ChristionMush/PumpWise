@@ -1013,7 +1013,11 @@ def _dip_tanks(shift, person):
     pump can draw from any tank of its fuel (a backup, when one runs dry); or every tank at the station (shared pumps)."""
     if not is_assigned_station(shift.station):
         return set(Tank.objects.filter(station=shift.station).values_list("pk", flat=True))
+    from apps.stations.pools import pooled
+
     pumps = PumpAssignment.objects.filter(shift=shift, user=person, ended_at__isnull=True).values("pump_id")
+    if not pooled(shift.tenant_id):  # each tank its own stock: the tanks their nozzles are on
+        return set(Nozzle.objects.filter(pump_id__in=pumps).values_list("tank_id", flat=True))
     fuels = Nozzle.objects.filter(pump_id__in=pumps).values("tank__fuel_type_id")
     return set(Tank.objects.filter(station=shift.station, fuel_type_id__in=fuels).values_list("pk", flat=True))
 

@@ -38,3 +38,27 @@ def test_the_petrol_tanks_are_one_stock_for_the_fuel_check_and_the_forecast():
         assert len(tank_range(tanks, date(2026, 10, 1), date(2026, 10, 1))) == 2  # one row per fuel, not per tank
         f = forecast_tank(tank2, now=at(2026, 10, 1, 19))
         assert (f["tank"], f["current_litres"], f["capacity_litres"]) == ("Tank 1 + Tank 2", "7900.0", "20000.000")  # both tanks' capacity
+
+
+def test_a_business_with_pooling_off_keeps_each_tank_its_own_stock():
+    from .helpers import platform_client
+
+    a, _ = two_tenants()
+    res = platform_client().patch(f"/api/platform/tenants/{a['tenant'].id}/features/", {"pooled_tanks": False}, format="json")
+    assert res.status_code == 200 and res.json()["features"]["pooled_tanks"] is False
+    fc = make_forecourt(a["tenant"], price="1.50")
+    tank2 = second_tank(fc, code="PETROL", name="Tank 2")  # a second petrol tank, but the pump's nozzles are on Tank 1
+    mgr = a[Role.MANAGER]
+    with db_context(tenant_id=a["tenant"].id):
+        for tank, litres in ((fc.tank, "5000"), (tank2, "3000")):
+            services.record_tank_dip(user=mgr, tank=tank, litres=Decimal(litres), at=at(2026, 10, 1, 3))
+    run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [100, 0], started_at=at(2026, 10, 1, 5), ended_at=at(2026, 10, 1, 15), cash=[("cash", "USD", 150)])
+    with db_context(tenant_id=a["tenant"].id):
+        for tank, litres in ((fc.tank, "4900"), (tank2, "3000")):
+            services.record_tank_dip(user=mgr, tank=tank, litres=Decimal(litres), at=at(2026, 10, 1, 18))
+        tanks = list(Tank.objects.select_related("fuel_type", "station").order_by("name"))
+        assert [p.name for p in pools_for(tanks)] == ["Tank 1", "Tank 2"]  # as before pools: one row per tank
+        one = reconcile_tank_day(fc.tank, date(2026, 10, 1))
+        assert (one["tank"], one["opening"], one["dispensed"], one["closing"], one["loss"]) == ("Tank 1", "5000.000", "100.000", "4900.000", "0.000")
+        two = reconcile_tank_day(tank2, date(2026, 10, 1))
+        assert (two["tank"], two["dispensed"], two["loss"]) == ("Tank 2", "0.000", "0.000")  # no nozzle on it: nothing sold from it

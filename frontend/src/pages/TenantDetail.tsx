@@ -158,6 +158,9 @@ export default function TenantDetail() {
           <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.expenses_enabled)}
             onChange={(e) => setFeature({ expenses_enabled: e.target.checked })} /> Expenses</label>
           <p className="muted">Attendants and managers record what they pay out (lunch, generator fuel...). Recorded only; off hides the screens and keeps what was recorded.</p>
+          <label className="row gap"><input type="checkbox" checked={tenant.features.pooled_tanks !== false}
+            onChange={(e) => setFeature({ pooled_tanks: e.target.checked })} /> Pumps draw from every tank of their fuel</label>
+          <p className="muted">E.g. two petrol tanks: every petrol pump draws from both, and stock and the fuel check count them as one. Off: each tank is its own stock.</p>
           <h3>Shift change</h3>
           <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.attendants_pick_pumps)}
             onChange={(e) => setFeature({ attendants_pick_pumps: e.target.checked })} /> Attendants pick their pumps</label>

@@ -16,7 +16,7 @@ export default function CreateTenant() {
   const [stations, setStations] = useState<StationRow[]>([{ name: "", address: "" }]);
   const [pumpSystem, setPumpSystem] = useState<PumpSystem | "">(""); // asked up front: no default
   const [expenses, setExpenses] = useState(false);
-  const [shiftOpts, setShiftOpts] = useState({ attendants_pick_pumps: false, dip_at_shift_end: false, close_day_at_change: "" });
+  const [shiftOpts, setShiftOpts] = useState({ attendants_pick_pumps: false, dip_at_shift_end: false, close_day_at_change: "", pooled_tanks: true });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<(TenantSummary & { owner_credentials: Credentials }) | null>(null);
@@ -85,7 +85,9 @@ export default function CreateTenant() {
         <p className="muted">Attendants and managers record what they pay out (lunch, generator fuel...). Recorded only: it does not change the cash handed in.</p>
       </section>
       <section className="card form">
-        <h2>Shift change</h2>
+        <h2>Tanks and shift change</h2>
+        <label className="row gap"><input type="checkbox" checked={shiftOpts.pooled_tanks} onChange={(e) => setShiftOpts({ ...shiftOpts, pooled_tanks: e.target.checked })} /> Pumps draw from every tank of their fuel</label>
+        <p className="muted">E.g. two petrol tanks: every petrol pump draws from both, and stock and the fuel check count them as one. Off: each tank is its own stock.</p>
         <label className="row gap"><input type="checkbox" checked={shiftOpts.attendants_pick_pumps} onChange={(e) => setShiftOpts({ ...shiftOpts, attendants_pick_pumps: e.target.checked })} /> Attendants pick their pumps</label>
         <p className="muted">Assigned pumps: each attendant ticks the free pumps they take when they start, instead of a manager allocating them.</p>
         <label className="row gap"><input type="checkbox" checked={shiftOpts.dip_at_shift_end} onChange={(e) => setShiftOpts({ ...shiftOpts, dip_at_shift_end: e.target.checked })} /> Dip at the end of a shift</label>

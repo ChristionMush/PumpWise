@@ -26,6 +26,7 @@ export interface StationInfo {
   busy_shift?: { people: string[] } | null; // one-attendant station: someone else's shift is still being worked
   pick_pumps?: boolean; // attendants tick the free pumps they take when they start (no manager allocating)
   dip_at_end?: boolean; // ending a shift asks for every tank's dip, unless one was just taken
+  pooled_tanks?: boolean; // pumps draw from every tank of their fuel (else only the tank each nozzle is on)
   last_dip_at?: string | null;
 }
 /** start: no shift yet · on_shift: started, the end screen is next · done: their part of an open shift is over ·
@@ -250,10 +251,13 @@ export default function Shift() {
   const rows = active ? nozzles.filter((n) => n.id in active.starts) : [];
   // a business that dips at the end of a shift: every tank of the fuels this attendant's pumps sell (a pump can draw
   // from any tank of its fuel, e.g. both petrol tanks), unless one was dipped in the last hour (the first to end dips)
+  // (a business that keeps each tank its own stock: only the tanks their nozzles are on)
   const myFuels = new Set(rows.map((n) => n.fuel_code));
+  const myTanks = new Set(rows.map((n) => n.tank).filter(Boolean));
+  const mine = (t: any) => (station?.pooled_tanks === false && myTanks.size ? myTanks.has(t.id) : !myFuels.size || myFuels.has(t.fuel_code));
   const recent = (at?: string | null) => Boolean(at && Date.now() - new Date(at).getTime() < 60 * 60 * 1000);
   const dipTanks = active && !active.member && station?.dip_at_end
-    ? (station.tanks ?? []).filter((t: any) => (!myFuels.size || myFuels.has(t.fuel_code)) && !recent(t.last_dip_at ?? station.last_dip_at)) : [];
+    ? (station.tanks ?? []).filter((t: any) => mine(t) && !recent(t.last_dip_at ?? station.last_dip_at)) : [];
   const askDips = dipTanks.length > 0;
   const dipsWrong = () => {
     const missing = dipTanks.filter((t: any) => !endDips[t.id]?.mm || (!t.has_calibration && !endDips[t.id]?.litres));

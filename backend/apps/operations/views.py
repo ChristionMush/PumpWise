@@ -225,6 +225,7 @@ class PrefillView(APIView):
                 entry["pick_pumps"] = True
             if user.tenant.dip_at_shift_end:  # ending a shift asks for the dips of the attendant's tanks, unless just taken
                 entry["dip_at_end"] = True
+                entry["pooled_tanks"] = user.tenant.pooled_tanks  # all tanks of their pumps' fuel, or only the tanks their nozzles are on
                 last = TankReading.objects.filter(tank__station=st).order_by("-reading_at").first()
                 entry["last_dip_at"] = last.reading_at if last else None
             if can(user, "view_tank_levels"):  # tank levels are for managers and owners only (rule 11)
