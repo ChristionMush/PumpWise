@@ -195,7 +195,7 @@ class PrefillView(APIView):
                     last = services.last_end_reading(n)
                     nozzles.append({"id": str(n.pk), "number": n.number, "label": str(n), "meter_max": str(n.meter_max), "last_reading": str(last.reading) if last else None,
                                     "fuel_type": str(n.tank.fuel_type_id), "fuel_code": n.tank.fuel_type.code, "tank": str(n.tank_id),
-                                    "tanks": [str(i) for i in pool_of(n.tank).ids]})  # every tank it draws from (dipped at the end of a shift)
+                                    "draws_from_tanks": [str(i) for i in pool_of(n.tank).ids]})  # ids only, never levels (dipped at the end of a shift)
                 pump = {"id": str(p.pk), "name": p.name, "data_source": p.data_source, "nozzles": nozzles}
                 if assigned:
                     pump.update(assigned_to=str(p.assigned_to_id) if p.assigned_to_id else None, assigned_to_name=p.assigned_to.full_name if p.assigned_to_id else None)

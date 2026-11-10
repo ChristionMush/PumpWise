@@ -8,7 +8,7 @@ import { mockApi, renderApp, signedIn } from "./helpers";
 // A business where attendants pick their pumps and dip at the end of a shift (each switched on by the platform).
 const attendant = { user: { id: "a", role: "attendant", full_name: "Tendai", must_change_password: false, tenant_id: "t" }, tenant: { id: "t", name: "Pesnat", slug: "p", status: "active" } };
 const nozzle = (id: string, tank: string) => ({ id, number: 1, label: "Petrol", meter_max: "99999999.99", last_reading: "1000.00", fuel_type: "p", fuel_code: "PETROL", tank });
-const pumpA = { id: "pa", name: "Pump A", nozzles: [{ ...nozzle("na", "tk1"), tanks: ["tk1", "tk4"] }] }; // also draws from Petrol Tank 2
+const pumpA = { id: "pa", name: "Pump A", nozzles: [{ ...nozzle("na", "tk1"), draws_from_tanks: ["tk1", "tk4"] }] }; // also draws from Petrol Tank 2
 const pumpB = { id: "pb", name: "Pump B", nozzles: [{ ...nozzle("nb", "tk2"), label: "Diesel", fuel_type: "d", fuel_code: "DIESEL" }], in_use_by: "Rudo" };
 const station = {
   id: "st1", name: "Mverechena", pricing_currency: "USD", open_shift_id: null, attendants_mode: "multiple", assignment_mode: "assigned",

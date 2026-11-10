@@ -11,7 +11,7 @@ import { OthersWaiting } from "../components2";
 /** Each nozzle draws from its own tank, so the fuel (and its price) is per nozzle. */
 export interface Nozzle { id: string; number: number; label: string; meter_max: string; last_reading: string | null; fuel_type: string; fuel_code: string;
   tank?: string; // the tank it draws from
-  tanks?: string[]; // every tank it draws from (its tank, others it also draws from, and those joined to them)
+  draws_from_tanks?: string[]; // every tank it draws from (its tank, others it also draws from, and those joined to them)
 }
 export interface PumpInfo {
   id: string; name: string; nozzles: Nozzle[];
@@ -252,7 +252,7 @@ export default function Shift() {
   const rows = active ? nozzles.filter((n) => n.id in active.starts) : [];
   // a business that dips at the end of a shift: every tank this attendant's nozzles draw from (e.g. both petrol tanks),
   // unless one was dipped in the last hour (the first to end dips)
-  const myTanks = new Set(rows.flatMap((n) => n.tanks ?? (n.tank ? [n.tank] : [])));
+  const myTanks = new Set(rows.flatMap((n) => n.draws_from_tanks ?? (n.tank ? [n.tank] : [])));
   const mine = (t: any) => !myTanks.size || myTanks.has(t.id);
   const recent = (at?: string | null) => Boolean(at && Date.now() - new Date(at).getTime() < 60 * 60 * 1000);
   const dipTanks = active && !active.member && station?.dip_at_end
