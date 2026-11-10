@@ -37,4 +37,4 @@ def test_the_petrol_tanks_are_one_stock_for_the_fuel_check_and_the_forecast():
         assert reconcile_tank_day(diesel, date(2026, 10, 1))["tank"] == "Diesel Tank"
         assert len(tank_range(tanks, date(2026, 10, 1), date(2026, 10, 1))) == 2  # one row per fuel, not per tank
         f = forecast_tank(tank2, now=at(2026, 10, 1, 19))
-        assert (f["tank"], f["current_litres"], f["capacity_litres"]) == ("Tank 1 + Tank 2", "7900.0", str(fc.tank.capacity_litres + tank2.capacity_litres))
+        assert (f["tank"], f["current_litres"], f["capacity_litres"]) == ("Tank 1 + Tank 2", "7900.0", "20000.000")  # both tanks' capacity
