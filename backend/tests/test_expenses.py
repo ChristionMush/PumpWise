@@ -73,3 +73,33 @@ def test_a_business_without_expenses_gets_no_expenses_sheet():
     fc = make_forecourt(a["tenant"])
     res = client_for(a[Role.OWNER]).get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"})
     assert "Expenses" not in load_workbook(io.BytesIO(res.content)).sheetnames
+
+
+def test_an_attendants_expenses_come_off_the_cash_they_hand_in_everywhere_it_is_checked():
+    from datetime import date
+
+    from apps.operations.models import Shift
+    from apps.reports.daily import daily_report
+    from apps.reports.reconciliation import cash_summary
+
+    from .test_multi_attendant import cash, readings
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    expenses(a)
+    ca = client_for(a[Role.ATTENDANT])
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": "2026-10-01T05:00:00Z", "readings": readings(fc.nozzles, [0, 0])},
+                  format="json").json()["id"]
+    # meters say 150; the attendant paid 5 for lunch out of it, so hands in 145
+    ended = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T15:00:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": cash("145"),
+                                                 "expenses": [{"client_id": str(uuid.uuid4()), "name": "Lunch", "amount": "5"}]}, format="json")
+    assert ended.status_code == 200, ended.content
+    with db_context(tenant_id=a["tenant"].id):
+        c = cash_summary(Shift.objects.get(pk=sid))
+        assert (c["expected"], c["submitted_total"], c["expenses"], c["cash_difference"], c["status"]) == ("150.00", "145.00", "5.00", "0.00", "ok")
+        report = daily_report(fc.station, date(2026, 10, 1))
+    lines = {h["label"]: h["amount"] for h in report["handed_in"]}
+    assert lines["Cash"] == "145.00" and lines["Expenses paid out"] == "5.00"
+    assert not [b for b in report["balance"] if b["key"] == "short"]  # not short: the 5 is accounted for
+    card = next(e for e in client_for(a[Role.MANAGER]).get("/api/shift-ends/").json() if e["shift_id"] == sid)
+    assert (card["expected"], card["handed_in"], card["expenses_total"], card["cash_difference"]) == ("150.00", "145.00", "5.00", "0.00")

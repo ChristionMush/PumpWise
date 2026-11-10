@@ -83,6 +83,7 @@ def build_pack(station, year, month):
 
     fuels = list(dict.fromkeys(Tank.objects.filter(station=station).select_related("fuel_type").order_by("fuel_type__name")
                               .values_list("fuel_type__name", flat=True)))
+    spends = station.tenant.expenses_enabled  # attendants' expenses come off their cash: a column of their own
     rows, sums = [], {}
     day = first
     while day <= min(last, cal.today()):
@@ -91,7 +92,7 @@ def build_pack(station, year, month):
         bal = {b["key"]: Decimal(b["amount"]) for b in r.get("balance", [])}
         dips = {f["fuel"]: float(Decimal(f["litres"])) for f in r["dips"]}
         values = [float(Decimal(r["totals"]["litres"])), float(Decimal(r["totals"]["amount"])), float(Decimal(r["totals"]["grand_total"])),
-                  *(float(paid.get(k, 0)) for k in ("cash", "card", "mobile_money", "credit")),
+                  *(float(paid.get(k, 0)) for k in ("cash", "card", "mobile_money", "credit", *(("expenses",) if spends else ()))),
                   *(float(bal.get(k, 0)) for k in ("evening", "short")),  # the Grand Total = the fuel sold
                   float(Decimal(r["cash_losses"]["total"])), float(Decimal(r["cash_losses"]["attendants"])), float(Decimal(r["cash_losses"]["milking"]))]
         for i, v in enumerate(values):
@@ -102,7 +103,7 @@ def build_pack(station, year, month):
     if rows:
         rows.append(["Month total", "", "", *(round(sums[i], 3 if i == 0 else 2) for i in range(len(sums))), *(None for _ in fuels)])
     _sheet(wb, "Daily", station, period, ["Date", "Closed at", "Closed by", "Litres sold", f"Sales ({currency})", "Grand total", "Cash", "Swipe", "EcoCash",
-                                          "Inter Company Credit (owed)",
+                                          "Inter Company Credit (owed)", *(("Expenses paid out",) if spends else ()),
                                           "Sales between 6pm & 9pm (not yet split)", "Short (+) / over (-)",
                                           "Cash losses total", "Attendant losses ($1 and above)", "Milking errors (under $1)",
                                           *(f"Dip {f} (L)" for f in fuels)], rows)

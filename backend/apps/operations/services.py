@@ -1259,6 +1259,16 @@ def record_tank_dip(*, user, tank, litres=None, dip_mm=None, at=None, shift=None
     return row
 
 
+def part_expenses(part):
+    """The expenses an attendant paid on this part of a shift (sent with its end or its cash). They come off the cash
+    that part must hand in: in the cash check, the approval and the daily report they count as accounted for."""
+    from .models import Expense
+
+    qs = Expense.objects.filter(shift_id=part.shift_id, recorded_by_id=part.user_id, spent_at__gte=part.joined_at)
+    later = ShiftAttendant.objects.filter(shift_id=part.shift_id, user_id=part.user_id, joined_at__gt=part.joined_at).order_by("joined_at").first()
+    return qs.filter(spent_at__lt=later.joined_at) if later else qs
+
+
 def record_shift_expenses(*, user, shift, expenses, at, who=None):
     """Expenses an attendant paid on their shift, sent with their end of shift or their cash (name and cost). Recorded
     only: the cash they hand in is unchanged. Each line is recorded once, however often the phone resends it."""

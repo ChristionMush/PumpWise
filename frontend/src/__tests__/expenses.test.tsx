@@ -28,10 +28,16 @@ describe("expenses", () => {
     await user.click(screen.getByRole("button", { name: "End shift" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Each expense needs what it was and what it cost");
     await user.type(screen.getByLabelText("Cost"), "5");
+    // worked out before handing in: 100 L x 1.50 = 150 expected, less the 5 for lunch = 145 to hand in; 150 cash is 5 over
+    expect(screen.getByText("Hand in").parentElement).toHaveTextContent("145.00");
+    expect(screen.getByText("Difference").parentElement).toHaveTextContent("5.00");
+    await user.clear(screen.getByLabelText("Cash"));
+    await user.type(screen.getByLabelText("Cash"), "145");
+    expect(screen.getByText("Difference").parentElement).toHaveTextContent("0.00");
     await user.click(screen.getByRole("button", { name: "End shift" }));
     await waitFor(() => expect(calls.some((c) => c.path === "/api/sync/" && c.body.ops.some((o: any) => o.kind === "shift_end"))).toBe(true));
     const end = calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops).find((o: any) => o.kind === "shift_end");
-    expect(end.payload.cash).toEqual([{ payment_type: "cash", currency: "USD", amount: "150" }]); // the cash as counted
+    expect(end.payload.cash).toEqual([{ payment_type: "cash", currency: "USD", amount: "145" }]); // the takings less the expense
     expect(end.payload.expenses).toEqual([{ client_id: expect.any(String), name: "Lunch", amount: "5" }]);
   });
 

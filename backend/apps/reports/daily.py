@@ -28,7 +28,7 @@ from apps.operations.models import (
     TankReading,
     Transaction,
 )
-from apps.operations.services import dispensed_litres
+from apps.operations.services import dispensed_litres, part_expenses
 from apps.operations.tradingday import Calendar
 from apps.stations.models import Nozzle, Tank
 from apps.stations.pools import pools_for
@@ -39,6 +39,8 @@ from .reconciliation import cash_summary, reconcile_tank_day
 Q2, Q3 = Decimal("0.01"), Decimal("0.001")
 # the grand total's breakdown, always in this order (a type nobody used shows 0.00)
 PAYMENT = {"cash": "Cash", "card": "Swipe", "mobile_money": "EcoCash", "credit": "Inter Company Credit"}
+EXPENSES = "expenses"  # what attendants paid out of their takings (a business that records expenses)
+OTHER_LINES = {EXPENSES: "Expenses paid out"}
 MILKING = Decimal("1.00")  # a shortage under $1.00 is a milking error, $1.00 and above the attendant's loss
 
 
@@ -190,6 +192,8 @@ def day_money(station, start, end, sold_value):
         rows = defaultdict(Decimal)
         for c in t.cash.all():
             rows[c.payment_type] += c.amount
+        for e in part_expenses(t):  # paid out of the turn's money: accounted for, on their own line
+            rows[EXPENSES] += e.amount
         if start < t.cash_submitted_at <= end:  # handed in today: all of it, less what settles the fuel of another day
             taken = _settle(rows, total - inside)
             for k, v in rows.items():
@@ -201,7 +205,7 @@ def day_money(station, start, end, sold_value):
     paid = sum(split.values(), Decimal(0))
     short = sold_value - paid - pending  # the day's share of the cash differences (and any fuel no attendant was on)
     handed = [{"payment_type": k, "label": label, "amount": _s(split.get(k), Q2)} for k, label in PAYMENT.items()]
-    handed += [{"payment_type": k, "label": k, "amount": _s(v, Q2)} for k, v in split.items() if k not in PAYMENT]
+    handed += [{"payment_type": k, "label": OTHER_LINES.get(k, k), "amount": _s(v, Q2)} for k, v in split.items() if k not in PAYMENT and v.quantize(Q2)]
     balance = [{"key": k, "label": label, "amount": _s(v, Q2)} for k, label, v in (
         ("evening", "Night sales before the close", pending), ("short", "Short (+) / over (−)", short)) if v.quantize(Q2)]
     return handed, balance, split, paid, (settled_at if not pending.quantize(Q2) else None)

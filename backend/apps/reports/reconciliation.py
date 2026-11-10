@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 from django.db.models import Q, Sum
 
+from apps.operations.models import Expense
 from apps.stations.models import Tank
 from apps.stations.pools import pool_of, pools_for
 from apps.stations.services import rate_at
@@ -66,7 +67,17 @@ def cash_summary(shift):
             by_person[c.attendant_id] = by_person.get(c.attendant_id, Decimal(0)) + converted
         lines.append({"payment_type": c.payment_type, "currency": c.currency, "amount": str(c.amount), "converted": str(converted) if converted is not None else None,
                       "attendant": str(c.attendant_id) if c.attendant_id else None, "attendant_name": c.attendant.full_name if c.attendant_id else None})
-    variance = total - expected
+    # expenses an attendant paid on the shift come off the cash they hand in: they count as accounted for
+    spent_by, spent_total = {}, Decimal(0)
+    for e in Expense.objects.filter(shift=shift):
+        rate = rate_at(e.currency, currency, at)
+        if rate is None:
+            missing.append(e.currency)
+            continue
+        converted = (e.amount * rate).quantize(Q2)
+        spent_by[e.recorded_by_id] = spent_by.get(e.recorded_by_id, Decimal(0)) + converted
+        spent_total += converted
+    variance = total + spent_total - expected
     pct = (variance / expected * 100).quantize(Q2) if expected else Decimal(0)
 
     def allowed(amount):
@@ -102,11 +113,12 @@ def cash_summary(shift):
     people, person_flagged = [], False
     for a in on_shift:
         submitted = by_person.get(a.user_id, Decimal(0))
+        spent = spent_by.get(a.user_id, Decimal(0))
         row = {"user": str(a.user_id), "name": a.user.full_name, "is_lead": a.is_lead, "joined_at": _iso(a.joined_at), "left_at": _iso(a.left_at),
-               "handed_in": a.cash_submitted_at is not None, "submitted": str(submitted.quantize(Q2))}
+               "handed_in": a.cash_submitted_at is not None, "submitted": str(submitted.quantize(Q2)), **({"expenses": str(spent)} if spent else {})}
         if per_person:
             mine = expected_by.get(a.user_id, Decimal(0))
-            difference = submitted - mine
+            difference = submitted + spent - mine
             status = _status(closed, missing, difference, allowed(mine))
             row.update({"expected": str(mine.quantize(Q2)), "cash_difference": str(difference.quantize(Q2)), "status": status,
                         "flagged": status not in ("ok", "open"), "periods": periods.get(a.user_id, [])})
@@ -117,6 +129,7 @@ def cash_summary(shift):
     status = _status(closed, missing, variance, limit)
     return {
         "currency": currency, "expected": str(expected.quantize(Q2)), "submitted_total": str(total.quantize(Q2)), "variance": str(variance.quantize(Q2)),
+        **({"expenses": str(spent_total)} if spent_total else {}),
         "cash_difference": str(variance.quantize(Q2)), "variance_pct": str(pct), "status": status,
         "flagged": closed and (status != "ok" or person_flagged), "missing_rate": sorted(set(missing)), "by_payment_type": lines,
         "allowed_variance": str(limit.quantize(Q2)), "per_attendant_expected": per_person, "by_attendant": people, "by_pump": by_pump,

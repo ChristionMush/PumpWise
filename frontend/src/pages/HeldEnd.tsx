@@ -12,7 +12,8 @@ export interface HeldStage {
   undo: UndoInfo | null; can_fix: { cash: boolean; meters: boolean };
   checks?: string[]; // what looks wrong on it, and where a difference comes from
   cash_received_by?: string | null; cash_received_at?: string | null;
-  expenses?: { name: string; amount: string; currency: string }[]; // paid out on the shift (recorded only)
+  expenses?: { name: string; amount: string; currency: string }[]; // paid out of the takings on the shift
+  expenses_total?: string; // they come off the cash to hand in
 }
 
 const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["card", "Card / swipe"], ["credit", "Intercompany issue"]] as const;
@@ -21,7 +22,7 @@ const time = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short
 
 /** Meters and cash of one end of shift, with the cash difference when it is this person's own, what looks wrong on
  *  it (so whoever approves or fixes it sees where a difference comes from), and who received the cash. */
-export function EndDetails({ end }: { end: Pick<HeldStage, "meters" | "cash" | "currency" | "handed_in" | "expected" | "cash_difference" | "checks" | "cash_received_by" | "cash_received_at" | "expenses"> }) {
+export function EndDetails({ end }: { end: Pick<HeldStage, "meters" | "cash" | "currency" | "handed_in" | "expected" | "cash_difference" | "checks" | "cash_received_by" | "cash_received_at" | "expenses" | "expenses_total"> }) {
   return (
     <>
       {end.meters.map((m) => (
@@ -29,13 +30,13 @@ export function EndDetails({ end }: { end: Pick<HeldStage, "meters" | "cash" | "
       ))}
       <p>{end.cash.length ? end.cash.map((c) => `${LABEL[c.payment_type] ?? c.payment_type} ${c.currency} ${Number(c.amount).toFixed(2)}${c.note ? ` (${c.note})` : ""}`).join(" · ") : "No cash handed in"}</p>
       {end.expected != null && (
-        <p>Expected {end.currency} {Number(end.expected).toFixed(2)} · handed in {Number(end.handed_in).toFixed(2)} · cash difference <strong>{Number(end.cash_difference).toFixed(2)}</strong></p>
+        <p>Expected {end.currency} {Number(end.expected).toFixed(2)}{Number(end.expenses_total) > 0 ? ` · expenses − ${Number(end.expenses_total).toFixed(2)}` : ""} · handed in {Number(end.handed_in).toFixed(2)} · cash difference <strong>{Number(end.cash_difference).toFixed(2)}</strong></p>
       )}
       {(end.checks ?? []).length > 0 && (
         <ul className="plain" aria-label="Check these">{end.checks!.map((c) => <li key={c} className="warn">{c}</li>)}</ul>
       )}
       {end.expenses && end.expenses.length > 0 && (
-        <p>Expenses (recorded only): {end.expenses.map((e) => `${e.name} ${e.currency} ${Number(e.amount).toFixed(2)}`).join(" · ")}</p>
+        <p>Expenses (off the cash): {end.expenses.map((e) => `${e.name} ${e.currency} ${Number(e.amount).toFixed(2)}`).join(" · ")}</p>
       )}
       {end.cash_received_by && <p className="muted">Cash received by {end.cash_received_by}{end.cash_received_at ? `, ${time(end.cash_received_at)}` : ""}</p>}
     </>

@@ -138,20 +138,27 @@ def end_summary(row):
             known = False
         else:
             handed += (c.amount * rate).quantize(TWO)
+    from .services import part_expenses
+
+    expenses, spent = list(part_expenses(row).order_by("spent_at")), Decimal(0)
+    for e in expenses:  # paid out of this part's money: they come off the cash to hand in
+        rate = Decimal(1) if e.currency == currency else rate_at(e.currency, currency, at)
+        if rate is None:
+            known = False
+        else:
+            spent += (e.amount * rate).quantize(TWO)
     alone = shift.attendants.values("user").distinct().count() == 1  # one person, maybe in two parts
     mine = bool(meters) and (_periods(row).exists() or alone)
-    difference = (handed - expected).quantize(TWO)
+    difference = (handed + spent - expected).quantize(TWO)
     if mine and known and row.cash_submitted_at is not None and abs(difference) > cash_limit(row.tenant_id, expected):
         checks += repeated if difference > 0 else []
         checks.append(f"The cash is {difference} more than the meters say: an end number may be too low, or a start number too high."
                       if difference > 0 else
                       f"The cash is {-difference} short of what the meters say: check the cash count, then the start and end numbers.")
-    from .models import Expense
-
-    spent = [{"name": e.note or e.get_category_display(), "amount": str(e.amount), "currency": e.currency}
-             for e in Expense.objects.filter(shift=row.shift, recorded_by=row.user).order_by("spent_at")]
     return {
-        "person": row.user.full_name, "currency": currency, "meters": meters, "cash": cash, "expenses": spent,
+        "person": row.user.full_name, "currency": currency, "meters": meters, "cash": cash,
+        "expenses": [{"name": e.note or e.get_category_display(), "amount": str(e.amount), "currency": e.currency} for e in expenses],
+        "expenses_total": str(spent.quantize(TWO)),
         "handed_in": str(handed.quantize(TWO)),
         "expected": str(expected.quantize(TWO)) if (mine and known) else None,
         "cash_difference": str(difference) if (mine and known) else None,

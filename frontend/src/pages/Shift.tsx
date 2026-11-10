@@ -280,7 +280,7 @@ export default function Shift() {
         </div>
       ))}
       <button type="button" className="btn" onClick={() => setShiftExpenses([...shiftExpenses, { id: uuid(), name: "", amount: "" }])}>+ Add expense</button>
-      {shiftExpenses.length > 0 && <p className="muted">Recorded for your manager. Hand in your cash as counted: expenses do not change it.</p>}
+      {shiftExpenses.length > 0 && <p className="muted">Paid out of your takings: they come off the cash you hand in.</p>}
     </div>
   ) : null;
   // intercompany issue: who was credited, so the accounting pack can trace it
@@ -293,9 +293,21 @@ export default function Shift() {
     setActive(null); setSaved(message); setNums({}); setCash({}); setCreditNote(""); setEndDips({}); setShiftExpenses([]); setError(null);
   };
 
+  // expenses paid out of the takings come off the cash to hand in, so they count as handed in
+  const spentTotal = shiftExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   const handed = [
     ...TYPES.map(([t]) => ({ amount: Number(cash[t] || 0), rate: 1 })),
+    { amount: spentTotal, rate: 1 },
   ];
+  /** Expected from the meters, less expenses: what to hand in, what was handed in, and the difference. */
+  const cashSummary = (expected: number, accounted: number) => (
+    <div className={`summary ${Math.abs(accounted - expected) < 1 ? "ok" : "off"}`} aria-live="polite">
+      <div>Expected <strong>{money(expected)}</strong></div>
+      {spentTotal > 0 && <><div>Expenses <strong>− {money(spentTotal)}</strong></div><div>Hand in <strong>{money(expected - spentTotal)}</strong></div></>}
+      <div>Handed in <strong>{money(accounted - spentTotal)}</strong></div>
+      <div>Difference <strong>{money(accounted - expected)}</strong></div>
+    </div>
+  );
   const calc = active && station && !active.member ? expectedVsHanded(
     rows.filter((n) => nums[n.id]).map((n) => ({ fuel_type: n.fuel_type, start: active.starts[n.id], end: Number(nums[n.id]), meter_max: Number(n.meter_max) })),
     station.prices, station.pricing_currency, new Date(active.started_at), handed) : null;
@@ -403,12 +415,7 @@ export default function Shift() {
             <label>Who was credited (company, vehicle)<input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="e.g. Zuva Petroleum, ABC 1234" /></label>
           )}
           {expensesField}
-          {expected != null && (
-            <div className={`summary ${Math.abs(handedIn - expected) < 1 ? "ok" : "off"}`} aria-live="polite">
-              <div>Expected <strong>{money(expected)}</strong></div><div>Handed in <strong>{money(handedIn)}</strong></div>
-              <div>Difference <strong>{money(handedIn - expected)}</strong></div>
-            </div>
-          )}
+          {expected != null && cashSummary(expected, handedIn)}
         </section>
         <ErrorNote message={error} />
         <button className="btn primary big" onClick={() => void handInCash(due?.shift_id ?? cashDue!.shift_id)}>Hand in my cash</button>
@@ -506,12 +513,7 @@ export default function Shift() {
             <label>Who was credited (company, vehicle)<input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="e.g. Zuva Petroleum, ABC 1234" /></label>
           )}
           {expensesField}
-          {calc && (
-            <div className={`summary ${Math.abs(calc.variance) < 1 ? "ok" : "off"}`} aria-live="polite">
-              <div>Expected <strong>{money(calc.expected)}</strong></div><div>Handed in <strong>{money(calc.submitted)}</strong></div>
-              <div>Difference <strong>{money(calc.variance)}</strong></div>
-            </div>
-          )}
+          {calc && cashSummary(calc.expected, calc.submitted)}
         </section>
       )}
       <ErrorNote message={error} />
