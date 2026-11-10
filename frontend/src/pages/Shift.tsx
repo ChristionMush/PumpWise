@@ -267,7 +267,9 @@ export default function Shift() {
   const mine = (t: any) => !myTanks.size || myTanks.has(t.id);
   const recent = (at?: string | null) => Boolean(at && Date.now() - new Date(at).getTime() < 60 * 60 * 1000);
   const dipTanks = active && !active.member && station?.dip_at_end
-    ? (station.tanks ?? []).filter((t: any) => mine(t) && !recent(t.last_dip_at ?? station.last_dip_at)) : [];
+    // a tank never dipped (last_dip_at null) is always asked for; only a phone on an older server, without each
+    // tank's own time (undefined), falls back to the station's last dip
+    ? (station.tanks ?? []).filter((t: any) => mine(t) && !recent(t.last_dip_at !== undefined ? t.last_dip_at : station.last_dip_at)) : [];
   const askDips = dipTanks.length > 0;
   const dipsWrong = () => {
     const missing = dipTanks.filter((t: any) => !endDips[t.id]?.mm || (!t.has_calibration && !endDips[t.id]?.litres));

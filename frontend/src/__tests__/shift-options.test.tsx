@@ -67,6 +67,16 @@ describe("dip at the end of a shift", () => {
     expect(ops(calls).find((o: any) => o.kind === "shift_end").payload.dips).toEqual([{ tank: "tk1", dip_mm: "1200" }, { tank: "tk4", dip_mm: "900" }]);
   });
 
+  it("still asks for a tank never dipped, though another tank was just dipped (the station's last dip is not theirs)", async () => {
+    await onShift();
+    const dieselJustDipped = { ...station, last_dip_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      tanks: station.tanks.map((t) => (t.fuel_code === "DIESEL" ? { ...t, last_dip_at: new Date(Date.now() - 5 * 60 * 1000).toISOString() } : t)) };
+    mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [dieselJustDipped] } }, "POST /api/sync/": applyAll });
+    renderApp("/");
+    await screen.findByPlaceholderText("Meter number now");
+    expect(screen.getByRole("region", { name: "Tank dips" })).toHaveTextContent("Petrol Tank 2"); // never dipped: asked for
+  });
+
   it("does not ask again when their tank was dipped in the last hour (the first to end dips)", async () => {
     await onShift();
     const just = new Date(Date.now() - 5 * 60 * 1000).toISOString();

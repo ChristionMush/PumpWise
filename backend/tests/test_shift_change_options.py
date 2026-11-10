@@ -182,3 +182,31 @@ def test_expenses_handed_in_with_the_cash_after_the_meters_belong_to_that_shift(
     with db_context(tenant_id=a["tenant"].id):
         assert str(Expense.objects.get().shift_id) == sid  # on the shift it was paid on, though the part had ended
     assert client_for(a[Role.OWNER]).get("/api/expenses/", {"date_from": "10 Nov"}).status_code == 400  # not a date
+
+
+def test_an_offline_end_with_a_dip_that_cannot_be_right_is_kept_and_the_dip_set_aside():
+
+    from apps.operations.models import Shift
+
+    from .helpers import second_tank
+    from .test_multi_attendant import op
+
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    tank2 = second_tank(fc, code="PETROL", name="Petrol Tank 2")  # holds 10 000 L
+    for n in fc.nozzles:
+        client_for(a[Role.OWNER]).patch(f"/api/nozzles/{n.pk}/", {"also_draws_from": [str(tank2.pk)]}, format="json")
+    options(a, dip_at_shift_end=True)
+    ca = client_for(att_a)
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    dips = [{"tank": str(fc.tank.pk), "dip_mm": "500"}, {"tank": str(tank2.pk), "dip_mm": "1700", "litres": "20000"}]  # more than Tank 2 holds
+    body = {"shift_id": sid, "ended_at": A_ENDS, "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150"), "dips": dips}
+    online = ca.post(f"/api/shifts/{sid}/end/", {k: v for k, v in body.items() if k != "shift_id"}, format="json")
+    assert online.status_code == 400 and "more than the tank can hold" in str(online.json())  # online: corrected on the spot
+    synced = ca.post("/api/sync/", {"ops": [op("shift_end", body)]}, format="json")
+    assert synced.json()["results"][0]["status"] == "applied", synced.content  # offline: the end is kept
+    with db_context(tenant_id=a["tenant"].id):
+        assert set(TankReading.objects.filter(recorded_by=att_a).values_list("tank__name", flat=True)) == {fc.tank.name}  # the good dip saved
+        assert f"dip_refused:{tank2.pk}" in Shift.objects.get(pk=sid).flags
+    end = next(e for e in mgr.get("/api/shift-ends/").json() if e["shift_id"] == sid)
+    assert any("Petrol Tank 2: the dip (1700 mm, 20000 L) was set aside: That is more than the tank can hold" in c for c in end["checks"]), end["checks"]
+

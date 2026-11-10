@@ -155,6 +155,11 @@ def end_summary(row):
         checks.append(f"The cash is {difference} more than the meters say: an end number may be too low, or a start number too high."
                       if difference > 0 else
                       f"The cash is {-difference} short of what the meters say: check the cash count, then the start and end numbers.")
+    from apps.audit.models import AuditLog
+
+    for log in AuditLog.objects.filter(action="dip_refused", actor_id=row.user_id, object_id=str(shift.pk)).order_by("created_at"):
+        c = log.changes or {}  # a dip sent offline with this end that could not be right: set aside, the end kept
+        checks.append(f"{c.get('tank')}: the dip ({c.get('dip_mm')} mm, {c.get('litres')} L) was set aside: {c.get('why')}. Dip it again.")
     return {
         "person": row.user.full_name, "currency": currency, "meters": meters, "cash": cash,
         "expenses": [{"name": e.note or e.get_category_display(), "amount": str(e.amount), "currency": e.currency} for e in expenses],

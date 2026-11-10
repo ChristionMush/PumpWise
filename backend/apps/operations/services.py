@@ -990,7 +990,7 @@ def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close
     ended_at = ended_at or timezone.now()
     with db_tx.atomic():
         if dips:
-            _record_end_dips(user=user, shift=shift, dips=dips, at=ended_at, who=who)
+            _record_end_dips(user=user, shift=shift, dips=dips, at=ended_at, who=who, strict=strict)
         if expenses:
             record_shift_expenses(user=user, shift=shift, expenses=expenses, at=ended_at, who=who)
         result = _end_shift(user=user, shift=shift, readings=readings, cash=cash, ended_at=ended_at, strict=strict, close=close, who=who,
@@ -1020,7 +1020,14 @@ def _dip_tanks(shift, person):
     return out
 
 
-def _record_end_dips(*, user, shift, dips, at, who=None):
+def _plain_error(exc):
+    """The words of a validation error, without its structure ("That is more than the tank can hold. Check the number.")."""
+    detail = exc.detail
+    parts = detail.values() if isinstance(detail, dict) else [detail]
+    return " ".join(str(m) for v in parts for m in (v if isinstance(v, list) else [v]))
+
+
+def _record_end_dips(*, user, shift, dips, at, who=None, strict=True):
     """Dips taken by the outgoing attendant at the shift change (a business that dips at the end of a shift): the tanks
     of the pumps they are on. A dip of another tank is left out (a manager may dip any tank)."""
     from apps.tenants.models import Tenant
@@ -1038,7 +1045,17 @@ def _record_end_dips(*, user, shift, dips, at, who=None):
         if mine is not None and d["tank"].pk not in mine:
             continue  # not a tank of their pumps
         if not TankReading.objects.filter(tank=d["tank"], shift=shift, recorded_by=user, reading_at=at).exists():  # a resend
-            record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=at, shift=shift)
+            if strict:  # online: the attendant sees what is wrong and corrects it
+                record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=at, shift=shift)
+                continue
+            try:  # offline: a dip that cannot be right never throws away the end of shift; it is set aside for the manager
+                with db_tx.atomic():
+                    record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=at, shift=shift)
+            except ValidationError as exc:
+                shift.add_flag(f"dip_refused:{d['tank'].pk}")
+                shift.save(update_fields=["flags", "updated_at"])
+                audit.log("dip_refused", actor=user, obj=shift, changes={"tank": d["tank"].name, "dip_mm": str(d.get("dip_mm")), "litres": str(d.get("litres")),
+                                                                         "why": _plain_error(exc)})
 
 
 def _end_shift(*, user, shift, readings, cash, ended_at, strict=False, close=None, who=None, request=None, cash_later=False):
