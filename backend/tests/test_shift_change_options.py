@@ -1,5 +1,7 @@
 """How the shift change works, per business (all off by default): attendants pick their own pumps when they start,
 the outgoing attendant dips at the end of a shift, and the day closes by itself at a chosen shift change."""
+import pytest
+
 from apps.accounts.models import Role
 from apps.core.db import db_context
 from apps.operations.models import DayClose, DayCloseReading, TankReading
@@ -76,6 +78,21 @@ def test_an_end_away_from_the_closing_change_does_not_close_the_day():
                                         "dips": [{"tank": str(fc.tank.pk), "dip_mm": "500"}]}, format="json")
     with db_context(tenant_id=a["tenant"].id):
         assert TankReading.objects.filter(recorded_by=att_a).count() == 1 and not DayClose.objects.exists()
+
+
+@pytest.mark.parametrize("ends, closes", [("2026-10-01T14:29:00Z", True), ("2026-10-01T18:30:00Z", False)])  # 16:29 and 20:30 in Harare
+def test_the_18_00_change_closes_the_day_for_a_handover_from_15_00_to_20_00(ends, closes):
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    options(a, dip_at_shift_end=True, close_day_at_change="18:00")
+    ca, cb = client_for(att_a), client_for(att_b)
+    body = {"station": str(fc.station.pk), "started_at": DAY_START}
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": ends, "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150"),
+                                        "dips": [{"tank": str(fc.tank.pk), "dip_mm": "500"}]}, format="json")
+    cb.post(f"/api/shifts/{sid}/end/", {"ended_at": ends, "readings": readings(p2, [40, 0]), "cash": cash("60")}, format="json")
+    with db_context(tenant_id=a["tenant"].id):
+        assert DayClose.objects.exists() is closes
 
 
 def test_without_the_option_an_attendant_cannot_send_dips_and_nothing_changes():

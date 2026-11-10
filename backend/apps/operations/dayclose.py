@@ -110,7 +110,9 @@ def close_day(*, user, station, dips, meters, at=None, note="", request=None):
     return close
 
 
-CHANGE_WINDOW = timedelta(minutes=90)  # an end this close to the business's closing shift change belongs to it
+# An end from 3 hours before the business's closing shift change to 2 hours after belongs to it: people hand over
+# when they do (the 18:00 change: 15:00 to 20:00).
+BEFORE_CHANGE, AFTER_CHANGE = timedelta(hours=3), timedelta(hours=2)
 
 
 def close_at_shift_change(*, station, user, at, request=None):
@@ -132,11 +134,11 @@ def close_at_shift_change(*, station, user, at, request=None):
     change = None
     for day in (local.date() - timedelta(days=1), local.date(), local.date() + timedelta(days=1)):
         moment = timezone.make_aware(datetime.combine(day, time(hh, mm)), timezone.get_current_timezone())
-        if abs(at - moment) <= CHANGE_WINDOW:
+        if moment - BEFORE_CHANGE <= at <= moment + AFTER_CHANGE:
             change = moment
     if change is None:
         return None
-    since = change - CHANGE_WINDOW
+    since = change - BEFORE_CHANGE
     day = tradingday.day_of_close(at)
     if DayClose.objects.filter(station=station, day=day).exists():
         return None

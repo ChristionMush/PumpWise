@@ -91,7 +91,7 @@ export default function CreateTenant() {
         <label className="row gap"><input type="checkbox" checked={shiftOpts.dip_at_shift_end} onChange={(e) => setShiftOpts({ ...shiftOpts, dip_at_shift_end: e.target.checked })} /> Dip at the end of a shift</label>
         <p className="muted">Ending a shift asks the outgoing attendant to dip every tank (the first to end; not again within the hour).</p>
         <label>Close the day at a shift change<select value={shiftOpts.close_day_at_change} onChange={(e) => setShiftOpts({ ...shiftOpts, close_day_at_change: e.target.value })}>
-          <option value="">No (closed on the Dip screen)</option><option value="07:00">07:00 change</option><option value="18:00">18:00 change</option></select></label>
+          <option value="">No (closed on the Dip screen)</option><option value="07:00">07:00 change</option><option value="18:00">18:00 change (handover 15:00-20:00)</option></select></label>
         <p className="muted">Once everyone from the outgoing shift has ended and every tank was dipped, the day closes with those dips and every pump's last number.</p>
       </section>
       <section className="card form">
