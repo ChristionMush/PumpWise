@@ -1,7 +1,5 @@
 """How the shift change works, per business (all off by default): attendants pick their own pumps when they start,
 the outgoing attendant dips at the end of a shift, and the day closes by itself at a chosen shift change."""
-import pytest
-
 from apps.accounts.models import Role
 from apps.core.db import db_context
 from apps.operations.models import DayClose, DayCloseReading, TankReading
@@ -64,7 +62,7 @@ def test_the_outgoing_attendant_dips_and_the_day_closes_at_the_18_00_change():
     assert cb.post(f"/api/shifts/{sid}/end/", {"ended_at": B_ENDS, "readings": readings(p2, [40, 0]), "cash": cash("60")}, format="json").status_code == 200
     with db_context(tenant_id=a["tenant"].id):
         close = DayClose.objects.get()
-        assert str(close.day) == "2026-10-01" and close.closed_by_id == att_b.pk and "evening shift change" in close.note
+        assert str(close.day) == "2026-10-01" and close.closed_by_id == att_b.pk and "18:00 shift change" in close.note
         assert TankReading.objects.get(day_close=close).pk == dip.pk
         assert sorted(str(r.reading) for r in DayCloseReading.objects.filter(day_close=close)) == ["0.00", "0.00", "100.00", "40.00"]
 
@@ -78,69 +76,6 @@ def test_an_end_away_from_the_closing_change_does_not_close_the_day():
                                         "dips": [{"tank": str(fc.tank.pk), "dip_mm": "500"}]}, format="json")
     with db_context(tenant_id=a["tenant"].id):
         assert TankReading.objects.filter(recorded_by=att_a).count() == 1 and not DayClose.objects.exists()
-
-
-@pytest.mark.parametrize("ends", ["2026-10-01T14:00:00Z", "2026-10-01T18:00:00Z"])  # 16:00 and 20:00 in Harare
-def test_the_day_closes_whenever_the_evening_change_happens(ends):
-    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
-    options(a, dip_at_shift_end=True, close_day_at_change="18:00")
-    ca = client_for(att_a)
-    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
-    client_for(att_b).post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(p2, [0, 0])}, format="json")
-    ca.post(f"/api/shifts/{sid}/end/", {"ended_at": ends, "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150"),
-                                        "dips": [{"tank": str(fc.tank.pk), "dip_mm": "500"}]}, format="json")
-    client_for(att_b).post(f"/api/shifts/{sid}/end/", {"ended_at": ends, "readings": readings(p2, [40, 0]), "cash": cash("60")}, format="json")
-    with db_context(tenant_id=a["tenant"].id):
-        assert str(DayClose.objects.get().day) == "2026-10-01", ends
-
-
-def test_a_dip_entered_after_the_shift_ended_closes_the_day():
-    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
-    options(a, close_day_at_change="18:00")  # the attendant ends without dipping; the dip is entered afterwards
-    ca = client_for(att_a)
-    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
-    client_for(att_b).post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(p2, [0, 0])}, format="json")
-    for c, r in ((ca, readings(fc.nozzles, [100, 0])), (client_for(att_b), readings(p2, [40, 0]))):
-        c.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T15:00:00Z", "readings": r, "cash": cash("60")}, format="json")
-    with db_context(tenant_id=a["tenant"].id):
-        assert not DayClose.objects.exists()  # no dip yet
-    dipped = mgr.post("/api/tank-readings/", {"tank": str(fc.tank.pk), "dip_mm": "500", "at": "2026-10-01T15:10:00Z"}, format="json")
-    assert dipped.status_code == 201, dipped.content
-    with db_context(tenant_id=a["tenant"].id):
-        close = DayClose.objects.get()
-        assert str(close.day) == "2026-10-01" and "17:10" in close.note
-
-
-def test_the_day_closes_once_the_outgoing_attendants_have_handed_in_and_their_credit_is_on_that_day():
-    from datetime import datetime
-
-    from apps.operations.models import Shift
-    from apps.operations.services import submit_cash
-    from apps.reports.daily import daily_report
-    from apps.stations.models import Station
-
-    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
-    options(a, dip_at_shift_end=True, close_day_at_change="18:00")
-    ca = client_for(att_a)
-    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
-    cb = client_for(att_b)  # B ends with the money at 16:20; A is the last to hand in
-    cb.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(p2, [0, 0])}, format="json")
-    assert cb.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T14:20:00Z", "readings": readings(p2, [40, 0]), "cash": cash("60")}, format="json").status_code == 200
-    # meters and dip at 16:25, the money counted and handed in at 16:34 (Harare)
-    assert ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T14:25:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": [], "cash_later": True,
-                                                "dips": [{"tank": str(fc.tank.pk), "dip_mm": "500"}]}, format="json").status_code == 200
-    with db_context(tenant_id=a["tenant"].id):
-        assert not DayClose.objects.exists()  # not handed in yet
-    with db_context(tenant_id=a["tenant"].id):  # the phone's hand-in, as sent at 16:34
-        submit_cash(user=att_a, shift=Shift.objects.get(pk=sid), at=datetime.fromisoformat("2026-10-01T14:34:00+00:00"),
-                    cash=[{"payment_type": "cash", "currency": "USD", "amount": "100"}, {"payment_type": "credit", "currency": "USD", "amount": "50", "note": "Truck"}])
-    with db_context(tenant_id=a["tenant"].id):
-        close = DayClose.objects.get()
-        assert str(close.day) == "2026-10-01" and "16:34" in close.note
-        report = daily_report(Station.objects.get(pk=fc.station.pk), close.day)
-    assert report["totals"]["intercompany"] == "50.00", report["totals"]
-    first_day = [p for p in report["pumps"] if p["pump"] == fc.pump.name]
-    assert first_day and all(p["opening_meter"] == "0.00" for p in first_day), first_day  # its first day: the start numbers
 
 
 def test_without_the_option_an_attendant_cannot_send_dips_and_nothing_changes():

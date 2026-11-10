@@ -487,7 +487,6 @@ class TankDipView(APIView):
         row = services.record_tank_dip(user=request.user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=d.get("at"), shift=d.get("shift"), client_id=d.get("client_id"))
         if not existed:
             audit.log("tank_dip_recorded", actor=request.user, obj=row, changes={"litres": str(row.litres), "tank": d["tank"].name}, request=request)
-            dayclose.try_close_at_shift_change(station=d["tank"].station, user=request.user, at=row.reading_at, request=request)
         return Response(TankReadingSerializer(row).data, status=status.HTTP_200_OK if existed else status.HTTP_201_CREATED)
 
 
@@ -583,7 +582,6 @@ def _apply(user, kind, p):
             d = _valid(TankDipInput, p)
             _check_station(user, d["tank"].station)
             row = services.record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=d.get("at"), shift=d.get("shift"), client_id=d.get("client_id"))
-            dayclose.try_close_at_shift_change(station=d["tank"].station, user=user, at=row.reading_at)
         else:
             d = _valid(DeliveryInput, p)
             _check_station(user, d["tank"].station)

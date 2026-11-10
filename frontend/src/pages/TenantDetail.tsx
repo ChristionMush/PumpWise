@@ -164,7 +164,7 @@ export default function TenantDetail() {
           <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.dip_at_shift_end)}
             onChange={(e) => setFeature({ dip_at_shift_end: e.target.checked })} /> Dip at the end of a shift</label>
           <label>Close the day at a shift change<select value={tenant.features.close_day_at_change ?? ""} onChange={(e) => setFeature({ close_day_at_change: e.target.value })}>
-            <option value="">No (closed on the Dip screen)</option><option value="07:00">Morning change (02:00-12:00)</option><option value="18:00">Evening change (13:00-23:00)</option></select></label>
+            <option value="">No (closed on the Dip screen)</option><option value="07:00">07:00 change</option><option value="18:00">18:00 change</option></select></label>
           <p className="muted">The dip at the change is taken a few minutes before the last attendant ends, so each day's fuel check can be a few litres off, evened out the next day.</p>
         </section>
       )}
