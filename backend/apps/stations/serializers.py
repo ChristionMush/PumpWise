@@ -144,6 +144,7 @@ class NozzleSerializer(serializers.ModelSerializer):
     def update(self, instance, validated):
         also = validated.pop("also_draws_from", None)
         nozzle = super().update(instance, validated)
+        nozzle._draws = None  # worked out again after the change (the audit's "before" filled it)
         if also is not None:
             self._set_also(nozzle, also)
         elif "tank" in validated:  # its tank changed: links to the new tank itself, or of another fuel, no longer hold
