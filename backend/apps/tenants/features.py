@@ -100,6 +100,24 @@ def set_expenses(*, tenant, on, actor=None, request=None):
         audit.log("tenant_expenses_set", actor=actor, tenant_id=tenant.id, obj=tenant, request=request, changes={"expenses_enabled": [before, tenant.expenses_enabled]})
 
 
+SHIFT_OPTIONS = ("attendants_pick_pumps", "dip_at_shift_end", "close_day_at_change")
+
+
+def set_shift_options(*, tenant, changes, actor=None, request=None):
+    """How the shift change works at a business (pump picking, dips at the end of a shift, the day closing at a shift
+    change). Each is off by default; changing one never touches recorded shifts."""
+    changes = {k: v for k, v in changes.items() if k in SHIFT_OPTIONS and getattr(tenant, k) != v}
+    if not changes:
+        return
+    with transaction.atomic(), tenant_scope(tenant.id):
+        before = {k: getattr(tenant, k) for k in changes}
+        for k, v in changes.items():
+            setattr(tenant, k, v)
+        tenant.save(update_fields=[*changes, "updated_at"])
+        audit.log("tenant_shift_options_set", actor=actor, tenant_id=tenant.id, obj=tenant, request=request,
+                  changes={k: [before[k], v] for k, v in changes.items()})
+
+
 def set_pump_system(*, tenant, system, actor=None, request=None):
     """The pump system for the whole business: grants what it needs and moves every station to its policy."""
     from apps.stations.models import Station

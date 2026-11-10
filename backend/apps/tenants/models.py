@@ -38,6 +38,14 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # Expenses, set by the platform: attendants and managers record what they paid out (lunch, generator fuel...).
     # Recorded only: the cash they hand in is unchanged. Off: the screens hide, what was recorded stays.
     expenses_enabled = models.BooleanField(default=False)
+    # How the shift change works, set by the platform (all off: as before). Assigned pumps: attendants tick the free
+    # pumps they take when they start, instead of a manager allocating them.
+    attendants_pick_pumps = models.BooleanField(default=False)
+    # Ending a shift asks the outgoing attendant to dip every tank (unless someone did in the last hour).
+    dip_at_shift_end = models.BooleanField(default=False)
+    # "07:00" or "18:00": the day closes by itself at that shift change, once everyone from the outgoing shift has ended
+    # and every tank was dipped (dayclose.close_at_shift_change). "": closed on the Dip screen as before.
+    close_day_at_change = models.CharField(max_length=5, blank=True, default="", choices=[("", "No"), ("07:00", "07:00"), ("18:00", "18:00")])
     # Demo and trial businesses (Phase 12): never send real SMS/WhatsApp/email, use the billing sandbox, and are the
     # only tenants the demo loader may ever wipe and reload. A trial expires (suspended), then is removed if not converted.
     is_demo = models.BooleanField(default=False)

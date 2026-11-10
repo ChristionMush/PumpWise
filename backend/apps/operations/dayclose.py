@@ -111,6 +111,64 @@ def close_day(*, user, station, dips, meters, at=None, note="", request=None):
     return close
 
 
+CHANGE_WINDOW = timedelta(minutes=90)  # an end this close to the business's closing shift change belongs to it
+
+
+def close_at_shift_change(*, station, user, at, request=None):
+    """A business that closes the day at a shift change (Tenant.close_day_at_change, "07:00" or "18:00"): once everyone
+    who was on before the change has ended, and every tank was dipped at the change, the day closes at the last end,
+    with the latest dip of each tank and every pump's latest meter number. Returns the close, or None (not yet, or the
+    business does not close this way; the Dip screen still can)."""
+    from datetime import datetime, time
+
+    from apps.tenants.models import Tenant
+
+    from .models import ShiftAttendant
+
+    tenant = Tenant.objects.filter(pk=station.tenant_id).first()
+    if tenant is None or not tenant.close_day_at_change:
+        return None
+    local = timezone.localtime(at)
+    hh, mm = map(int, tenant.close_day_at_change.split(":"))
+    change = None
+    for day in (local.date() - timedelta(days=1), local.date(), local.date() + timedelta(days=1)):
+        moment = timezone.make_aware(datetime.combine(day, time(hh, mm)), timezone.get_current_timezone())
+        if abs(at - moment) <= CHANGE_WINDOW:
+            change = moment
+    if change is None:
+        return None
+    since = change - CHANGE_WINDOW
+    day = tradingday.day_of_close(at)
+    if DayClose.objects.filter(station=station, day=day).exists():
+        return None
+    if ShiftAttendant.objects.filter(shift__station=station, left_at__isnull=True, joined_at__lt=since, joined_at__gt=since - timedelta(hours=16)).exists():
+        return None  # someone from the outgoing shift is still on (a part left open for days does not hold the close up)
+    tanks = list(Tank.objects.filter(station=station))
+    dips = {t.pk: TankReading.objects.filter(tank=t, reading_at__gt=since, reading_at__lte=at).order_by("-reading_at").first() for t in tanks}
+    if not tanks or any(d is None for d in dips.values()):
+        return None  # a tank was not dipped at this change
+    nozzles = list(Nozzle.objects.filter(pump__station=station))
+    meters = {n.pk: PumpMeterReading.objects.filter(nozzle=n, reading_at__lte=at).order_by("-reading_at", "-created_at").first() for n in nozzles}
+    if not nozzles or any(m is None for m in meters.values()):
+        return None
+    with db_tx.atomic():
+        close = DayClose.objects.create(tenant_id=station.tenant_id, station=station, day=day, closed_at=at, closed_by=user,
+                                        note=f"Closed at the {tenant.close_day_at_change} shift change")
+        for d in dips.values():
+            d.day_close = close
+            d.save(update_fields=["day_close", "updated_at"])
+        for n in nozzles:
+            DayCloseReading.objects.create(tenant_id=station.tenant_id, day_close=close, nozzle=n, reading=meters[n.pk].reading)
+        from .rollups import refresh_daily
+
+        for d in (day, day + timedelta(days=1)):
+            refresh_daily(station, d)
+        audit.log("day_closed", actor=user, obj=close, request=request, changes={
+            "station": station.name, "day": day.isoformat(), "at": at.isoformat(), "at_shift_change": tenant.close_day_at_change,
+            "dips": {t.name: str(dips[t.pk].litres) for t in tanks}, "meters": {f"{n.pump.name} {n}": str(meters[n.pk].reading) for n in nozzles}})
+    return close
+
+
 def latest_close(station):
     return DayClose.objects.filter(station=station).order_by("-day").first()
 

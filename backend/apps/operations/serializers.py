@@ -70,6 +70,8 @@ class ShiftStartInput(serializers.Serializer):
     attendants = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
     # Assigned-pump stations: {pump id: attendant id}. The app pre-fills it from the last shift.
     assignments = serializers.DictField(child=serializers.UUIDField(), required=False, default=dict)
+    # A business where attendants pick their pumps: the pumps this attendant takes
+    pumps = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
 
     def validate_attendants(self, ids):
         from apps.accounts.models import User
@@ -87,6 +89,7 @@ class ShiftEndInput(serializers.Serializer):
     close = serializers.BooleanField(required=False, allow_null=True, default=None)
     user = serializers.UUIDField(required=False, allow_null=True)  # lead/manager handing in for someone
     cash_later = serializers.BooleanField(required=False, default=False)  # assigned pumps: close the meters now, cash after
+    dips = serializers.ListField(child=serializers.DictField(), required=False, default=list)  # dip at the end of a shift (checked in services)
 
 
 class CashInputOnly(serializers.Serializer):

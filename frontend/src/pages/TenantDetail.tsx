@@ -62,7 +62,7 @@ export default function TenantDetail() {
   };
 
   // Paid features (platform only): several attendants per shift, and pump assignment (which needs the first).
-  const setFeature = (body: Record<string, boolean>) => void run(async () => {
+  const setFeature = (body: Record<string, boolean | string>) => void run(async () => {
     await api(`/api/platform/tenants/${id}/features/`, { method: "PATCH", body });
   });
   const setPolicy = (stationId: string, body: { attendants_mode?: AttendantsMode; assignment_mode?: AssignmentMode }) => void run(async () => {
@@ -162,6 +162,14 @@ export default function TenantDetail() {
           <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.expenses_enabled)}
             onChange={(e) => setFeature({ expenses_enabled: e.target.checked })} /> Expenses</label>
           <p className="muted">Attendants and managers record what they pay out (lunch, generator fuel...). Recorded only; off hides the screens and keeps what was recorded.</p>
+          <h3>Shift change</h3>
+          <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.attendants_pick_pumps)}
+            onChange={(e) => setFeature({ attendants_pick_pumps: e.target.checked })} /> Attendants pick their pumps</label>
+          <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.dip_at_shift_end)}
+            onChange={(e) => setFeature({ dip_at_shift_end: e.target.checked })} /> Dip at the end of a shift</label>
+          <label>Close the day at a shift change<select value={tenant.features.close_day_at_change ?? ""} onChange={(e) => setFeature({ close_day_at_change: e.target.value })}>
+            <option value="">No (closed on the Dip screen)</option><option value="07:00">07:00 change</option><option value="18:00">18:00 change</option></select></label>
+          <p className="muted">The dip at the change is taken a few minutes before the last attendant ends, so each day's fuel check can be a few litres off, evened out the next day.</p>
         </section>
       )}
 

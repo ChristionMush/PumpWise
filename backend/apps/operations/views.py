@@ -119,12 +119,13 @@ def _do_shift_start(user, data, strict=False):
     return _conflict_as_400(
         services.start_shift, user=user, station=data["station"], readings=data["readings"], shift_id=data.get("shift_id"),
         started_at=data.get("started_at"), attendants=data.get("attendants"), assignments=data.get("assignments"), strict=strict,
+        pumps=data.get("pumps") or None,
     )
 
 
 def do_shift_end(user, shift, data, strict=False, request=None):
     return _conflict_as_400(
-        services.end_shift, user=user, shift=shift, readings=data["readings"], cash=data["cash"], ended_at=data.get("ended_at"),
+        services.end_shift, user=user, shift=shift, readings=data["readings"], cash=data["cash"], ended_at=data.get("ended_at"), dips=data.get("dips") or (),
         strict=strict, close=data.get("close"), who=_user(data.get("user"), user.tenant_id), request=request,
         cash_later=data.get("cash_later", False),
     )
@@ -183,7 +184,8 @@ class PrefillView(APIView):
         for st in stations:
             assigned = services.is_assigned_station(st)
             qs = Pump.objects.filter(station=st).select_related("assigned_to").prefetch_related("nozzles__tank__fuel_type")
-            if assigned and not manager:
+            picking = assigned and services.picks_pumps(st)
+            if assigned and not manager and not picking:  # where attendants pick, they see every pump to choose from
                 on_my_shift = PumpAssignment.objects.filter(user=user, ended_at__isnull=True, shift__status="open", shift__station=st).values("pump_id")
                 qs = qs.filter(Q(assigned_to=user) | Q(pk__in=on_my_shift))
             pumps = []
@@ -220,13 +222,19 @@ class PrefillView(APIView):
             }
             if st.attendants_mode == Station.AttendantsMode.MULTIPLE:
                 entry["staff"] = _station_staff(st)
+            if picking:
+                entry["pick_pumps"] = True
+            if user.tenant.dip_at_shift_end:  # ending a shift asks for every tank's dip, unless one was just taken
+                entry["dip_at_end"] = True
+                last = TankReading.objects.filter(tank__station=st).order_by("-reading_at").first()
+                entry["last_dip_at"] = last.reading_at if last else None
             if can(user, "view_tank_levels"):  # tank levels are for managers and owners only (rule 11)
                 tanks = []
                 for t in Tank.objects.filter(station=st).select_related("fuel_type"):
                     last = TankReading.objects.filter(tank=t).first()
                     tanks.append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres), "has_calibration": t.calibration.count() >= 2, "last_litres": str(last.litres) if last else None})
                 entry["tanks"] = tanks
-            elif can(user, "record_dips"):  # an attendant the owner allows to dip: which tanks, never their levels
+            elif can(user, "record_dips") or user.tenant.dip_at_shift_end:  # an attendant who dips: which tanks, never their levels
                 entry["tanks"] = [{"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "has_calibration": t.calibration.count() >= 2}
                                   for t in Tank.objects.filter(station=st).select_related("fuel_type")]
             out.append(entry)

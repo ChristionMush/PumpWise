@@ -17,6 +17,7 @@ export default function CreateTenant() {
   const [pumpSystem, setPumpSystem] = useState<PumpSystem | "">(""); // asked up front: no default
   const [pesnat, setPesnat] = useState(false);
   const [expenses, setExpenses] = useState(false);
+  const [shiftOpts, setShiftOpts] = useState({ attendants_pick_pumps: false, dip_at_shift_end: false, close_day_at_change: "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<(TenantSummary & { owner_credentials: Credentials }) | null>(null);
@@ -41,6 +42,7 @@ export default function CreateTenant() {
         pump_system: pumpSystem,
         pesnat_mode: pesnat,
         expenses_enabled: expenses,
+        ...shiftOpts,
       };
       setCreated(await api("/api/platform/tenants/", { method: "POST", body }));
     } catch (err) {
@@ -86,6 +88,16 @@ export default function CreateTenant() {
           and lets the owner allow attendants to dip tanks. Can be changed later on the business's page.</p>
         <label className="row gap"><input type="checkbox" checked={expenses} onChange={(e) => setExpenses(e.target.checked)} /> Expenses</label>
         <p className="muted">Attendants and managers record what they pay out (lunch, generator fuel...). Recorded only: it does not change the cash handed in.</p>
+      </section>
+      <section className="card form">
+        <h2>Shift change</h2>
+        <label className="row gap"><input type="checkbox" checked={shiftOpts.attendants_pick_pumps} onChange={(e) => setShiftOpts({ ...shiftOpts, attendants_pick_pumps: e.target.checked })} /> Attendants pick their pumps</label>
+        <p className="muted">Assigned pumps: each attendant ticks the free pumps they take when they start, instead of a manager allocating them.</p>
+        <label className="row gap"><input type="checkbox" checked={shiftOpts.dip_at_shift_end} onChange={(e) => setShiftOpts({ ...shiftOpts, dip_at_shift_end: e.target.checked })} /> Dip at the end of a shift</label>
+        <p className="muted">Ending a shift asks the outgoing attendant to dip every tank (the first to end; not again within the hour).</p>
+        <label>Close the day at a shift change<select value={shiftOpts.close_day_at_change} onChange={(e) => setShiftOpts({ ...shiftOpts, close_day_at_change: e.target.value })}>
+          <option value="">No (closed on the Dip screen)</option><option value="07:00">07:00 change</option><option value="18:00">18:00 change</option></select></label>
+        <p className="muted">Once everyone from the outgoing shift has ended and every tank was dipped, the day closes with those dips and every pump's last number.</p>
       </section>
       <section className="card form">
         <h2>Owner</h2>

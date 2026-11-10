@@ -563,8 +563,8 @@ def pump_gaps(stations):
 
     out = []
     for station in stations:
-        if not is_assigned_station(station):
-            continue
+        if not is_assigned_station(station) or picks_pumps(station):
+            continue  # attendants pick their own pumps there: nothing for the manager to allocate
         weekly = rota.rota_for(station)
         for pump in Pump.objects.filter(station=station).select_related("assigned_to").order_by("name"):
             gap = {"station": str(station.pk), "station_name": station.name, "pump": str(pump.pk), "pump_name": pump.name}
@@ -588,7 +588,7 @@ def pump_gaps(stations):
 
 # ---- starting, joining, leaving --------------------------------------------------------------------------------
 
-def start_shift(*, user, station, readings, shift_id=None, started_at=None, attendants=None, assignments=None, strict=False):
+def start_shift(*, user, station, readings, shift_id=None, started_at=None, attendants=None, assignments=None, strict=False, pumps=None):
     """Open a shift and record start meter numbers. Idempotent on shift_id (offline retries).
 
     The person starting is the lead if they are an attendant; a manager starting names the attendants (the first is lead).
@@ -608,7 +608,8 @@ def start_shift(*, user, station, readings, shift_id=None, started_at=None, atte
     for person in ([user] if user.role == Role.ATTENDANT else list(attendants or [])):
         require_cleared(person)
     if is_assigned_station(station):
-        return _start_on_my_pumps(user=user, station=station, readings=readings, shift_id=shift_id, started_at=started_at, attendants=attendants, strict=strict)
+        return _start_on_my_pumps(user=user, station=station, readings=readings, shift_id=shift_id, started_at=started_at, attendants=attendants, strict=strict,
+                                  picked=pumps)
     people = [_check_attendant_user(u, user.tenant_id) for u in (attendants or [])]
     if user.role == Role.ATTENDANT:
         people = [user, *[p for p in people if p.pk != user.pk]]
@@ -669,7 +670,34 @@ def start_shift(*, user, station, readings, shift_id=None, started_at=None, atte
     return shift
 
 
-def _start_on_my_pumps(*, user, station, readings, shift_id, started_at, attendants, strict):
+def picks_pumps(station):
+    """A business where attendants pick their pumps when they start (no manager allocating them)."""
+    from apps.tenants.models import Tenant
+
+    return is_assigned_station(station) and Tenant.objects.filter(pk=station.tenant_id, attendants_pick_pumps=True).exists()
+
+
+def _pick_pumps(*, user, person, station, picked, strict):
+    """The pumps an attendant ticked when starting become theirs (as if a manager gave them). A pump someone else is
+    still on is refused (online) or left out and flagged (offline)."""
+    chosen = list(Pump.objects.filter(station=station, pk__in=picked).prefetch_related("nozzles").order_by("name"))
+    if len(chosen) != len(set(map(str, picked))):
+        raise ValidationError({"pumps": "Pick pumps at this station."})
+    for p in chosen:
+        other = open_pump_assignment(p)
+        if other is not None and other.user_id != person.pk:
+            if strict:
+                raise ValidationError({"pumps": f"{p.name} is still with {other.user.full_name}. Pick it when they end their part."})
+            continue  # offline: _start_on_my_pumps takes it over only with the numbers entered, as for any handover
+        if p.assigned_to_id != person.pk:
+            before = p.assigned_to.full_name if p.assigned_to_id else None
+            p.assigned_to = person
+            p.save(update_fields=["assigned_to", "updated_at"])
+            audit.log("pump_picked", actor=user, obj=p, changes={"pump": p.name, "from": before, "to": person.full_name})
+    return chosen
+
+
+def _start_on_my_pumps(*, user, station, readings, shift_id, started_at, attendants, strict, picked=None):
     """Assigned pumps: an attendant starts on the pumps a manager gave them (a manager may start for one attendant).
     The first person opens the station's shift; the next ones join it. A pump still with someone else is handed over
     at the numbers this person enters (offline phones), or refused until that person ends their part (online)."""
@@ -680,7 +708,10 @@ def _start_on_my_pumps(*, user, station, readings, shift_id, started_at, attenda
         if len(people) != 1:
             raise ValidationError({"attendants": "On assigned pumps each attendant starts on their own pumps. Choose one attendant."})
         person = people[0]
-    pumps = my_pumps(station, person)
+    if picked and picks_pumps(station):
+        pumps = _pick_pumps(user=user, person=person, station=station, picked=picked, strict=strict)
+    else:
+        pumps = my_pumps(station, person)
     if not pumps:
         raise ValidationError({"detail": f"No pump is assigned to {person.full_name} at {station.name}. A manager assigns the pumps."})
     with db_tx.atomic():
@@ -960,12 +991,49 @@ def _close(shift):
     on_shift_closed(shift)
 
 
-def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close=None, who=None, request=None, cash_later=False):
+def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close=None, who=None, request=None, cash_later=False, dips=()):
+    """'End of my shift' from a phone. A business that dips at the end of a shift sends the tanks' dips with it, and may
+    close the day at that shift change (dayclose.close_at_shift_change)."""
+    from . import dayclose  # dayclose imports this module
+
+    ended_at = ended_at or timezone.now()
+    with db_tx.atomic():
+        if dips:
+            _record_end_dips(user=user, shift=shift, dips=dips, at=ended_at)
+        result = _end_shift(user=user, shift=shift, readings=readings, cash=cash, ended_at=ended_at, strict=strict, close=close, who=who,
+                            request=request, cash_later=cash_later)
+    try:  # the end is saved whatever happens here; a close that cannot be made waits for the Dip screen
+        with db_tx.atomic():
+            dayclose.close_at_shift_change(station=shift.station, user=user, at=ended_at, request=request)
+    except Exception:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).exception("closing the day at the shift change failed at %s", shift.station_id)
+    return result
+
+
+def _record_end_dips(*, user, shift, dips, at):
+    """Dips taken by the outgoing attendant at the shift change (a business that dips at the end of a shift)."""
+    from apps.tenants.models import Tenant
+
+    from .serializers import DayCloseDipInput
+
+    if not (can(user, "record_dips") or Tenant.objects.filter(pk=shift.tenant_id, dip_at_shift_end=True).exists()):
+        raise PermissionDenied("Dips are recorded by a manager.")
+    data = DayCloseDipInput(data=list(dips), many=True)
+    data.is_valid(raise_exception=True)
+    for d in data.validated_data:
+        if d["tank"].station_id != shift.station_id:
+            raise ValidationError({"dips": f"{d['tank'].name} is not at this station."})
+        if not TankReading.objects.filter(tank=d["tank"], shift=shift, recorded_by=user, reading_at=at).exists():  # a resend
+            record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=at, shift=shift)
+
+
+def _end_shift(*, user, shift, readings, cash, ended_at, strict=False, close=None, who=None, request=None, cash_later=False):
     """'End of my shift' from a phone: end meter numbers (anyone on the shift), the sender's cash, and, for the lead or a
     manager, a request to close. Re-sending corrects an unreviewed shift. Assigned pumps: cash_later closes the meters now
     (the pumps pass on at once) and the cash is handed in after it is counted."""
     _require_not_reviewed(shift)
-    ended_at = ended_at or timezone.now()
     due = attendant_row(shift, who or user)
     if is_assigned_station(shift.station) and (shift.status == Shift.Status.OPEN or (due and due.approval == CASH_DUE)):
         if not (can(user, "manage_shift") or attendant_row(shift, user)):

@@ -28,7 +28,7 @@ def unique_slug(name):
 
 
 def create_tenant_with_owner(*, business_name, owner_name, owner_email=None, owner_phone=None, plan="", paid_through=None, stations=(), actor=None, request=None, source="platform",
-                             pump_system="shared", pesnat_mode=False, expenses_enabled=False):
+                             pump_system="shared", pesnat_mode=False, expenses_enabled=False, shift_options=None):
     """Create a business: tenant + subscription + owner login + stations + defaults, atomically.
 
     Must run inside a transaction with the platform context on (platform endpoints and the billing webhook do).
@@ -51,7 +51,7 @@ def create_tenant_with_owner(*, business_name, owner_name, owner_email=None, own
     temporary_password = generate_temporary_password()
     with transaction.atomic():
         tenant = Tenant.objects.create(name=business_name, slug=unique_slug(business_name), pesnat_mode=pesnat_mode,
-                                       expenses_enabled=expenses_enabled)
+                                       expenses_enabled=expenses_enabled, **(shift_options or {}))
         Subscription.objects.create(tenant=tenant, plan=plan, paid_through=paid_through)
         with tenant_scope(tenant.id):
             owner = User.objects.create_user(

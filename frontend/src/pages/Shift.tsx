@@ -23,6 +23,9 @@ export interface StationInfo {
   staff?: { id: string; name: string; on_shift?: boolean }[];
   my_stage?: Stage; // where this person is in the shift cycle, from the server
   busy_shift?: { people: string[] } | null; // one-attendant station: someone else's shift is still being worked
+  pick_pumps?: boolean; // attendants tick the free pumps they take when they start (no manager allocating)
+  dip_at_end?: boolean; // ending a shift asks for every tank's dip, unless one was just taken
+  last_dip_at?: string | null;
 }
 /** start: no shift yet · on_shift: started, the end screen is next · done: their part of an open shift is over ·
  *  held: their last end waits for the manager (no new shift until approved), was sent back, or may be changed ·
@@ -132,6 +135,8 @@ export default function Shift() {
   const [nums, setNums] = useState<Record<string, string>>({});
   const [cash, setCash] = useState<Record<string, string>>({});
   const [creditNote, setCreditNote] = useState("");
+  const [picked, setPicked] = useState<string[]>([]); // pump ids ticked at the start (pumps picked by attendants)
+  const [endDips, setEndDips] = useState<Record<string, { mm: string; litres: string }>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -190,8 +195,11 @@ export default function Shift() {
 
   const station = stations.find((s) => s.id === stationId);
   // On assigned pumps the server sends an attendant only the pumps a manager gave them.
-  const nozzles = useMemo(() => station?.pumps.flatMap((p) => p.nozzles.map((n) => ({ ...n, pump: p }))) ?? [], [station]);
+  const allNozzles = useMemo(() => station?.pumps.flatMap((p) => p.nozzles.map((n) => ({ ...n, pump: p }))) ?? [], [station]);
   const assigned = station?.assignment_mode === "assigned";
+  // a business where attendants pick their pumps: only the pumps ticked are started (after starting, all are listed)
+  const picking = Boolean(station?.pick_pumps);
+  const nozzles = useMemo(() => (picking && !active ? allNozzles.filter((n) => picked.includes(n.pump.id)) : allNozzles), [allNozzles, picking, picked, active]);
   // an attendant starts a free pump from its last closing number; a pump someone is still on, they enter as handed over
   const fixedStart = (n: (typeof nozzles)[number]) => !canType && Boolean(n.last_reading) && !n.pump.in_use_by;
 
@@ -199,6 +207,7 @@ export default function Shift() {
     if (!station) return;
     const startOf = (n: (typeof nozzles)[number]) => (fixedStart(n) ? n.last_reading! : nums[n.id]);
     const readings = nozzles.filter((n) => startOf(n) !== "" && startOf(n) !== undefined);
+    if (picking && !picked.length) return setError("Tick the pumps you are taking.");
     if (!readings.length) return setError("Enter the meter number for at least one pump.");
     // Assigned pumps: every nozzle of my free pumps. A pump still with the outgoing attendant is taken over only if
     // I enter its numbers (when they hand it to me).
@@ -207,8 +216,9 @@ export default function Shift() {
     const shown = (n: (typeof nozzles)[number]) => (fixedStart(n) && seen[n.id] && Number(seen[n.id]) !== Number(startOf(n)) ? { seen: seen[n.id] } : {});
     const a: Active = { id: uuid(), station_id: station.id, started_at: new Date().toISOString(), starts: Object.fromEntries(readings.map((n) => [n.id, Number(startOf(n))])) };
     await kvSet("activeShift", a); // saved on the phone first
-    await enqueue("shift_start", { shift_id: a.id, station: station.id, started_at: a.started_at, readings: readings.map((n) => ({ nozzle: n.id, reading: startOf(n), ...shown(n) })) });
-    setActive(a); setNums({}); setSeen({}); setChecking({}); setError(null);
+    await enqueue("shift_start", { shift_id: a.id, station: station.id, started_at: a.started_at, readings: readings.map((n) => ({ nozzle: n.id, reading: startOf(n), ...shown(n) })),
+      ...(picking ? { pumps: picked } : {}) });
+    setActive(a); setNums({}); setSeen({}); setChecking({}); setPicked([]); setError(null);
   };
 
   /** Before meters go: numbers that cannot be right are refused, an end below the start only once the attendant says
@@ -234,6 +244,15 @@ export default function Shift() {
     const lines = TYPES.filter(([t]) => cash[t]).map(([t]) => ({ payment_type: t, currency: cur, amount: cash[t], ...(t === "credit" ? { note: creditNote.trim() } : {}) }));
     return lines;
   };
+  // a business that dips at the end of a shift: every tank, unless someone dipped in the last hour (the first to end dips)
+  const askDips = Boolean(active && !active.member && station?.dip_at_end && (station.tanks ?? []).length
+    && !(station.last_dip_at && Date.now() - new Date(station.last_dip_at).getTime() < 60 * 60 * 1000));
+  const dipsWrong = () => {
+    if (!askDips) return null;
+    const missing = (station!.tanks ?? []).filter((t: any) => !endDips[t.id]?.mm || (!t.has_calibration && !endDips[t.id]?.litres));
+    return missing.length ? `Dip every tank before you end: ${missing.map((t: any) => t.name).join(", ")}.` : null;
+  };
+  const dipLines = () => (askDips ? (station!.tanks ?? []).map((t: any) => ({ tank: t.id, dip_mm: endDips[t.id].mm, ...(endDips[t.id].litres ? { litres: endDips[t.id].litres } : {}) })) : []);
   // intercompany issue: who was credited, so the accounting pack can trace it
   const noCreditNote = () => Number(cash.credit) > 0 && !creditNote.trim();
   const CREDIT_NOTE = "Write who was credited with the intercompany issue (the company, and the vehicle if any).";
@@ -241,7 +260,7 @@ export default function Shift() {
   const finish = async (message: string) => {
     if (active) await kvSet("lastEnded", { station_id: active.station_id, at: new Date().toISOString() });
     await kvSet("activeShift", null);
-    setActive(null); setSaved(message); setNums({}); setCash({}); setCreditNote(""); setError(null);
+    setActive(null); setSaved(message); setNums({}); setCash({}); setCreditNote(""); setEndDips({}); setError(null);
   };
 
   // A pump the manager swapped away mid-shift drops out of the prefill: its end number was taken at the swap.
@@ -263,7 +282,7 @@ export default function Shift() {
     }
     const missing = rows.filter((n) => !nums[n.id]);
     if (missing.length) return setError(`Enter the end number for ${missing.length} more nozzle${missing.length > 1 ? "s" : ""}.`);
-    const wrong = metersWrong();
+    const wrong = metersWrong() ?? dipsWrong();
     if (wrong) return setError(wrong);
     // far more or less cash than the meters say: often an end number not read off the pump. Pointed out once.
     const gap = calc ? calc.variance : 0, key = JSON.stringify([nums, cash]);
@@ -273,7 +292,8 @@ export default function Shift() {
         ? `Your cash is ${money(gap)} more than your meters say. Check each end number on the pump: one may be too low. Tap End shift again to send it as it is.`
         : `Your cash is ${money(-gap)} short of what your meters say. Count the cash again and check each end number. Tap End shift again to send it as it is.`);
     }
-    await enqueue("shift_end", { shift_id: active.id, ended_at: new Date().toISOString(), readings: rows.map((n) => ({ nozzle: n.id, reading: nums[n.id] })), cash: cashLines() });
+    await enqueue("shift_end", { shift_id: active.id, ended_at: new Date().toISOString(), readings: rows.map((n) => ({ nozzle: n.id, reading: nums[n.id] })), cash: cashLines(),
+      ...(askDips ? { dips: dipLines() } : {}) });
     return finish(assigned
       ? "Your part of the shift is saved. Your pumps pass to the next attendant. Your manager approves it before your next shift."
       : station?.attendants_mode === "multiple"
@@ -287,15 +307,16 @@ export default function Shift() {
     if (!active || !station) return;
     const missing = rows.filter((n) => !nums[n.id]);
     if (missing.length) return setError(`Enter the end number for ${missing.length} more nozzle${missing.length > 1 ? "s" : ""}.`);
-    const wrong = metersWrong();
+    const wrong = metersWrong() ?? dipsWrong();
     if (wrong) return setError(wrong);
     const due: CashDue = { shift_id: active.id, station_id: active.station_id, expected: calc ? calc.expected : null,
       meters: rows.map((n) => ({ name: `${n.pump.name} · ${n.label}`, start: active.starts[n.id], end: nums[n.id] })) };
-    await enqueue("shift_end", { shift_id: active.id, ended_at: new Date().toISOString(), readings: rows.map((n) => ({ nozzle: n.id, reading: nums[n.id] })), cash: [], cash_later: true });
+    await enqueue("shift_end", { shift_id: active.id, ended_at: new Date().toISOString(), readings: rows.map((n) => ({ nozzle: n.id, reading: nums[n.id] })), cash: [], cash_later: true,
+      ...(askDips ? { dips: dipLines() } : {}) });
     await kvSet("cashDue", due);
     await kvSet("lastEnded", { station_id: active.station_id, at: new Date().toISOString() });
     await kvSet("activeShift", null);
-    setActive(null); setCashDue(due); setNums({}); setError(null);
+    setActive(null); setCashDue(due); setNums({}); setEndDips({}); setError(null);
   };
 
   const handInCash = async (shiftId: string) => {
@@ -387,8 +408,18 @@ export default function Shift() {
       {!active && stations.length > 1 && (
         <label>Station<select value={stationId} onChange={(e) => setStationId(e.target.value)}>{stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
       )}
-      {!active && assigned && station.pumps.length > 0 && <p className="muted">Your pumps: {station.pumps.map((p) => p.name).join(", ")}</p>}
-      {!active && assigned && station.pumps.filter((p) => p.in_use_by).map((p) => (
+      {!active && assigned && !picking && station.pumps.length > 0 && <p className="muted">Your pumps: {station.pumps.map((p) => p.name).join(", ")}</p>}
+      {!active && picking && (
+        <fieldset className="card form" aria-label="Pumps I am taking">
+          <legend><strong>Pumps I am taking</strong></legend>
+          {station.pumps.map((p) => (
+            <label key={p.id} className="row gap"><input type="checkbox" checked={picked.includes(p.id)} disabled={Boolean(p.in_use_by)}
+              onChange={(e) => setPicked(e.target.checked ? [...picked, p.id] : picked.filter((x) => x !== p.id))} />
+              {p.name}{p.in_use_by ? <span className="muted"> · still with {p.in_use_by}</span> : null}</label>
+          ))}
+        </fieldset>
+      )}
+      {!active && assigned && !picking && station.pumps.filter((p) => p.in_use_by).map((p) => (
         <p key={p.id} className="warn" role="status">{p.name} is still with {p.in_use_by}. Enter its numbers only when they hand it over to you.</p>
       ))}
       {busy && <section className="card" role="status"><p>A shift is open here ({busy.join(", ")}). It must be ended, or handed over to you, before you can start.</p></section>}
@@ -416,6 +447,19 @@ export default function Shift() {
       ))}
       {active && !active.member && endProblems(rows, active.starts, nums, active.started_at).below.length > 0 && (
         <label className="check"><input type="checkbox" checked={belowOk} onChange={(e) => setBelowOk(e.target.checked)} /> The pump really shows these numbers</label>
+      )}
+      {askDips && (
+        <section className="card form" aria-label="Tank dips">
+          <h2>Tank dips</h2>
+          <p className="muted">Dip every tank before you hand over.</p>
+          {(station.tanks ?? []).map((t: any) => (
+            <div key={t.id} className="row gap">
+              <strong>{t.name} <span className="muted">· {t.fuel_code}</span></strong>
+              <label>Dip (mm)<input inputMode="decimal" value={endDips[t.id]?.mm ?? ""} onChange={(e) => setEndDips({ ...endDips, [t.id]: { mm: e.target.value.replace(",", "."), litres: endDips[t.id]?.litres ?? "" } })} /></label>
+              {!t.has_calibration && <label>Litres<input inputMode="decimal" value={endDips[t.id]?.litres ?? ""} onChange={(e) => setEndDips({ ...endDips, [t.id]: { mm: endDips[t.id]?.mm ?? "", litres: e.target.value.replace(",", ".") } })} /></label>}
+            </div>
+          ))}
+        </section>
       )}
       {active && assigned && !active.member && (<>
         <button className="btn big" onClick={() => void closeMeters()}>Close my meters (count my cash after)</button>
