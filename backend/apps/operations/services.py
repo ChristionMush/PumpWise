@@ -673,11 +673,12 @@ def _pick_pumps(*, user, person, station, picked, strict):
     chosen = list(Pump.objects.filter(station=station, pk__in=picked).prefetch_related("nozzles").order_by("name"))
     if len(chosen) != len(set(map(str, picked))):
         raise ValidationError({"pumps": "Pick pumps at this station."})
+    busy = {p.pk: other for p in chosen if (other := open_pump_assignment(p)) is not None and other.user_id != person.pk}
+    if strict and busy:
+        p = next(p for p in chosen if p.pk in busy)
+        raise ValidationError({"pumps": f"{p.name} is still with {busy[p.pk].user.full_name}. Pick it when they end their part."})
     for p in chosen:
-        other = open_pump_assignment(p)
-        if other is not None and other.user_id != person.pk:
-            if strict:
-                raise ValidationError({"pumps": f"{p.name} is still with {other.user.full_name}. Pick it when they end their part."})
+        if p.pk in busy:
             continue  # offline: _start_on_my_pumps takes it over only with the numbers entered, as for any handover
         if p.assigned_to_id != person.pk:
             before = p.assigned_to.full_name if p.assigned_to_id else None
@@ -1272,12 +1273,13 @@ def record_shift_expenses(*, user, shift, expenses, at, who=None):
         if not e.get("client_id") and Expense.objects.filter(shift=shift, recorded_by=person, note=e["name"], amount=e["amount"]).exists():
             continue  # an older resend without an id
         rows.append(record_expense(user=person, station=shift.station, category="other", amount=e["amount"], note=e["name"], spent_at=at,
-                                   client_id=e.get("client_id")))
+                                   client_id=e.get("client_id"), shift=shift))
     return rows
 
 
-def record_expense(*, user, station, category, amount, currency=None, note="", spent_at=None, client_id=None):
-    """Money an attendant or manager paid out. Recorded only: their cash hand-in is unchanged. Idempotent on client_id."""
+def record_expense(*, user, station, category, amount, currency=None, note="", spent_at=None, client_id=None, shift=None):
+    """Money an attendant or manager paid out. Recorded only: their cash hand-in is unchanged. Idempotent on client_id.
+    shift: the shift it was paid on, when known (sent with an end of shift); else the part the person was on then."""
     from django.db.models import Q
 
     from apps.tenants.models import Tenant
@@ -1289,9 +1291,11 @@ def record_expense(*, user, station, category, amount, currency=None, note="", s
     if not Tenant.objects.filter(pk=station.tenant_id, expenses_enabled=True).exists():
         raise ValidationError({"detail": "Expenses are not switched on for this business. Ask PumpWise to turn them on."})
     spent_at = spent_at or timezone.now()
-    part = ShiftAttendant.objects.filter(user=user, shift__station=station, joined_at__lte=spent_at).filter(
-        Q(left_at__isnull=True) | Q(left_at__gte=spent_at)).select_related("shift").order_by("-joined_at").first()
-    row = Expense.objects.create(tenant_id=station.tenant_id, client_id=client_id, station=station, shift=part.shift if part else None,
+    if shift is None:
+        part = ShiftAttendant.objects.filter(user=user, shift__station=station, joined_at__lte=spent_at).filter(
+            Q(left_at__isnull=True) | Q(left_at__gte=spent_at)).select_related("shift").order_by("-joined_at").first()
+        shift = part.shift if part else None
+    row = Expense.objects.create(tenant_id=station.tenant_id, client_id=client_id, station=station, shift=shift,
                                  category=category, amount=Decimal(str(amount)).quantize(TWO), currency=currency or station.pricing_currency,
                                  note=note, spent_at=spent_at, recorded_by=user)
     audit.log("expense_recorded", actor=user, obj=row, changes={"station": station.name, "category": category, "amount": str(row.amount),

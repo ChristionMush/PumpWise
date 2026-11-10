@@ -82,6 +82,16 @@ def nozzle_tanks(nozzle):
     return [nozzle.tank_id, *NozzleTank.objects.filter(nozzle=nozzle).exclude(tank_id=nozzle.tank_id).values_list("tank_id", flat=True)]
 
 
+def prune_links(nozzle):
+    """After a nozzle's tank changed: drop "also draws from" links to that tank itself or to another fuel's tanks (a
+    petrol nozzle moved to a diesel tank must not join petrol and diesel into one stock)."""
+    from .models import NozzleTank
+
+    for link in NozzleTank.objects.filter(nozzle=nozzle).select_related("tank"):
+        if link.tank_id == nozzle.tank_id or link.tank.fuel_type_id != nozzle.tank.fuel_type_id:
+            link.delete()
+
+
 def _component(station_id, tank_id):
     """(tank ids, nozzle ids) joined to this tank through nozzles drawing from more than one tank."""
     from .models import Nozzle, NozzleTank

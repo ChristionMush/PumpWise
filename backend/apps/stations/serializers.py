@@ -100,18 +100,23 @@ class NozzleSerializer(serializers.ModelSerializer):
         fields = ["id", "pump", "number", "label", "meter_max", "tank", "tank_name", "fuel_type", "fuel_code", "draws_from", "also_draws_from"]
         read_only_fields = ["id", "number"]
 
+    def _draws(self, obj):
+        """(tank id, name) of every tank it draws from: its tank, then the others. Worked out once per nozzle."""
+        from .pools import nozzle_tanks
+
+        if getattr(obj, "_draws", None) is None:
+            ids = nozzle_tanks(obj)
+            names = dict(Tank.objects.filter(pk__in=ids).values_list("pk", "name"))
+            obj._draws = [(i, names[i]) for i in ids if i in names]
+        return obj._draws
+
     def get_draws_from(self, obj):
         """The names of the tanks it draws from: its tank, then the others."""
-        from .pools import nozzle_tanks
-
-        names = dict(Tank.objects.filter(pk__in=nozzle_tanks(obj)).values_list("pk", "name"))
-        return [names[i] for i in nozzle_tanks(obj) if i in names]
+        return [name for _, name in self._draws(obj)]
 
     def to_representation(self, obj):
-        from .pools import nozzle_tanks
-
         data = super().to_representation(obj)
-        data["also_draws_from"] = [str(i) for i in nozzle_tanks(obj)[1:]]
+        data["also_draws_from"] = [str(i) for i, _ in self._draws(obj)[1:]]
         return data
 
     def _set_also(self, nozzle, ids):
@@ -142,11 +147,9 @@ class NozzleSerializer(serializers.ModelSerializer):
         if also is not None:
             self._set_also(nozzle, also)
         elif "tank" in validated:  # its tank changed: links to the new tank itself, or of another fuel, no longer hold
-            from .models import NozzleTank
+            from .pools import prune_links
 
-            for link in NozzleTank.objects.filter(nozzle=nozzle).select_related("tank"):
-                if link.tank_id == nozzle.tank_id or link.tank.fuel_type_id != nozzle.tank.fuel_type_id:
-                    link.delete()
+            prune_links(nozzle)
         return nozzle
 
     def validate(self, attrs):

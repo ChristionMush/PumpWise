@@ -267,9 +267,12 @@ class PlatformNozzleTankView(APIView):
             if tank.pk != nozzle.tank_id:
                 if Shift.objects.filter(station=station, status="open").exists():
                     raise ValidationError({"detail": f"A shift is open at {station.name}. Change which tank a nozzle draws from after it closes."})
+                from apps.stations.pools import prune_links
+
                 before = nozzle.tank.name
                 nozzle.tank = tank
                 nozzle.save(update_fields=["tank", "updated_at"])
+                prune_links(nozzle)  # its "also draws from" links follow its new tank's fuel
                 audit.log("nozzle_tank_set", actor=request.user, tenant_id=tenant.id, obj=nozzle, request=request,
                           changes={"pump": nozzle.pump.name, "nozzle": str(nozzle), "tank": [before, tank.name]})
             return Response(station_tanks(station))

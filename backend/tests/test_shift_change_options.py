@@ -164,3 +164,21 @@ def test_an_attendant_dips_every_tank_their_nozzles_draw_from_both_petrol_tanks(
     with db_context(tenant_id=a["tenant"].id):
         dipped = set(TankReading.objects.filter(recorded_by=att_a).values_list("tank__name", flat=True))
     assert dipped == {fc.tank.name, "Petrol Tank 2"}  # both petrol tanks; the diesel tank is not on their pump
+
+
+def test_expenses_handed_in_with_the_cash_after_the_meters_belong_to_that_shift():
+    import uuid
+
+    from apps.operations.models import Expense
+
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    options(a, expenses_enabled=True)
+    ca = client_for(att_a)
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    # the shift change: meters closed first, the cash counted and handed in after
+    assert ca.post(f"/api/shifts/{sid}/end/", {"ended_at": A_ENDS, "readings": readings(fc.nozzles, [100, 0]), "cash": [], "cash_later": True}, format="json").status_code == 200
+    handed = ca.post(f"/api/shifts/{sid}/cash/", {"cash": cash("150"), "expenses": [{"client_id": str(uuid.uuid4()), "name": "Lunch", "amount": "5"}]}, format="json")
+    assert handed.status_code == 200, handed.content
+    with db_context(tenant_id=a["tenant"].id):
+        assert str(Expense.objects.get().shift_id) == sid  # on the shift it was paid on, though the part had ended
+    assert client_for(a[Role.OWNER]).get("/api/expenses/", {"date_from": "10 Nov"}).status_code == 400  # not a date

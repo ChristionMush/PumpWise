@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.apps import apps as django_apps
 from django.conf import settings
@@ -185,6 +185,14 @@ class PrefillView(APIView):
             assigned = services.is_assigned_station(st)
             qs = Pump.objects.filter(station=st).select_related("assigned_to").prefetch_related("nozzles__tank__fuel_type")
             picking = assigned and services.picks_pumps(st)
+            draws = {}  # tank id -> every tank joined to it (worked out once per group)
+
+            def draws_from(tank):
+                if tank.pk not in draws:
+                    ids = pool_of(tank).ids
+                    draws.update({i: ids for i in ids})
+                return draws[tank.pk]
+
             if assigned and not manager and not picking:  # where attendants pick, they see every pump to choose from
                 on_my_shift = PumpAssignment.objects.filter(user=user, ended_at__isnull=True, shift__status="open", shift__station=st).values("pump_id")
                 qs = qs.filter(Q(assigned_to=user) | Q(pk__in=on_my_shift))
@@ -195,7 +203,7 @@ class PrefillView(APIView):
                     last = services.last_end_reading(n)
                     nozzles.append({"id": str(n.pk), "number": n.number, "label": str(n), "meter_max": str(n.meter_max), "last_reading": str(last.reading) if last else None,
                                     "fuel_type": str(n.tank.fuel_type_id), "fuel_code": n.tank.fuel_type.code, "tank": str(n.tank_id),
-                                    "draws_from_tanks": [str(i) for i in pool_of(n.tank).ids]})  # ids only, never levels (dipped at the end of a shift)
+                                    "draws_from_tanks": [str(i) for i in draws_from(n.tank)]})  # ids only, never levels (dipped at the end of a shift)
                 pump = {"id": str(p.pk), "name": p.name, "data_source": p.data_source, "nozzles": nozzles}
                 if assigned:
                     pump.update(assigned_to=str(p.assigned_to_id) if p.assigned_to_id else None, assigned_to_name=p.assigned_to.full_name if p.assigned_to_id else None)
@@ -883,7 +891,11 @@ class ExpenseView(APIView):
             qs = qs.filter(station_id=request.query_params["station"])
         for key, op in (("date_from", "gte"), ("date_to", "lte")):
             if request.query_params.get(key):
-                qs = qs.filter(**{f"spent_at__date__{op}": request.query_params[key]})
+                try:
+                    day = date.fromisoformat(request.query_params[key])
+                except ValueError:
+                    raise ValidationError({key: "Use a date like 2026-11-10."})
+                qs = qs.filter(**{f"spent_at__date__{op}": day})
         return Response(ExpenseSerializer(qs[:500], many=True).data)
 
     def post(self, request):

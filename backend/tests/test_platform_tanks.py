@@ -42,3 +42,24 @@ def test_the_platform_adds_a_tank_and_points_a_nozzle_at_it():
     client_for(a[Role.ATTENDANT]).post("/api/shifts/start/", {"station": str(fc.station.pk), "readings": readings(fc.nozzles, [0, 0])}, format="json")
     busy = c.patch(f"/api/platform/tenants/{a['tenant'].id}/nozzles/{nozzle}/tank/", {"tank": str(fc.tank.pk)}, format="json")
     assert busy.status_code == 400 and "shift is open" in str(busy.json())
+
+
+def test_moving_a_nozzle_to_another_fuels_tank_drops_its_links_to_the_old_fuel():
+    from apps.stations.models import NozzleTank
+    from apps.stations.pools import pools_for
+
+    from .helpers import second_tank
+
+    a, b = two_tenants()
+    fc = make_forecourt(a["tenant"])
+    petrol2 = second_tank(fc, code="PETROL", name="Tank 2")
+    diesel = second_tank(fc, code="DIESEL", name="Diesel Tank")
+    nozzle = fc.nozzles[1]
+    assert client_for(a[Role.OWNER]).patch(f"/api/nozzles/{nozzle.pk}/", {"also_draws_from": [str(petrol2.pk)]}, format="json").status_code == 200
+    moved = platform_client().patch(f"/api/platform/tenants/{a['tenant'].id}/nozzles/{nozzle.pk}/tank/", {"tank": str(diesel.pk)}, format="json")
+    assert moved.status_code == 200, moved.content
+    assert next(n for n in moved.json()["nozzles"] if n["id"] == str(nozzle.pk))["draws_from"] == ["Diesel Tank"]
+    with db_context(tenant_id=a["tenant"].id):
+        assert not NozzleTank.objects.filter(nozzle=nozzle).exists()
+        names = [p.name for p in pools_for(list(type(fc.tank).objects.select_related("fuel_type", "station").order_by("name")))]
+    assert names == ["Diesel Tank", "Tank 1", "Tank 2"]  # petrol and diesel never one stock
