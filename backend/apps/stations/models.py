@@ -109,25 +109,6 @@ class Tank(TenantOwnedModel):
         return self.name
 
 
-class LinkedTank(TenantOwnedModel):
-    """A second tank joined to a tank (manifolded, same fuel): the pumps' nozzles pull from both, so for stock, sales
-    and the fuel check they are one tank, whose capacity includes this one. A dip of the tank takes this one's dip too
-    (litres from its own chart, or typed), and adds them up."""
-
-    tank = models.ForeignKey(Tank, on_delete=models.PROTECT, related_name="linked")
-    name = models.CharField(max_length=80)
-    capacity_litres = models.DecimalField(max_digits=12, decimal_places=3, validators=[MinValueValidator(1)])
-    # its own dip chart, [[dip_mm, litres], ...]; empty: its litres are typed at each dip
-    calibration = models.JSONField(default=list, blank=True)
-
-    class Meta:
-        ordering = ["name"]
-        constraints = [models.UniqueConstraint(F("tank"), Lower("name"), condition=Q(deleted_at__isnull=True), name="linkedtank_name_unique_per_tank")]
-
-    def __str__(self):
-        return self.name
-
-
 class CalibrationPoint(TenantOwnedModel):
     """One row of a tank's calibration chart: dip height (mm) -> litres."""
 

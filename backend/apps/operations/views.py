@@ -165,11 +165,6 @@ def _station_staff(station):
             for u in User.objects.filter(role=Role.ATTENDANT, is_active=True) if u.pk not in limited or u.pk in here]
 
 
-def _linked_json(tank):
-    """The tanks joined to this one (dipped with it): never their levels."""
-    return [{"id": str(lt.pk), "name": lt.name, "has_calibration": len(lt.calibration) >= 2} for lt in tank.linked.all()]
-
-
 class PrefillView(APIView):
     """Everything the phone needs to work offline: stations, pumps/nozzles with their last meter number and fuel,
     prices, the station's attendant policy and the open shift (mine, or one to join with one tap).
@@ -236,15 +231,14 @@ class PrefillView(APIView):
                 tanks = []
                 for t in Tank.objects.filter(station=st).select_related("fuel_type"):
                     last = TankReading.objects.filter(tank=t).first()
-                    tanks.append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres), "has_calibration": t.calibration.count() >= 2, "last_litres": str(last.litres) if last else None,
-                                  "linked": _linked_json(t)})
+                    tanks.append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres), "has_calibration": t.calibration.count() >= 2, "last_litres": str(last.litres) if last else None})
                 entry["tanks"] = tanks
             elif user.tenant.dip_at_shift_end:  # an attendant who dips at the end of a shift: which tanks, never their levels
                 entry["tanks"] = []
                 for t in Tank.objects.filter(station=st).select_related("fuel_type"):
                     last = TankReading.objects.filter(tank=t).order_by("-reading_at").first()
                     entry["tanks"].append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "has_calibration": t.calibration.count() >= 2,
-                                           "last_dip_at": last.reading_at if last else None, "linked": _linked_json(t)})
+                                           "last_dip_at": last.reading_at if last else None})
             out.append(entry)
         return Response({"stations": out, "server_time": timezone.now()})
 
@@ -480,8 +474,7 @@ class TankDipView(APIView):
         d = data.validated_data
         _check_station(request.user, d["tank"].station)
         existed = bool(d.get("client_id")) and TankReading.objects.filter(client_id=d["client_id"]).exists()
-        row = services.record_tank_dip(user=request.user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=d.get("at"), shift=d.get("shift"), client_id=d.get("client_id"),
-                                       linked=d.get("linked"))
+        row = services.record_tank_dip(user=request.user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=d.get("at"), shift=d.get("shift"), client_id=d.get("client_id"))
         if not existed:
             audit.log("tank_dip_recorded", actor=request.user, obj=row, changes={"litres": str(row.litres), "tank": d["tank"].name}, request=request)
         return Response(TankReadingSerializer(row).data, status=status.HTTP_200_OK if existed else status.HTTP_201_CREATED)
@@ -578,8 +571,7 @@ def _apply(user, kind, p):
         if kind == "tank_dip":
             d = _valid(TankDipInput, p)
             _check_station(user, d["tank"].station)
-            row = services.record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=d.get("at"), shift=d.get("shift"), client_id=d.get("client_id"),
-                                           linked=d.get("linked"))
+            row = services.record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=d.get("at"), shift=d.get("shift"), client_id=d.get("client_id"))
         else:
             d = _valid(DeliveryInput, p)
             _check_station(user, d["tank"].station)

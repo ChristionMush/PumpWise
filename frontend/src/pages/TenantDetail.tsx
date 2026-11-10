@@ -200,10 +200,7 @@ export default function TenantDetail() {
   );
 }
 
-interface TankRow {
-  id: string; name: string; fuel_code: string; capacity_litres: string; reserve_litres: string; has_calibration: boolean;
-  linked?: { id: string; name: string; capacity_litres: string; has_calibration: boolean }[]; // joined tanks (one stock)
-}
+interface TankRow { id: string; name: string; fuel_code: string; capacity_litres: string; reserve_litres: string; has_calibration: boolean }
 interface StationTankInfo {
   tanks: TankRow[]; nozzles: { id: string; pump: string; label: string; tank: string }[]; fuels: { id: string; name: string; code: string }[];
 }
@@ -213,7 +210,6 @@ interface StationTankInfo {
 function StationTanks({ tenantId, stationId, stationName }: { tenantId: string; stationId: string; stationName: string }) {
   const [info, setInfo] = useState<StationTankInfo | null>(null);
   const [form, setForm] = useState({ name: "", fuel_type: "", capacity_litres: "", reserve_litres: "" });
-  const [joining, setJoining] = useState<Record<string, { name: string; capacity_litres: string }>>({}); // tank id -> the tank being joined to it
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const url = `/api/platform/tenants/${tenantId}/stations/${stationId}/tanks/`;
@@ -228,12 +224,6 @@ function StationTanks({ tenantId, stationId, stationName }: { tenantId: string; 
     void run(() => api(url, { method: "POST", body: { ...form, reserve_litres: form.reserve_litres || "0" } }), `${form.name} added to ${stationName}.`)
       .then((saved) => { if (saved) setForm((f) => ({ ...f, name: "", capacity_litres: "", reserve_litres: "" })); }); // a refused tank keeps what was typed
   };
-  const join = (t: TankRow) => (e: FormEvent) => {
-    e.preventDefault();
-    const j = joining[t.id] ?? { name: "", capacity_litres: "" };
-    void run(() => api(`/api/platform/tenants/${tenantId}/tanks/${t.id}/linked/`, { method: "POST", body: j }), `${j.name} joined to ${t.name}.`)
-      .then((saved) => { if (saved) setJoining({ ...joining, [t.id]: { name: "", capacity_litres: "" } }); });
-  };
   const setTank = (nozzle: string, tank: string) =>
     void run(() => api(`/api/platform/tenants/${tenantId}/nozzles/${nozzle}/tank/`, { method: "PATCH", body: { tank } }), "Saved.");
   return (
@@ -244,16 +234,7 @@ function StationTanks({ tenantId, stationId, stationName }: { tenantId: string; 
           {info.tanks.length ? (
             <ul className="plain">{info.tanks.map((t) => (
               <li key={t.id}>{t.name} · {t.fuel_code} · {Number(t.capacity_litres).toLocaleString()} L (reserve {Number(t.reserve_litres).toLocaleString()} L)
-                {t.has_calibration ? "" : <span className="muted"> · no dip chart yet</span>}
-                {(t.linked ?? []).length > 0 && <p className="muted">Joined: {t.linked!.map((l) => `${l.name} (${Number(l.capacity_litres).toLocaleString()} L)`).join(", ")}. The capacity above is the total; they are dipped together.</p>}
-                <details><summary className="muted">Join another tank to {t.name}</summary>
-                  <form onSubmit={join(t)} className="form" aria-label={`Join a tank to ${t.name}`}>
-                    <p className="muted">For tanks joined together (same fuel): the nozzles drawing from {t.name} pull from both.</p>
-                    <label>Tank name<input value={joining[t.id]?.name ?? ""} onChange={(e) => setJoining({ ...joining, [t.id]: { name: e.target.value, capacity_litres: joining[t.id]?.capacity_litres ?? "" } })} required /></label>
-                    <label>Capacity (litres)<input inputMode="decimal" value={joining[t.id]?.capacity_litres ?? ""} onChange={(e) => setJoining({ ...joining, [t.id]: { name: joining[t.id]?.name ?? "", capacity_litres: e.target.value } })} required /></label>
-                    <button className="btn">Join tank</button>
-                  </form>
-                </details></li>
+                {t.has_calibration ? "" : <span className="muted"> · no dip chart yet</span>}</li>
             ))}</ul>
           ) : <p className="muted">No tanks yet.</p>}
           {info.nozzles.length > 0 && info.tanks.length > 0 && (<>

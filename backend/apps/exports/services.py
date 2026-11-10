@@ -20,7 +20,7 @@ from django.utils import timezone
 # (app_label, model_name)
 EXPORT_MODELS = [
     ("tenants", "tenant"), ("tenants", "tenantsettings"), ("tenants", "subscription"), ("accounts", "user"),
-    ("stations", "station"), ("stations", "stationassignment"), ("stations", "fueltype"), ("stations", "tank"), ("stations", "linkedtank"), ("stations", "calibrationpoint"),
+    ("stations", "station"), ("stations", "stationassignment"), ("stations", "fueltype"), ("stations", "tank"), ("stations", "calibrationpoint"),
     ("stations", "pump"), ("stations", "nozzle"), ("stations", "fuelprice"), ("stations", "exchangerate"),
     ("operations", "shift"), ("operations", "shiftattendant"), ("operations", "pumpassignment"), ("operations", "pumpmeterreading"), ("operations", "tankreading"), ("operations", "delivery"),
     ("operations", "cashsubmission"), ("operations", "transaction"), ("operations", "undorequest"), ("operations", "dayclose"), ("operations", "dayclosereading"),

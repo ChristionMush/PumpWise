@@ -52,12 +52,7 @@ def rate_at(from_currency, to_currency, at):
 
 def litres_from_dip(tank, dip_mm):
     """Linear interpolation on the tank's calibration chart. Raises if the chart cannot answer."""
-    return litres_from_points(list(tank.calibration.order_by("dip_mm").values_list("dip_mm", "litres")), dip_mm)
-
-
-def litres_from_points(points, dip_mm):
-    """Linear interpolation on a chart given as [(dip_mm, litres), ...] in dip order."""
-    points = [(Decimal(str(d)), Decimal(str(lt))) for d, lt in points]
+    points = list(tank.calibration.order_by("dip_mm").values_list("dip_mm", "litres"))
     if len(points) < 2:
         raise ValidationError({"dip_mm": "This tank has no calibration chart yet. Enter the litres too."})
     dip = Decimal(str(dip_mm))

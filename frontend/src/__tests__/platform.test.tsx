@@ -186,32 +186,6 @@ describe("platform: business detail", () => {
     expect(calls.find((c) => c.method === "PATCH" && c.path.endsWith("/nozzles/n1/tank/"))!.body).toEqual({ tank: "t2" });
   });
 
-  it("joins another tank to a tank (manifolded): the nozzles drawing from it pull from both", async () => {
-    const user = userEvent.setup();
-    signedIn();
-    const fuels = [{ id: "f1", name: "Petrol", code: "PETROL" }];
-    const tank1 = { id: "t1", name: "Tank 1", fuel_code: "PETROL", capacity_litres: "20000.000", reserve_litres: "500.000", has_calibration: true, linked: [] };
-    const joined = { ...tank1, capacity_litres: "30000.000", linked: [{ id: "j1", name: "Tank 1B", capacity_litres: "10000.000", has_calibration: false }] };
-    const nozzles = [{ id: "n1", pump: "Pump 1", label: "Nozzle 1", tank: "t1" }];
-    const { calls } = mockApi({
-      ...me,
-      "GET /api/platform/tenants/t9/": { body: summary },
-      "GET /api/platform/tenants/t9/stations/s1/tanks/": { body: { tanks: [tank1], nozzles, fuels } },
-      "POST /api/platform/tenants/t9/tanks/t1/linked/": { status: 201, body: { tanks: [joined], nozzles, fuels } },
-    });
-    renderApp("/platform/tenants/t9");
-    await screen.findByRole("heading", { name: "Msasa Fuel Services" });
-    await user.click(screen.getAllByText("Tanks")[0]);
-    await user.click(await screen.findByText("Join another tank to Tank 1"));
-    const form = screen.getByRole("form", { name: "Join a tank to Tank 1" });
-    await user.type(within(form).getByLabelText("Tank name"), "Tank 1B");
-    await user.type(within(form).getByLabelText("Capacity (litres)"), "10000");
-    await user.click(within(form).getByRole("button", { name: "Join tank" }));
-    expect(await screen.findByText("Tank 1B joined to Tank 1.")).toBeInTheDocument();
-    expect(calls.find((c) => c.method === "POST" && c.path.endsWith("/linked/"))!.body).toEqual({ name: "Tank 1B", capacity_litres: "10000" });
-    expect(screen.getByText(/Joined: Tank 1B/)).toBeInTheDocument();
-  });
-
   it("switches expenses on a business's page", async () => {
     const user = userEvent.setup();
     signedIn();

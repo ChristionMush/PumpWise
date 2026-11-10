@@ -256,13 +256,10 @@ export default function Shift() {
     ? (station.tanks ?? []).filter((t: any) => (!myTanks.size || myTanks.has(t.id)) && !recent(t.last_dip_at ?? station.last_dip_at)) : [];
   const askDips = dipTanks.length > 0;
   const dipsWrong = () => {
-    const joined = dipTanks.flatMap((t: any) => (t.linked ?? []) as any[]);
-    const missing = [...dipTanks, ...joined].filter((t: any) => !endDips[t.id]?.mm || (!t.has_calibration && !endDips[t.id]?.litres));
+    const missing = dipTanks.filter((t: any) => !endDips[t.id]?.mm || (!t.has_calibration && !endDips[t.id]?.litres));
     return missing.length ? `Dip ${missing.map((t: any) => t.name).join(", ")} before you end.` : null;
   };
-  // a tank joined to others (manifolded) is dipped with them: one stock, the litres added up on the server
-  const dipLines = () => dipTanks.map((t: any) => ({ tank: t.id, dip_mm: endDips[t.id].mm, ...(endDips[t.id].litres ? { litres: endDips[t.id].litres } : {}),
-    ...((t.linked ?? []).length ? { linked: (t.linked as any[]).map((l) => ({ tank: l.id, dip_mm: endDips[l.id].mm, ...(endDips[l.id].litres ? { litres: endDips[l.id].litres } : {}) })) } : {}) }));
+  const dipLines = () => dipTanks.map((t: any) => ({ tank: t.id, dip_mm: endDips[t.id].mm, ...(endDips[t.id].litres ? { litres: endDips[t.id].litres } : {}) }));
   // a business with expenses: what the attendant paid out on the shift goes with their cash (a name and a cost each)
   const expensesWrong = () => {
     const bad = shiftExpenses.find((e) => !e.name.trim() || !(Number(e.amount) > 0));
@@ -483,11 +480,11 @@ export default function Shift() {
         <section className="card form" aria-label="Tank dips">
           <h2>Tank dips</h2>
           <p className="muted">Dip the tank{dipTanks.length > 1 ? "s" : ""} of the pumps you are on before you hand over.</p>
-          {dipTanks.flatMap((t: any) => [t, ...((t.linked ?? []) as any[]).map((l) => ({ ...l, fuel_code: `joined to ${t.name}` }))]).map((t: any) => (
+          {dipTanks.map((t: any) => (
             <div key={t.id} className="row gap">
               <strong>{t.name} <span className="muted">· {t.fuel_code}</span></strong>
-              <label>Dip (mm)<input inputMode="decimal" aria-label={`${t.name} dip (mm)`} value={endDips[t.id]?.mm ?? ""} onChange={(e) => setEndDips({ ...endDips, [t.id]: { mm: e.target.value.replace(",", "."), litres: endDips[t.id]?.litres ?? "" } })} /></label>
-              {!t.has_calibration && <label>Litres<input inputMode="decimal" aria-label={`${t.name} litres`} value={endDips[t.id]?.litres ?? ""} onChange={(e) => setEndDips({ ...endDips, [t.id]: { mm: endDips[t.id]?.mm ?? "", litres: e.target.value.replace(",", ".") } })} /></label>}
+              <label>Dip (mm)<input inputMode="decimal" value={endDips[t.id]?.mm ?? ""} onChange={(e) => setEndDips({ ...endDips, [t.id]: { mm: e.target.value.replace(",", "."), litres: endDips[t.id]?.litres ?? "" } })} /></label>
+              {!t.has_calibration && <label>Litres<input inputMode="decimal" value={endDips[t.id]?.litres ?? ""} onChange={(e) => setEndDips({ ...endDips, [t.id]: { mm: endDips[t.id]?.mm ?? "", litres: e.target.value.replace(",", ".") } })} /></label>}
             </div>
           ))}
         </section>

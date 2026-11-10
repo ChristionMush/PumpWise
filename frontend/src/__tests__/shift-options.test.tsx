@@ -54,7 +54,7 @@ describe("dip at the end of a shift", () => {
     await user.click(screen.getByRole("button", { name: "End shift" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Dip Tank 1 before you end");
     expect(screen.getByRole("region", { name: "Tank dips" })).not.toHaveTextContent("Tank 2"); // Pump B's tank: not theirs
-    await user.type(screen.getByLabelText("Tank 1 dip (mm)"), "1200");
+    await user.type(screen.getByLabelText("Dip (mm)"), "1200");
     await user.click(screen.getByRole("button", { name: "End shift" }));
     await waitFor(() => expect(ops(calls).some((o: any) => o.kind === "shift_end")).toBe(true));
     expect(ops(calls).find((o: any) => o.kind === "shift_end").payload.dips).toEqual([{ tank: "tk1", dip_mm: "1200" }]);

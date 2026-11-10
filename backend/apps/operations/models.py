@@ -177,8 +177,6 @@ class TankReading(TenantOwnedModel):
     photo = models.FileField(upload_to=upload_to, null=True, blank=True)
     recorded_by = models.ForeignKey("accounts.User", null=True, on_delete=models.PROTECT, related_name="+")
     day_close = models.ForeignKey("DayClose", null=True, blank=True, on_delete=models.PROTECT, related_name="dips")  # the 21:00 dip
-    # a tank joined to others (stations.LinkedTank): each one's dip, [{"name", "dip_mm", "litres"}]; `litres` is their sum
-    parts = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["-reading_at"]

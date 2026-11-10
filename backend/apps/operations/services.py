@@ -1035,7 +1035,7 @@ def _record_end_dips(*, user, shift, dips, at, who=None):
         if mine is not None and d["tank"].pk not in mine:
             continue  # not a tank of their pumps
         if not TankReading.objects.filter(tank=d["tank"], shift=shift, recorded_by=user, reading_at=at).exists():  # a resend
-            record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=at, shift=shift, linked=d.get("linked"))
+            record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=at, shift=shift)
 
 
 def _end_shift(*, user, shift, readings, cash, ended_at, strict=False, close=None, who=None, request=None, cash_later=False):
@@ -1238,51 +1238,18 @@ def _shift_stage(user, station):
 
 # ---- tank side (managers and owners only; enforced in the views and sync) ----------------------------------------
 
-def _linked_parts(tank, litres, dip_mm, linked):
-    """A tank joined to others: this tank's litres plus each linked tank's (from its dip and chart, or typed). Returns
-    (total litres, parts). Every linked tank is needed: they hold one stock between them."""
-    from apps.stations.services import litres_from_points
-
-    joined = list(tank.linked.all())
-    if not joined:
-        return litres, []
-    given = {str(x.get("tank")): x for x in (linked or [])}
-    parts = [{"name": tank.name, "dip_mm": str(dip_mm) if dip_mm is not None else None, "litres": str(litres)}]
-    total = litres
-    for lt in joined:
-        g = given.get(str(lt.pk))
-        if g is None or (g.get("litres") in (None, "") and g.get("dip_mm") in (None, "")):
-            raise ValidationError({"dips": f"Dip {lt.name} too: it is joined to {tank.name}, so they are dipped together."})
-        if g.get("litres") not in (None, ""):
-            part = Decimal(str(g["litres"])).quantize(THREE)
-        elif len(lt.calibration) >= 2:
-            part = litres_from_points(sorted(lt.calibration), g["dip_mm"])
-        else:
-            raise ValidationError({"dips": f"{lt.name} has no dip chart yet. Enter its litres too."})
-        if part < 0:
-            raise ValidationError({"dips": f"{lt.name}: the litres cannot be below zero."})
-        parts.append({"name": lt.name, "dip_mm": str(g["dip_mm"]) if g.get("dip_mm") not in (None, "") else None, "litres": str(part)})
-        total += part
-    return total, parts
-
-
-def record_tank_dip(*, user, tank, litres=None, dip_mm=None, at=None, shift=None, photo=None, client_id=None, linked=None):
-    """A manager's dip. Idempotent on the phone's client_id (rule 8): a retry returns the row already saved. A tank
-    joined to others (LinkedTank) takes their dips too (`linked`: [{"tank": linked id, "dip_mm", "litres"}])."""
+def record_tank_dip(*, user, tank, litres=None, dip_mm=None, at=None, shift=None, photo=None, client_id=None):
+    """A manager's dip. Idempotent on the phone's client_id (rule 8): a retry returns the row already saved."""
     if client_id and (existing := TankReading.objects.filter(client_id=client_id).first()):
         return existing
     if litres is None and dip_mm is None:
         raise ValidationError({"litres": "Enter the dip height or the litres."})
     if litres is None:
         litres = litres_from_dip(tank, dip_mm)
-    litres, parts = _linked_parts(tank, Decimal(str(litres)).quantize(THREE), dip_mm, linked)
     litres = Decimal(str(litres)).quantize(THREE)
     if litres < 0 or litres > tank.capacity_litres * Decimal("1.05"):
         raise ValidationError({"litres": "That is more than the tank can hold. Check the number."})
     row = adapter_for(tank.data_source).record_tank_reading(tank=tank, litres=litres, dip_mm=dip_mm, at=at, user=user, shift=shift, photo=photo, client_id=client_id)
-    if parts:
-        row.parts = parts
-        row.save(update_fields=["parts", "updated_at"])
     from .rollups import on_tank_changed
 
     on_tank_changed(tank)
