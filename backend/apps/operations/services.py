@@ -1129,6 +1129,63 @@ def _holder(assignments, pump_id, start, end):
     return None
 
 
+def tank_at(nozzle, at):
+    """The tank a nozzle drew from at that moment: from its switches (TankSwitch), or its tank now if it never switched."""
+    from .models import TankSwitch
+
+    before = TankSwitch.objects.filter(nozzle=nozzle, at__lte=at).order_by("-at", "-created_at").first()
+    if before is not None:
+        return before.to_tank_id
+    after = TankSwitch.objects.filter(nozzle=nozzle, at__gt=at).order_by("at", "created_at").first()
+    return after.from_tank_id if after is not None else nozzle.tank_id
+
+
+def switch_tank(*, user, nozzle, to_tank, reading, at=None, client_id=None, request=None):
+    """A nozzle's tank ran dry: from now it draws from another tank of the same fuel at the station. The meter number at
+    the switch splits the sales: before it they come out of the old tank, after it out of the new one. The attendant on
+    the pump (on an open shift) or a manager records it. Idempotent on the phone's client_id."""
+    from . import dayclose  # dayclose imports this module
+    from .models import TankSwitch
+
+    if client_id and (existing := TankSwitch.objects.filter(client_id=client_id).first()):
+        return existing
+    at = at or timezone.now()
+    station = nozzle.pump.station
+    old = nozzle.tank
+    if to_tank.station_id != station.pk:
+        raise ValidationError({"tank": f"Choose a tank at {station.name}."})
+    if to_tank.fuel_type_id != old.fuel_type_id:
+        raise ValidationError({"tank": f"{to_tank.name} holds {to_tank.fuel_type.name}, not {old.fuel_type.name}: switch only to a tank of the same fuel."})
+    if to_tank.pk == old.pk:
+        raise ValidationError({"tank": f"{nozzle.pump.name} {nozzle} already draws from {old.name}."})
+    shift = dayclose.working_at(nozzle, at)
+    if not can(user, "manage_shift"):
+        row = attendant_row(shift, user) if shift is not None else None
+        on_pump = row is not None and row.left_at is None
+        if on_pump and is_assigned_station(station):
+            working = open_pump_assignment(nozzle.pump)
+            on_pump = working is not None and working.user_id == user.pk
+        if not on_pump:
+            raise PermissionDenied("Only the attendant working this pump, or a manager, switches its tank.")
+    reading = Decimal(str(reading)).quantize(TWO)
+    last = PumpMeterReading.objects.filter(nozzle=nozzle, reading_at__lte=at).order_by("-reading_at", "-created_at").first()
+    if last is not None and reading < last.reading and not dayclose._went_round(last.reading, reading, nozzle.meter_max):
+        raise ValidationError({"reading": f"{reading} is below the last number on {nozzle.pump.name} {nozzle} ({last.reading}). Check the meter."})
+    with db_tx.atomic():
+        if shift is not None:  # the pumping on this shift is split at the switch
+            _record_reading(shift, nozzle, PumpMeterReading.Kind.CHECKPOINT, reading, at, user)
+            shift.save()
+        row = TankSwitch.objects.create(tenant_id=nozzle.tenant_id, client_id=client_id, nozzle=nozzle, from_tank=old, to_tank=to_tank,
+                                        at=at, reading=reading, shift=shift, recorded_by=user)
+        nozzle.tank = to_tank
+        nozzle.save(update_fields=["tank", "updated_at"])
+        audit.log("tank_switched", actor=user, obj=nozzle, request=request,
+                  changes={"pump": nozzle.pump.name, "nozzle": str(nozzle), "from": old.name, "to": to_tank.name, "meter": str(reading), "at": at.isoformat()})
+        if shift is not None:
+            update_sales_so_far(shift)
+    return row
+
+
 def compute_transactions(shift):
     """(Re)build the shift's transactions from its readings. Old rows are soft-deleted, never destroyed."""
     now = timezone.now()
@@ -1162,7 +1219,7 @@ def compute_transactions(shift):
                 shift.add_flag(f"missing_end:{rows['start'][0].nozzle_id}")
             continue
         nozzle = chain[0].nozzle
-        fuel_type = nozzle.tank.fuel_type
+        fuel_type = nozzle.tank.fuel_type  # a switch is always to a tank of the same fuel
         for a, b in zip(chain, chain[1:], strict=False):
             flags = []
             litres = dispensed_litres(a.reading, b.reading, nozzle.meter_max, flags)
@@ -1176,7 +1233,7 @@ def compute_transactions(shift):
                 shift.add_flag(f"unassigned_period:{nozzle.pump_id}")
             per_litre = price.price_per_litre if price else Decimal(0)
             created.append(Transaction.objects.create(
-                tenant_id=shift.tenant_id, station=station, shift=shift, nozzle=nozzle, fuel_type=fuel_type, attendant_id=holder,
+                tenant_id=shift.tenant_id, station=station, shift=shift, nozzle=nozzle, tank_id=tank_at(nozzle, a.reading_at), fuel_type=fuel_type, attendant_id=holder,
                 litres=litres.quantize(THREE), price_per_litre=per_litre, currency=station.pricing_currency,
                 amount=(litres * per_litre).quantize(TWO), started_at=a.reading_at, occurred_at=b.reading_at,
                 source=b.source, start_reading=a.reading, end_reading=b.reading,

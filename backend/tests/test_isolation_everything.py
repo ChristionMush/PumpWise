@@ -11,7 +11,7 @@ from django.db import DatabaseError, connections, transaction
 
 from apps.core.db import db_context
 from apps.onboarding.demo import seed_demo_tenant
-from apps.operations.models import DayClose, DayCloseReading, Expense, ShiftAttendant, UndoRequest
+from apps.operations.models import DayClose, DayCloseReading, Expense, ShiftAttendant, TankSwitch, UndoRequest
 from apps.stations.models import Nozzle
 
 PLATFORM_ONLY = {"billing_paymentevent"}
@@ -32,6 +32,8 @@ def two_demo_tenants():
             UndoRequest.objects.create(tenant_id=tid, shift=end.shift, attendant=end, kind="cash", reason="seed", requested_by=end.user)
             close = DayClose.objects.create(tenant_id=tid, station=end.shift.station, day=date(2000, 1, 1), closed_at=end.shift.started_at, closed_by=end.user)
             DayCloseReading.objects.create(tenant_id=tid, day_close=close, nozzle=Nozzle.objects.filter(pump__station=end.shift.station).first(), reading=1)
+            nz = Nozzle.objects.filter(pump__station=end.shift.station).first()
+            TankSwitch.objects.create(tenant_id=tid, nozzle=nz, from_tank=nz.tank, to_tank=nz.tank, at=end.shift.started_at, reading=0, recorded_by=end.user)
             Expense.objects.create(tenant_id=tid, station=end.shift.station, category="lunch", amount=5, currency="USD", spent_at=end.shift.started_at,
                                    recorded_by=end.user)
     return a["tenant_id"], b["tenant_id"]

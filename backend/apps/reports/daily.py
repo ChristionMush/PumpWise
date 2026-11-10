@@ -28,7 +28,7 @@ from apps.operations.models import (
     TankReading,
     Transaction,
 )
-from apps.operations.services import dispensed_litres
+from apps.operations.services import dispensed_litres, tank_at
 from apps.operations.tradingday import Calendar
 from apps.stations.models import Nozzle, Tank
 from apps.tenants.services import get_settings
@@ -125,6 +125,24 @@ def cash_losses(checks):
             "milking": _s(milking, Q2), "milking_count": milking_count}
 
 
+def _pumped_by_tank(station, start_at, end_at, opened, closed):
+    """Litres through the pumps between two closes, per tank. A nozzle that switched tanks in between (TankSwitch) is
+    split at the meter number of each switch. Returns ({tank id: litres}, tanks with a nozzle missing a close number)."""
+    from apps.operations.models import TankSwitch
+
+    pumped, incomplete = defaultdict(Decimal), set()
+    for n in Nozzle.objects.filter(pump__station=station):
+        switches = list(TankSwitch.objects.filter(nozzle=n, at__gt=start_at, at__lte=end_at).order_by("at", "created_at"))
+        start_tank = switches[0].from_tank_id if switches else tank_at(n, start_at)
+        if n.pk not in opened or n.pk not in closed:
+            incomplete.update({start_tank, *(s.to_tank_id for s in switches)})
+            continue
+        points = [(opened[n.pk], start_tank), *((s.reading, s.to_tank_id) for s in switches), (closed[n.pk], None)]
+        for (r0, tank_id), (r1, _) in zip(points, points[1:], strict=False):
+            pumped[tank_id] += dispensed_litres(r0, r1, n.meter_max, [])
+    return pumped, incomplete
+
+
 def meter_fuel_checks(station, opening, close, cfg):
     """The manager's own fuel check, from one day close to the next: opening dip + delivered − litres through the
     pumps (closing meters − opening meters, at the two closes) − closing dip. It does not depend on the attendants'
@@ -133,14 +151,14 @@ def meter_fuel_checks(station, opening, close, cfg):
         return []
     opened = {r.nozzle_id: r.reading for r in DayCloseReading.objects.filter(day_close=opening)}
     closed = {r.nozzle_id: r.reading for r in DayCloseReading.objects.filter(day_close=close)}
+    pumped_by, incomplete = _pumped_by_tank(station, opening.closed_at, close.closed_at, opened, closed)
     out = []
     for t in Tank.objects.filter(station=station).select_related("fuel_type").order_by("name"):
         first = TankReading.objects.filter(tank=t, day_close=opening).first()
         last = TankReading.objects.filter(tank=t, day_close=close).first()
-        nozzles = list(Nozzle.objects.filter(tank=t))
-        if first is None or last is None or not nozzles or any(n.pk not in opened or n.pk not in closed for n in nozzles):
+        if first is None or last is None or t.pk not in pumped_by or t.pk in incomplete:
             continue
-        pumped = sum((dispensed_litres(opened[n.pk], closed[n.pk], n.meter_max, []) for n in nozzles), Decimal(0))
+        pumped = pumped_by[t.pk]
         delivered = Delivery.objects.filter(tank=t, delivered_at__gt=opening.closed_at, delivered_at__lte=close.closed_at).aggregate(s=Sum("litres_received"))["s"] or Decimal(0)
         loss = first.litres + delivered - pumped - last.litres
         limit = max(cfg.loss_threshold_litres, pumped * cfg.loss_threshold_pct / 100)

@@ -10,7 +10,9 @@ import { OthersWaiting } from "../components2";
 
 /** Each nozzle draws from its own tank, so the fuel (and its price) is per nozzle. */
 export interface Nozzle { id: string; number: number; label: string; meter_max: string; last_reading: string | null; fuel_type: string; fuel_code: string;
-  tank?: string } // the tank it draws from
+  tank?: string; // the tank it draws from
+  switch_to?: { id: string; name: string }[]; // the other tanks of its fuel, to switch to when its tank runs dry
+}
 export interface PumpInfo {
   id: string; name: string; nozzles: Nozzle[];
   assigned_to?: string | null; assigned_to_name?: string | null; // assigned-pump stations
@@ -139,6 +141,7 @@ export default function Shift() {
   const [picked, setPicked] = useState<string[]>([]); // pump ids ticked at the start (pumps picked by attendants)
   const [endDips, setEndDips] = useState<Record<string, { mm: string; litres: string }>>({});
   const [shiftExpenses, setShiftExpenses] = useState<{ id: string; name: string; amount: string }[]>([]); // paid out on this shift
+  const [switching, setSwitching] = useState<Record<string, { tank: string; reading: string }>>({}); // nozzle -> the tank it switches to
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -280,6 +283,16 @@ export default function Shift() {
       {shiftExpenses.length > 0 && <p className="muted">Recorded for your manager. Hand in your cash as counted: expenses do not change it.</p>}
     </div>
   ) : null;
+  // a nozzle's tank ran dry: from the meter number now it draws from another tank of the same fuel (saved on the phone first)
+  const switchTank = async (n: (typeof nozzles)[number]) => {
+    const choice = switching[n.id];
+    const tank = choice?.tank ?? n.switch_to![0].id;
+    if (!choice?.reading) return setError(`Enter ${n.pump.name} ${n.label}'s meter number at the switch.`);
+    if (active && Number(choice.reading) < (active.starts[n.id] ?? 0)) return setError(`${choice.reading} is below the start number of ${n.pump.name} ${n.label}. Check the meter.`);
+    await enqueue("tank_switch", { client_id: uuid(), nozzle: n.id, tank, reading: choice.reading, at: new Date().toISOString() });
+    setSwitching({ ...switching, [n.id]: { tank, reading: "" } }); setError(null);
+    setSaved(`${n.pump.name} ${n.label} now draws from ${n.switch_to!.find((t) => t.id === tank)?.name}. Litres before ${choice.reading} count against the tank that ran dry.`);
+  };
   // intercompany issue: who was credited, so the accounting pack can trace it
   const noCreditNote = () => Number(cash.credit) > 0 && !creditNote.trim();
   const CREDIT_NOTE = "Write who was credited with the intercompany issue (the company, and the vehicle if any).";
@@ -459,7 +472,8 @@ export default function Shift() {
         </section>
       )}
       {!active?.member && (active ? rows : nozzles).map((n) => (
-        <label key={n.id} className="card pump">
+        <div key={n.id}>
+        <label className="card pump">
           <strong>{n.pump.name} · {n.label}</strong><span className="muted">{n.fuel_code}{active ? ` · started at ${active.starts[n.id]}` : n.last_reading ? ` · last ${n.last_reading}` : ""}</span>
           {/* an attendant starts from the last closing number on the pump; managers may type it (a repaired meter) */}
           {!active && fixedStart(n)
@@ -472,6 +486,19 @@ export default function Shift() {
                 : <button type="button" className="link small" onClick={(e) => { e.preventDefault(); setChecking({ ...checking, [n.id]: true }); }}>The pump shows a different number</button>}</>
             : <input inputMode="decimal" value={nums[n.id] ?? ""} placeholder={active ? "Meter number now" : "Meter number"} onChange={(e) => setNums({ ...nums, [n.id]: e.target.value.replace(",", ".") })} />}
         </label>
+        {active && (n.switch_to ?? []).length > 0 && (
+          <details className="switch-tank">
+            <summary className="muted small">Tank ran dry? Switch {n.pump.name} {n.label} to another tank</summary>
+            <div className="form" role="group" aria-label={`Switch ${n.pump.name} ${n.label} to another tank`}>
+              <label>Switch to<select value={switching[n.id]?.tank ?? n.switch_to![0].id} onChange={(e) => setSwitching({ ...switching, [n.id]: { tank: e.target.value, reading: switching[n.id]?.reading ?? "" } })}>
+                {n.switch_to!.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+              <label>Meter number at the switch<input inputMode="decimal" value={switching[n.id]?.reading ?? ""}
+                onChange={(e) => setSwitching({ ...switching, [n.id]: { tank: switching[n.id]?.tank ?? n.switch_to![0].id, reading: e.target.value.replace(",", ".") } })} /></label>
+              <button type="button" className="btn" onClick={() => void switchTank(n)}>Switch tank</button>
+            </div>
+          </details>
+        )}
+        </div>
       ))}
       {active && !active.member && endProblems(rows, active.starts, nums, active.started_at).below.length > 0 && (
         <label className="check"><input type="checkbox" checked={belowOk} onChange={(e) => setBelowOk(e.target.checked)} /> The pump really shows these numbers</label>

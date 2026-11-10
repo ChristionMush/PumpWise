@@ -135,7 +135,7 @@ def reconcile_window(tank, opening, closing, cfg=None):
     if opening is None or closing is None or closing.reading_at <= opening.reading_at:
         return {**base, "status": "insufficient_data", "flagged": False}
     deliveries = Delivery.objects.filter(tank=tank, delivered_at__gt=opening.reading_at, delivered_at__lte=closing.reading_at).aggregate(s=Sum("litres_received"))["s"] or Decimal(0)
-    dispensed = Transaction.objects.filter(nozzle__tank=tank, occurred_at__gt=opening.reading_at, occurred_at__lte=closing.reading_at).aggregate(s=Sum("litres"))["s"] or Decimal(0)
+    dispensed = Transaction.objects.filter(tank=tank, occurred_at__gt=opening.reading_at, occurred_at__lte=closing.reading_at).aggregate(s=Sum("litres"))["s"] or Decimal(0)
     loss = opening.litres + deliveries - dispensed - closing.litres
     limit = max(cfg.loss_threshold_litres, dispensed * cfg.loss_threshold_pct / 100)
     status = "loss" if loss > limit else "gain" if loss < -limit else "ok"

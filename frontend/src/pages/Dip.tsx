@@ -31,6 +31,7 @@ export default function Dip() {
   const [tankId, setTankId] = useState("");
   const [litres, setLitres] = useState("");
   const [dipMm, setDipMm] = useState("");
+  const [sw, setSw] = useState({ nozzle: "", tank: "", reading: "" }); // a nozzle switched to another tank (its tank ran dry)
   const [delivered, setDelivered] = useState({ fuel: "", tank: "", litres: "", supplier: "", note: "" });
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +113,18 @@ export default function Dip() {
     await enqueue("tank_dip", { client_id: uuid(), tank: tankId, at: new Date().toISOString(), ...(litres ? { litres } : {}), ...(dipMm ? { dip_mm: dipMm } : {}) });
     setLitres(""); setDipMm(""); setError(null); setMsg("Dip saved.");
   };
+  // a nozzle's tank ran dry: from the meter number now it draws from another tank of the same fuel
+  const switchable = (station?.pumps ?? []).flatMap((p) => p.nozzles.filter((n) => (n.switch_to ?? []).length).map((n) => ({ ...n, pump: p })));
+  const swNozzle = switchable.find((n) => n.id === sw.nozzle) ?? switchable[0];
+  const saveSwitch = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!swNozzle) return;
+    const tank = sw.tank && swNozzle.switch_to!.some((t) => t.id === sw.tank) ? sw.tank : swNozzle.switch_to![0].id;
+    if (!sw.reading) return setError(`Enter ${swNozzle.pump.name} ${swNozzle.label}'s meter number at the switch.`);
+    await enqueue("tank_switch", { client_id: uuid(), nozzle: swNozzle.id, tank, reading: sw.reading, at: new Date().toISOString() });
+    setSw({ nozzle: "", tank: "", reading: "" }); setError(null);
+    setMsg(`${swNozzle.pump.name} ${swNozzle.label} now draws from ${swNozzle.switch_to!.find((t) => t.id === tank)?.name}.`);
+  };
   const fuels = [...new Set(tanks.map((t) => t.fuel_code))];
   const fuelTanks = tanks.filter((t) => t.fuel_code === delivered.fuel);
   const deliveryTank = fuelTanks.length === 1 ? fuelTanks[0].id : delivered.tank;
@@ -181,6 +194,20 @@ export default function Dip() {
         <label>Supplier<input value={delivered.supplier} onChange={(e) => setDelivered({ ...delivered, supplier: e.target.value })} /></label>
         <label>Delivery note no.<input value={delivered.note} onChange={(e) => setDelivered({ ...delivered, note: e.target.value })} /></label>
         <button className="btn">Save delivery</button></form>
+
+      {switchable.length > 0 && swNozzle && (
+        <details className="card form"><summary><strong>Switch a nozzle to another tank</strong> <span className="muted">· its tank ran dry</span></summary>
+          <form onSubmit={saveSwitch} className="form" aria-label="Switch a nozzle to another tank">
+            <label>Nozzle<select value={swNozzle.id} onChange={(e) => setSw({ ...sw, nozzle: e.target.value, tank: "" })}>
+              {switchable.map((n) => <option key={n.id} value={n.id}>{n.pump.name} · {n.label}</option>)}</select></label>
+            <label>Switch to<select value={sw.tank || swNozzle.switch_to![0].id} onChange={(e) => setSw({ ...sw, tank: e.target.value })}>
+              {swNozzle.switch_to!.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+            <label>Meter number at the switch<input inputMode="decimal" value={sw.reading} onChange={(e) => setSw({ ...sw, reading: e.target.value.replace(",", ".") })} /></label>
+            <button className="btn">Switch tank</button>
+            <p className="muted">Litres before this number count against the tank that ran dry; litres after it against the new tank.</p>
+          </form>
+        </details>
+      )}
 
       <details className="card form"><summary><strong>Spot dip</strong> <span className="muted">· a dip outside the day close</span></summary>
         <form onSubmit={saveDip} className="form">

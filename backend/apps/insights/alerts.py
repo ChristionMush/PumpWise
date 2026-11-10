@@ -99,7 +99,7 @@ def delivery_problems(since):
             key = f"delivery:{t.pk}:{b.pk}"
             looked.add(key)
             delivered = Delivery.objects.filter(tank=t, delivered_at__gt=a.reading_at, delivered_at__lte=b.reading_at).aggregate(s=Sum("litres_received"))["s"] or Decimal(0)
-            sold = Transaction.objects.filter(nozzle__tank=t, occurred_at__gt=a.reading_at, occurred_at__lte=b.reading_at).aggregate(s=Sum("litres"))["s"] or Decimal(0)
+            sold = Transaction.objects.filter(tank=t, occurred_at__gt=a.reading_at, occurred_at__lte=b.reading_at).aggregate(s=Sum("litres"))["s"] or Decimal(0)
             came_in = b.litres - a.litres + sold
             between = f"between the dips at {_hhmm(a.reading_at)} and {_hhmm(b.reading_at)}"
             data = {"delivered": str(delivered), "came_in": str(came_in.quantize(Decimal(1))), "from": a.reading_at, "to": b.reading_at}

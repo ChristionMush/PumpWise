@@ -33,6 +33,7 @@ from .models import (
     ShiftAttendant,
     SyncOperation,
     TankReading,
+    TankSwitch,
     UndoRequest,
 )
 from .serializers import (
@@ -58,6 +59,7 @@ from .serializers import (
     ShiftStartInput,
     TankDipInput,
     TankReadingSerializer,
+    TankSwitchInput,
     TransactionSerializer,
 )
 
@@ -183,6 +185,7 @@ class PrefillView(APIView):
         for st in stations:
             assigned = services.is_assigned_station(st)
             qs = Pump.objects.filter(station=st).select_related("assigned_to").prefetch_related("nozzles__tank__fuel_type")
+            station_tanks = list(Tank.objects.filter(station=st))  # a nozzle whose tank runs dry switches to one of these
             picking = assigned and services.picks_pumps(st)
             if assigned and not manager and not picking:  # where attendants pick, they see every pump to choose from
                 on_my_shift = PumpAssignment.objects.filter(user=user, ended_at__isnull=True, shift__status="open", shift__station=st).values("pump_id")
@@ -193,7 +196,8 @@ class PrefillView(APIView):
                 for n in p.nozzles.all():
                     last = services.last_end_reading(n)
                     nozzles.append({"id": str(n.pk), "number": n.number, "label": str(n), "meter_max": str(n.meter_max), "last_reading": str(last.reading) if last else None,
-                                    "fuel_type": str(n.tank.fuel_type_id), "fuel_code": n.tank.fuel_type.code, "tank": str(n.tank_id)})
+                                    "fuel_type": str(n.tank.fuel_type_id), "fuel_code": n.tank.fuel_type.code, "tank": str(n.tank_id),
+                                    "switch_to": [{"id": str(t.pk), "name": t.name} for t in station_tanks if t.fuel_type_id == n.tank.fuel_type_id and t.pk != n.tank_id]})
                 pump = {"id": str(p.pk), "name": p.name, "data_source": p.data_source, "nozzles": nozzles}
                 if assigned:
                     pump.update(assigned_to=str(p.assigned_to_id) if p.assigned_to_id else None, assigned_to_name=p.assigned_to.full_name if p.assigned_to_id else None)
@@ -560,6 +564,11 @@ def _apply(user, kind, p):
             if shift.merged_from:
                 result["client_shift_id"] = shift.merged_from  # later entries from that phone use this id
         return result
+    if kind == "tank_switch":
+        d = _valid(TankSwitchInput, p)
+        _check_station(user, d["nozzle"].pump.station)
+        row = services.switch_tank(user=user, nozzle=d["nozzle"], to_tank=d["tank"], reading=d["reading"], at=d.get("at"), client_id=d.get("client_id"))
+        return {"id": str(row.pk)}
     if kind == "expense":
         d = _valid(ExpenseInput, p)
         _check_station(user, d["station"])
@@ -891,3 +900,19 @@ class ExpenseView(APIView):
         row = services.record_expense(user=request.user, station=d["station"], category=d["category"], amount=d["amount"], currency=d.get("currency"),
                                       note=d["note"], spent_at=d.get("spent_at"), client_id=d.get("client_id"))
         return Response(ExpenseSerializer(row).data, status=status.HTTP_200_OK if existed else status.HTTP_201_CREATED)
+
+
+class TankSwitchView(APIView):
+    """POST: a nozzle's tank ran dry; it switches to another tank of the same fuel, at the meter number now. The
+    attendant working the pump or a manager (their stations) or the owner."""
+
+    permission_classes = [IsTenantUser]
+
+    def post(self, request):
+        d = _valid(TankSwitchInput, request.data)
+        _check_station(request.user, d["nozzle"].pump.station)
+        existed = bool(d.get("client_id")) and TankSwitch.objects.filter(client_id=d["client_id"]).exists()
+        row = services.switch_tank(user=request.user, nozzle=d["nozzle"], to_tank=d["tank"], reading=d["reading"], at=d.get("at"),
+                                   client_id=d.get("client_id"), request=request)
+        return Response({"id": str(row.pk), "nozzle": str(row.nozzle_id), "from_tank": str(row.from_tank_id), "to_tank": str(row.to_tank_id),
+                         "reading": str(row.reading), "at": row.at}, status=status.HTTP_200_OK if existed else status.HTTP_201_CREATED)

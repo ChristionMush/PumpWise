@@ -27,7 +27,7 @@ def daily_sales(*, station_ids=None, date_from: date, date_to: date, tank=None):
     if station_ids is not None:
         qs = qs.filter(station_id__in=station_ids)
     if tank is not None:
-        qs = qs.filter(nozzle__tank=tank)
+        qs = qs.filter(tank=tank)
     calendars, rows = {}, []
     for t in qs.values("station_id", "occurred_at", "fuel_type__code", "nozzle__pump_id", "nozzle__pump__name", "currency", "litres", "amount"):
         cal = calendars.setdefault(t["station_id"], tradingday.Calendar(t["station_id"]))
