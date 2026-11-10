@@ -42,7 +42,6 @@ class TenantCreateSerializer(serializers.Serializer):
     stations = StationInputSerializer(many=True, required=False, default=list)
     # Asked on the platform's "New business" form: shared pumps, or each attendant works their own assigned pumps.
     pump_system = serializers.ChoiceField(choices=["shared", "shared_multi", "assigned"], required=False, default="shared")
-    pesnat_mode = serializers.BooleanField(required=False, default=False)  # remote manager: weekly pump rotation, attendants who dip
     expenses_enabled = serializers.BooleanField(required=False, default=False)  # attendants and managers record what they paid out
     attendants_pick_pumps = serializers.BooleanField(required=False, default=False)
     dip_at_shift_end = serializers.BooleanField(required=False, default=False)
@@ -104,7 +103,6 @@ class TenantSettingsSerializer(serializers.ModelSerializer):
 class FeaturesSerializer(serializers.Serializer):
     multi_attendant_enabled = serializers.BooleanField(required=False)
     pump_assignment_enabled = serializers.BooleanField(required=False)
-    pesnat_mode = serializers.BooleanField(required=False)
     expenses_enabled = serializers.BooleanField(required=False)
     attendants_pick_pumps = serializers.BooleanField(required=False)
     dip_at_shift_end = serializers.BooleanField(required=False)

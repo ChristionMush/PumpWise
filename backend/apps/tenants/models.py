@@ -32,9 +32,6 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # One of PUMP_SYSTEMS, chosen by the platform owner when the business is created. New stations follow it.
     # "shared_multi" needs the several-attendants grant; "assigned" needs the pump assignment grant.
     pump_system = models.CharField(max_length=20, choices=PUMP_SYSTEMS, default="shared")
-    # Pesnat mode, set by the platform: for a business whose manager is remote. Turns on the weekly pump rotation
-    # (operations/rota.py) and lets the owner allow attendants to dip (User.can_dip). Off: both stop, nothing is deleted.
-    pesnat_mode = models.BooleanField(default=False)
     # Expenses, set by the platform: attendants and managers record what they paid out (lunch, generator fuel...).
     # Recorded only: the cash they hand in is unchanged. Off: the screens hide, what was recorded stays.
     expenses_enabled = models.BooleanField(default=False)

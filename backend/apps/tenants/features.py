@@ -7,7 +7,6 @@ Paid feature grants and per-station attendant policy (PLAN.md section 4). Platfo
 * Removing a grant (for example when unpaid) falls the stations back to one attendant and shared pumps.
   No data is deleted: past shifts keep their attendants and assignments.
 * Policy cannot change while a shift is open at the station.
-* Pesnat mode (remote manager): the weekly pump rotation, and attendants the owner allows to dip.
 * The pump system is chosen when the business is created: "shared" (one attendant per shift), "shared_multi"
   (several attendants share every pump) or "assigned" (each attendant works their own pumps). It grants what it
   needs and puts every station on its policy; new stations follow it.
@@ -69,24 +68,6 @@ def set_tenant_features(*, tenant, multi_attendant=None, pump_assignment=None, a
             changes={**audit.diff(before, after), **({"stations_reset": [s.name for s in fall_back]} if fall_back else {})},
         )
     return fall_back
-
-
-def pesnat_on(tenant_id):
-    """Pesnat mode (the weekly pump rotation and attendants allowed to dip) is on for this business."""
-    from apps.tenants.models import Tenant
-
-    return Tenant.objects.filter(pk=tenant_id, pesnat_mode=True).exists()
-
-
-def set_pesnat_mode(*, tenant, on, actor=None, request=None):
-    """Turn Pesnat mode on or off. Off keeps every rota and every attendant's dipping choice, unused, for turning back on."""
-    if tenant.pesnat_mode == bool(on):
-        return
-    with transaction.atomic(), tenant_scope(tenant.id):
-        before = tenant.pesnat_mode
-        tenant.pesnat_mode = bool(on)
-        tenant.save(update_fields=["pesnat_mode", "updated_at"])
-        audit.log("tenant_pesnat_mode_set", actor=actor, tenant_id=tenant.id, obj=tenant, request=request, changes={"pesnat_mode": [before, tenant.pesnat_mode]})
 
 
 def set_expenses(*, tenant, on, actor=None, request=None):

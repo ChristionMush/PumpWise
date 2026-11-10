@@ -24,7 +24,6 @@ from .features import (
     SHIFT_OPTIONS,
     SYSTEM_POLICY,
     set_expenses,
-    set_pesnat_mode,
     set_pump_system,
     set_shift_options,
     set_station_policy,
@@ -84,7 +83,7 @@ def summarize(tenant, *, with_stations=False):
         "station_count": len(stations),
         "owner": _owner_dict(owner),
         "features": {"multi_attendant_enabled": tenant.multi_attendant_enabled, "pump_assignment_enabled": tenant.pump_assignment_enabled,
-                     "pesnat_mode": tenant.pesnat_mode, "expenses_enabled": tenant.expenses_enabled,
+                     "expenses_enabled": tenant.expenses_enabled,
                      **{k: getattr(tenant, k) for k in SHIFT_OPTIONS}},
         "pump_system": tenant.pump_system,
         "is_demo": tenant.is_demo,
@@ -122,7 +121,7 @@ class PlatformTenantListCreateView(APIView):
             tenant, owner, temporary_password = create_tenant_with_owner(
                 business_name=d["business_name"], owner_name=d["owner_name"], owner_email=d.get("owner_email"), owner_phone=d.get("owner_phone"),
                 plan=d["plan"], paid_through=d["paid_through"], stations=d["stations"], actor=request.user, request=request, pump_system=d["pump_system"],
-                pesnat_mode=d["pesnat_mode"], expenses_enabled=d["expenses_enabled"], shift_options={k: d[k] for k in SHIFT_OPTIONS},
+                expenses_enabled=d["expenses_enabled"], shift_options={k: d[k] for k in SHIFT_OPTIONS},
             )  # atomic: any failure (e.g. duplicate owner email) leaves nothing half-created
         except IntegrityError:
             raise ValidationError({"detail": DUPLICATE})
@@ -237,8 +236,6 @@ class PlatformFeaturesView(APIView):
             tenant=tenant, multi_attendant=d.get("multi_attendant_enabled"), pump_assignment=d.get("pump_assignment_enabled"),
             actor=request.user, request=request,
         )
-        if "pesnat_mode" in d:
-            set_pesnat_mode(tenant=_get_tenant(pk), on=d["pesnat_mode"], actor=request.user, request=request)
         if "expenses_enabled" in d:
             set_expenses(tenant=_get_tenant(pk), on=d["expenses_enabled"], actor=request.user, request=request)
         set_shift_options(tenant=_get_tenant(pk), changes={k: d[k] for k in SHIFT_OPTIONS if k in d}, actor=request.user, request=request)

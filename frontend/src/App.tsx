@@ -29,8 +29,7 @@ import PlatformTenants from "./pages/PlatformTenants";
 import TenantDetail from "./pages/TenantDetail";
 
 // Attendants record meters and their own cash only. Dips and deliveries (PLAN.md rule 11) and assigning pumps are for
-// managers and owners; the server refuses attendants anyway, this just keeps the screens out of their way. The one
-// exception, in Pesnat mode: an attendant the owner allows to dip (can_dip) gets the Dip screen, with only the dip on it.
+// managers and owners; the server refuses attendants anyway, this just keeps the screens out of their way.
 const NAV: Record<string, [string, string][]> = {
   owner: [["/", "Today"], ["/dip", "Dip & delivery"], ["/dip-history", "Dip history"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/approvals", "Approvals"], ["/prices", "Prices"], ["/pumps", "Pumps"], ["/setup", "Setup"], ["/import", "Import"], ["/settings", "Settings"]],
   manager: [["/", "Today"], ["/dip", "Dip & delivery"], ["/dip-history", "Dip history"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/approvals", "Approvals"], ["/prices", "Prices"], ["/pumps", "Pumps"], ["/setup", "Setup"], ["/settings", "Team"]],
@@ -72,7 +71,7 @@ function Shell({ children }: { children: ReactNode }) {
   const [tutorial, setTutorial] = useState(() => user?.role === "attendant" && !localStorage.getItem("fs_tutorial_done"));
   useEffect(() => (user && user.role !== "platform_admin" ? startAutoSync() : undefined), [user]);
   const name = branding?.display_name || tenant?.name || t("appName");
-  const base = user ? (user.role === "attendant" && user.can_dip && tenant?.pesnat_mode ? [...NAV.attendant, ["/dip", "Dip"] as [string, string]] : NAV[user.role]) : undefined;
+  const base = user ? NAV[user.role] : undefined;
   const nav = base && tenant?.expenses_enabled ? withExpenses(base) : base;
   const alertCount = useAlertCount(user?.role === "owner" || user?.role === "manager");
   const approvalCount = useApprovalCount(user?.role === "owner" || user?.role === "manager");
@@ -96,14 +95,14 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-function Private({ children, platform = false, managers = false, dippers = false }: { children: ReactNode; platform?: boolean; managers?: boolean; dippers?: boolean }) {
-  const { user, tenant, loading } = useAuth();
+function Private({ children, platform = false, managers = false }: { children: ReactNode; platform?: boolean; managers?: boolean }) {
+  const { user, loading } = useAuth();
   const { pathname } = useLocation();
   if (loading) return <p className="center muted">{t("common.loading")}</p>;
   if (!user) return <Navigate to="/login" replace />;
   if (user.must_change_password && pathname !== "/change-password") return <Navigate to="/change-password" replace />;
   if (platform && user.role !== "platform_admin") return <Navigate to="/" replace />;
-  if (managers && user.role !== "owner" && user.role !== "manager" && !(dippers && user.can_dip && tenant?.pesnat_mode)) return <Navigate to="/" replace />;
+  if (managers && user.role !== "owner" && user.role !== "manager") return <Navigate to="/" replace />;
   return <Shell>{children}</Shell>;
 }
 
@@ -115,7 +114,7 @@ export default function App() {
       <Route path="/change-password" element={<Private><ChangePassword /></Private>} />
       <Route path="/dashboard" element={<Private><Dashboard /></Private>} />
       <Route path="/shift" element={<Private><Shift /></Private>} />
-      <Route path="/dip" element={<Private managers dippers><Dip /></Private>} />
+      <Route path="/dip" element={<Private managers><Dip /></Private>} />
       <Route path="/dip-history" element={<Private managers><DipHistory /></Private>} />
       <Route path="/expenses" element={<Private><Expenses /></Private>} />
       <Route path="/pumps" element={<Private managers><Pumps /></Private>} />

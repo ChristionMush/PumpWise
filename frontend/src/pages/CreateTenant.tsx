@@ -15,7 +15,6 @@ export default function CreateTenant() {
   const [paidThrough, setPaidThrough] = useState("");
   const [stations, setStations] = useState<StationRow[]>([{ name: "", address: "" }]);
   const [pumpSystem, setPumpSystem] = useState<PumpSystem | "">(""); // asked up front: no default
-  const [pesnat, setPesnat] = useState(false);
   const [expenses, setExpenses] = useState(false);
   const [shiftOpts, setShiftOpts] = useState({ attendants_pick_pumps: false, dip_at_shift_end: false, close_day_at_change: "" });
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +39,6 @@ export default function CreateTenant() {
         paid_through: paidThrough || null,
         stations: stations.filter((s) => s.name.trim()).map((s) => ({ name: s.name.trim(), address: s.address.trim() })),
         pump_system: pumpSystem,
-        pesnat_mode: pesnat,
         expenses_enabled: expenses,
         ...shiftOpts,
       };
@@ -82,10 +80,7 @@ export default function CreateTenant() {
           Assigned pumps: a manager gives each attendant their own pumps</label>
       </fieldset>
       <section className="card form">
-        <h2>Pesnat mode</h2>
-        <label className="row gap"><input type="checkbox" checked={pesnat} onChange={(e) => setPesnat(e.target.checked)} /> Pesnat mode</label>
-        <p className="muted">For a business whose manager is remote. Turns on the weekly pump rotation (two crews, one week on and one week off, on assigned pumps)
-          and lets the owner allow attendants to dip tanks. Can be changed later on the business's page.</p>
+        <h2>Expenses</h2>
         <label className="row gap"><input type="checkbox" checked={expenses} onChange={(e) => setExpenses(e.target.checked)} /> Expenses</label>
         <p className="muted">Attendants and managers record what they pay out (lunch, generator fuel...). Recorded only: it does not change the cash handed in.</p>
       </section>

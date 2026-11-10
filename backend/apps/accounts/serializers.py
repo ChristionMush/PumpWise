@@ -22,7 +22,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "tenant_id", "role", "full_name", "email", "phone", "preferred_language", "is_active", "must_change_password", "last_login", "created_at",
-                  "station_ids", "can_dip"]
+                  "station_ids"]
         read_only_fields = fields
 
     def get_station_ids(self, obj):
@@ -78,7 +78,7 @@ class UserUpdateSerializer(_ContactMixin, serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["full_name", "email", "phone", "role", "is_active", "password", "preferred_language", "can_dip"]
+        fields = ["full_name", "email", "phone", "role", "is_active", "password", "preferred_language"]
 
     def validate_password(self, value):
         validate_password(value)
@@ -96,12 +96,6 @@ class UserUpdateSerializer(_ContactMixin, serializers.ModelSerializer):
         phone = attrs.get("phone", instance.phone) or None
         if not email and not phone:
             raise serializers.ValidationError("A user needs an email or a phone number.")
-        if attrs.get("can_dip") and not instance.tenant.pesnat_mode:
-            raise serializers.ValidationError({"can_dip": "Attendants dip only in Pesnat mode. Ask PumpWise to turn it on."})
-        if attrs.get("role", instance.role) != Role.ATTENDANT:
-            if attrs.get("can_dip"):
-                raise serializers.ValidationError({"can_dip": "Only an attendant is given dipping: managers and the owner dip already."})
-            attrs["can_dip"] = False  # a manager dips anyway; made an attendant again, they start without it
         return attrs
 
     def update(self, instance, validated):
