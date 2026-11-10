@@ -109,7 +109,7 @@ def day_log(station, day):
     parts = ShiftAttendant.objects.filter(shift__in=shifts, cash_submitted_at__gt=start, cash_submitted_at__lte=end).select_related("user")
     for p in parts:
         subs = CashSubmission.objects.filter(shift_id=p.shift_id).filter(Q(part=p) | Q(part__isnull=True, attendant=p.user))
-        lines = [f"{PAYMENT.get(c.payment_type, c.payment_type)} {c.currency} {_num(c.amount)}" for c in subs if c.amount]
+        lines = [f"{PAYMENT.get(c.payment_type, c.payment_type)} {c.currency} {_num(c.amount)}" + (f" ({c.note})" if c.note else "") for c in subs if c.amount]
         events.append({"at": p.cash_submitted_at, "by": p.user.full_name, "kind": "cash", "text": f"{p.user.full_name} handed in " + (", ".join(lines) or "nothing")})
 
     # who changed what (audit trail)

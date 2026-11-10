@@ -107,7 +107,8 @@ class MeView(APIView):
         if user.tenant_id:
             t = user.tenant
             tenant = {"id": str(t.id), "name": t.name, "slug": t.slug, "status": t.status, "is_demo": t.is_demo,
-                      "trial_expires_at": t.trial_expires_at, "pesnat_mode": t.pesnat_mode}
+                      "trial_expires_at": t.trial_expires_at, "pesnat_mode": t.pesnat_mode,
+                      "expenses_enabled": t.expenses_enabled}
         branding = _branding()
         if user.tenant_id:
             from apps.tenants.models import TenantSettings

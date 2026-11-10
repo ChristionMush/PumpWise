@@ -11,7 +11,7 @@ from django.db import DatabaseError, connections, transaction
 
 from apps.core.db import db_context
 from apps.onboarding.demo import seed_demo_tenant
-from apps.operations.models import DayClose, DayCloseReading, PumpRota, PumpRotaHolder, ShiftAttendant, UndoRequest
+from apps.operations.models import DayClose, DayCloseReading, Expense, PumpRota, PumpRotaHolder, ShiftAttendant, UndoRequest
 from apps.stations.models import Nozzle
 
 PLATFORM_ONLY = {"billing_paymentevent"}
@@ -34,6 +34,8 @@ def two_demo_tenants():
             DayCloseReading.objects.create(tenant_id=tid, day_close=close, nozzle=Nozzle.objects.filter(pump__station=end.shift.station).first(), reading=1)
             rota = PumpRota.objects.create(tenant_id=tid, station=end.shift.station, week_starts=date(2000, 1, 3))
             PumpRotaHolder.objects.create(tenant_id=tid, rota=rota, pump=Nozzle.objects.filter(pump__station=end.shift.station).first().pump, crew="a", part="day", user=end.user)
+            Expense.objects.create(tenant_id=tid, station=end.shift.station, category="lunch", amount=5, currency="USD", spent_at=end.shift.started_at,
+                                   recorded_by=end.user)
     return a["tenant_id"], b["tenant_id"]
 
 

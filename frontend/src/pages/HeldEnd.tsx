@@ -3,7 +3,7 @@ import { api, errorMessage } from "../api";
 import { Badge, CashField, ErrorNote, hasCents } from "../components";
 
 export interface EndMeter { nozzle: string; pump: string; label: string; fuel_code: string; start: string | null; end: string | null; litres: string | null; amount: string | null }
-export interface EndCash { payment_type: string; currency: string; amount: string }
+export interface EndCash { payment_type: string; currency: string; amount: string; note?: string } // note: who an intercompany issue credited
 export interface UndoInfo { id: string; kind: string; kind_label: string; status: "pending" | "allowed" | "refused" | "used"; reason: string; decision_note: string }
 /** The attendant's last end of shift: waiting for the manager, sent back to fix, or a change a manager or the owner allowed. */
 export interface HeldStage {
@@ -26,7 +26,7 @@ export function EndDetails({ end }: { end: Pick<HeldStage, "meters" | "cash" | "
       {end.meters.map((m) => (
         <p key={m.nozzle} className="muted">{m.pump} · {m.label}: {m.start ?? "?"} → {m.end ?? "not ended"}{m.litres ? ` · ${Number(m.litres).toLocaleString()} L` : ""}{m.amount ? ` · ${end.currency} ${m.amount}` : ""}</p>
       ))}
-      <p>{end.cash.length ? end.cash.map((c) => `${LABEL[c.payment_type] ?? c.payment_type} ${c.currency} ${Number(c.amount).toFixed(2)}`).join(" · ") : "No cash handed in"}</p>
+      <p>{end.cash.length ? end.cash.map((c) => `${LABEL[c.payment_type] ?? c.payment_type} ${c.currency} ${Number(c.amount).toFixed(2)}${c.note ? ` (${c.note})` : ""}`).join(" · ") : "No cash handed in"}</p>
       {end.expected != null && (
         <p>Expected {end.currency} {Number(end.expected).toFixed(2)} · handed in {Number(end.handed_in).toFixed(2)} · cash difference <strong>{Number(end.cash_difference).toFixed(2)}</strong></p>
       )}

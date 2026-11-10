@@ -21,12 +21,44 @@ class CashInput(serializers.Serializer):
     payment_type = serializers.ChoiceField(choices=CashSubmission.PaymentType.choices)
     currency = serializers.CharField(max_length=3, validators=[validate_currency])
     amount = serializers.DecimalField(**NUM)
+    # intercompany issue: who was credited. Asked for on the phone; never required here, so an older phone's
+    # queued hand-in is not refused (the accounting pack shows it without a name)
+    note = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
 
     def validate(self, attrs):
+        attrs["note"] = " ".join(attrs.get("note", "").split())
         # notes are counted in whole dollars; swipe, EcoCash and intercompany credit can have cents
         if attrs["payment_type"] == CashSubmission.PaymentType.CASH and attrs["amount"] != attrs["amount"].to_integral_value():
             raise serializers.ValidationError({"amount": "Cash is counted in whole dollars. Enter the cash you counted, without cents."})
         return attrs
+
+
+class ExpenseInput(serializers.Serializer):
+    client_id = serializers.UUIDField(required=False, allow_null=True)
+    station = serializers.PrimaryKeyRelatedField(queryset=Station.objects.all())
+    category = serializers.ChoiceField(choices=__import__("apps.operations.models", fromlist=["Expense"]).Expense.Category.choices)
+    amount = serializers.DecimalField(**NUM)
+    currency = serializers.CharField(max_length=3, required=False, validators=[validate_currency])
+    note = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+    spent_at = serializers.DateTimeField(required=False)
+
+    def validate(self, attrs):
+        if attrs["amount"] <= 0:
+            raise serializers.ValidationError({"amount": "Enter what was paid."})
+        if attrs["category"] == "other" and not attrs.get("note", "").strip():
+            raise serializers.ValidationError({"note": "Say what the money was paid for."})
+        attrs["note"] = " ".join(attrs.get("note", "").split())
+        return attrs
+
+
+class ExpenseSerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.CharField(source="recorded_by.full_name", read_only=True)
+    station_name = serializers.CharField(source="station.name", read_only=True)
+    category_label = serializers.CharField(source="get_category_display", read_only=True)
+
+    class Meta:
+        model = __import__("apps.operations.models", fromlist=["Expense"]).Expense
+        fields = ["id", "station", "station_name", "shift", "category", "category_label", "amount", "currency", "note", "spent_at", "recorded_by", "recorded_by_name"]
 
 
 class ShiftStartInput(serializers.Serializer):
@@ -144,7 +176,7 @@ class CashSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CashSubmission
-        fields = ["payment_type", "currency", "amount", "attendant", "attendant_name"]
+        fields = ["payment_type", "currency", "amount", "note", "attendant", "attendant_name"]
 
 
 class ShiftAttendantSerializer(serializers.ModelSerializer):

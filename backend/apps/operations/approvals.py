@@ -132,7 +132,7 @@ def end_summary(row):
     cash, handed = [], Decimal(0)
     at = row.cash_submitted_at or timezone.now()
     for c in _cash(row):
-        cash.append({"payment_type": c.payment_type, "currency": c.currency, "amount": str(c.amount)})
+        cash.append({"payment_type": c.payment_type, "currency": c.currency, "amount": str(c.amount), "note": c.note})
         rate = Decimal(1) if c.currency == currency else rate_at(c.currency, currency, at)
         if rate is None:
             known = False

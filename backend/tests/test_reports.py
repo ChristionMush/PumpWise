@@ -143,7 +143,7 @@ def test_the_monthly_accounting_pack_has_every_sheet_with_the_months_numbers():
     res = owner.get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"})
     assert res.status_code == 200 and "spreadsheetml" in res["Content-Type"] and "2026-10" in res["Content-Disposition"]
     wb = load_workbook(io.BytesIO(res.content))
-    assert wb.sheetnames == ["Daily", "Sales", "Takings", "Cash differences", "Deliveries", "Stock", "Prices", "Notes"]
+    assert wb.sheetnames == ["Daily", "Sales", "Takings", "Intercompany credit", "Cash differences", "Deliveries", "Stock", "Prices", "Notes"]
 
     def first(name):
         return next(wb[name].iter_rows(min_row=4, values_only=True))
@@ -210,8 +210,20 @@ def test_intercompany_issues_are_owed_to_the_business_not_money_received():
     a, _ = two_tenants()
     fc = make_forecourt(a["tenant"], price="1.50")
     run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [100, 0], started_at=at(2026, 10, 1, 5), ended_at=at(2026, 10, 1, 15),
-              cash=[("cash", "USD", 100), ("credit", "USD", 50)])  # 150 expected: 100 in cash, 50 issued to another company
+              cash=[("cash", "USD", 100), ("credit", "USD", 50, "Zuva Petroleum, ABC 1234")])  # 150 expected: 50 issued to another company
     res = client_for(a[Role.OWNER]).get("/api/reports/accounting-pack/", {"station": str(fc.station.pk), "month": "2026-10"})
-    rows = {r[0]: r[5] for r in load_workbook(io.BytesIO(res.content))["Takings"].iter_rows(min_row=4, values_only=True) if isinstance(r[0], str)}
+    wb = load_workbook(io.BytesIO(res.content))
+    rows = {r[0]: r[5] for r in wb["Takings"].iter_rows(min_row=4, values_only=True) if isinstance(r[0], str)}
     assert rows["Money received"] == 100.0 and rows["Total handed in"] == 150.0
     assert [v for k, v in rows.items() if k.startswith("Owed to")] == [50.0]
+    # each issue is traceable: who was credited, by whom, from which shift
+    credit = list(wb["Intercompany credit"].iter_rows(min_row=4, values_only=True))
+    assert credit[0][1:] == ("01 Oct 07:00", a[Role.ATTENDANT].full_name, "Zuva Petroleum, ABC 1234", "USD", 50.0, 50.0)
+    assert credit[1][0] == "Total owed (intercompany)" and credit[1][6] == 50.0
+    # the manager sees it on the end of shift, and the day log carries it
+    from apps.operations.models import CashSubmission
+
+    with db_context(tenant_id=a["tenant"].id):
+        assert CashSubmission.objects.get(payment_type="credit").note == "Zuva Petroleum, ABC 1234"
+    log = client_for(a[Role.OWNER]).get("/api/reports/day-log/", {"station": str(fc.station.pk), "day": "2026-10-01"})
+    assert log.status_code == 200 and "Zuva Petroleum, ABC 1234" in str(log.json())

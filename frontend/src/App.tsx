@@ -11,6 +11,7 @@ import Approvals from "./pages/Approvals";
 import Dashboard from "./pages/Dashboard";
 import DayLog from "./pages/DayLog";
 import Dip from "./pages/Dip";
+import Expenses from "./pages/Expenses";
 import Import from "./pages/Import";
 import DipHistory from "./pages/DipHistory";
 import Prices from "./pages/Prices";
@@ -35,6 +36,13 @@ const NAV: Record<string, [string, string][]> = {
   manager: [["/", "Today"], ["/dip", "Dip & delivery"], ["/dip-history", "Dip history"], ["/reports", "Reports"], ["/alerts", "Alerts"], ["/approvals", "Approvals"], ["/prices", "Prices"], ["/pumps", "Pumps"], ["/setup", "Setup"], ["/settings", "Team"]],
   attendant: [["/", "Shift"]],
 };
+
+/** A business with expenses: everyone working records what they paid out (before Reports, or last for attendants). */
+function withExpenses(nav: [string, string][]): [string, string][] {
+  const at = nav.findIndex(([to]) => to === "/reports");
+  const item: [string, string] = ["/expenses", "Expenses"];
+  return at < 0 ? [...nav, item] : [...nav.slice(0, at), item, ...nav.slice(at)];
+}
 
 /** Alerts needing attention (and, for the owner, resolutions to review), refreshed when the page changes. */
 function useAlertCount(enabled: boolean) {
@@ -64,7 +72,8 @@ function Shell({ children }: { children: ReactNode }) {
   const [tutorial, setTutorial] = useState(() => user?.role === "attendant" && !localStorage.getItem("fs_tutorial_done"));
   useEffect(() => (user && user.role !== "platform_admin" ? startAutoSync() : undefined), [user]);
   const name = branding?.display_name || tenant?.name || t("appName");
-  const nav = user ? (user.role === "attendant" && user.can_dip && tenant?.pesnat_mode ? [...NAV.attendant, ["/dip", "Dip"] as [string, string]] : NAV[user.role]) : undefined;
+  const base = user ? (user.role === "attendant" && user.can_dip && tenant?.pesnat_mode ? [...NAV.attendant, ["/dip", "Dip"] as [string, string]] : NAV[user.role]) : undefined;
+  const nav = base && tenant?.expenses_enabled ? withExpenses(base) : base;
   const alertCount = useAlertCount(user?.role === "owner" || user?.role === "manager");
   const approvalCount = useApprovalCount(user?.role === "owner" || user?.role === "manager");
   const counts: Record<string, number> = { "/alerts": alertCount, "/approvals": approvalCount };
@@ -108,6 +117,7 @@ export default function App() {
       <Route path="/shift" element={<Private><Shift /></Private>} />
       <Route path="/dip" element={<Private managers dippers><Dip /></Private>} />
       <Route path="/dip-history" element={<Private managers><DipHistory /></Private>} />
+      <Route path="/expenses" element={<Private><Expenses /></Private>} />
       <Route path="/pumps" element={<Private managers><Pumps /></Private>} />
       <Route path="/reports" element={<Private><Reports /></Private>} />
       <Route path="/day-log" element={<Private managers><DayLog /></Private>} />

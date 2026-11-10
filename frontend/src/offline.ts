@@ -2,7 +2,7 @@
 // Every entry carries a client-made op_id, so retrying is always safe (the server ignores repeats).
 import { api, ApiError } from "./api";
 
-export type OpKind = "shift_start" | "checkpoint" | "shift_end" | "shift_join" | "shift_leave" | "shift_cash" | "shift_close" | "pump_reassign" | "tank_dip" | "delivery";
+export type OpKind = "shift_start" | "checkpoint" | "shift_end" | "shift_join" | "shift_leave" | "shift_cash" | "shift_close" | "pump_reassign" | "tank_dip" | "delivery" | "expense";
 /** `user_id`: who made the entry. It is sent only while that person is signed in on this phone (a shared phone). */
 export interface QueuedOp { op_id: string; kind: OpKind; payload: any; queued_at: number; user_id?: string; user_name?: string }
 /** `pending`: this person's entries still to send. `others`: names of other people whose entries wait on this phone. */

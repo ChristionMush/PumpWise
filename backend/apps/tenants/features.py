@@ -89,6 +89,17 @@ def set_pesnat_mode(*, tenant, on, actor=None, request=None):
         audit.log("tenant_pesnat_mode_set", actor=actor, tenant_id=tenant.id, obj=tenant, request=request, changes={"pesnat_mode": [before, tenant.pesnat_mode]})
 
 
+def set_expenses(*, tenant, on, actor=None, request=None):
+    """Turn expense recording on or off for a business. Off hides the screens; recorded expenses stay."""
+    if tenant.expenses_enabled == bool(on):
+        return
+    with transaction.atomic(), tenant_scope(tenant.id):
+        before = tenant.expenses_enabled
+        tenant.expenses_enabled = bool(on)
+        tenant.save(update_fields=["expenses_enabled", "updated_at"])
+        audit.log("tenant_expenses_set", actor=actor, tenant_id=tenant.id, obj=tenant, request=request, changes={"expenses_enabled": [before, tenant.expenses_enabled]})
+
+
 def set_pump_system(*, tenant, system, actor=None, request=None):
     """The pump system for the whole business: grants what it needs and moves every station to its policy."""
     from apps.stations.models import Station

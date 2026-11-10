@@ -153,6 +153,32 @@ describe("attendant shift screen", () => {
     expect(await kvGet("activeShift")).toBeNull();
   });
 
+  it("asks who was credited with an intercompany issue, and sends it with the credit", async () => {
+    signedIn(); localStorage.setItem("fs_tutorial_done", "1");
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: { id: "a", role: "attendant", full_name: "Tendai", must_change_password: false, tenant_id: "t" }, tenant: { id: "t", name: "Msasa", slug: "m", status: "active" } } },
+      "GET /api/shifts/prefill/": { body: { stations: [station] } },
+      "POST /api/sync/": (body) => ({ body: { results: body.ops.map((o: any) => ({ op_id: o.op_id, status: "applied" })) } }),
+    });
+    renderApp("/");
+    const user = userEvent.setup();
+    await screen.findByPlaceholderText("Meter number");
+    await user.click(screen.getByRole("button", { name: "Start shift" }));
+    await user.type(await screen.findByPlaceholderText("Meter number now"), "1100");
+    await user.type(screen.getByLabelText("Cash"), "160");
+    expect(screen.queryByLabelText(/Who was credited/)).not.toBeInTheDocument(); // only once there is a credit
+    await user.type(screen.getByLabelText("Intercompany issue"), "40");
+    await user.click(screen.getByRole("button", { name: "End shift" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Write who was credited");
+    await user.type(screen.getByLabelText(/Who was credited/), "Zuva Petroleum, ABC 1234");
+    await user.click(screen.getByRole("button", { name: "End shift" }));
+    expect(await screen.findByRole("heading", { name: "Shift saved" })).toBeInTheDocument();
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/sync/" && c.body.ops.some((o: any) => o.kind === "shift_end"))).toBe(true));
+    const end = calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops).find((o: any) => o.kind === "shift_end");
+    expect(end.payload.cash).toEqual([{ payment_type: "cash", currency: "USD", amount: "160" },
+      { payment_type: "credit", currency: "USD", amount: "40", note: "Zuva Petroleum, ABC 1234" }]);
+  });
+
   it("refuses to end until every started pump has an end number", async () => {
     signedIn(); localStorage.setItem("fs_tutorial_done", "1");
     mockApi({

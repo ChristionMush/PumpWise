@@ -278,11 +278,43 @@ class CashSubmission(TenantOwnedModel):
     payment_type = models.CharField(max_length=15, choices=PaymentType.choices)
     currency = models.CharField(max_length=3, validators=[validate_currency])
     amount = models.DecimalField(max_digits=14, decimal_places=2)
+    # Intercompany issue: who was credited (company, vehicle, amounts), so the accounting pack can trace it.
+    note = models.CharField(max_length=500, blank=True, default="")
 
     class Meta:
         constraints = [
             models.UniqueConstraint(F("part"), "payment_type", "currency", condition=Q(deleted_at__isnull=True, part__isnull=False), name="cash_unique_per_part"),
             models.CheckConstraint(condition=Q(amount__gte=0), name="cash_not_negative"),
+        ]
+
+
+class Expense(TenantOwnedModel):
+    """Money paid out at a station (lunch, generator fuel...), recorded by the attendant or manager who paid it. Recorded
+    only: it does not change the cash anyone hands in. On the Expenses screen and in the accounting pack."""
+
+    class Category(models.TextChoices):
+        LUNCH = "lunch", "Lunch"
+        GENERATOR_FUEL = "generator_fuel", "Generator fuel"
+        TRANSPORT = "transport", "Transport"
+        REPAIRS = "repairs", "Repairs and maintenance"
+        OTHER = "other", "Other"
+
+    client_id = models.UUIDField(null=True, blank=True)  # made on the phone, so a retry never records it twice
+    station = models.ForeignKey("stations.Station", on_delete=models.PROTECT, related_name="+")
+    shift = models.ForeignKey(Shift, null=True, blank=True, on_delete=models.PROTECT, related_name="+")  # the shift it was paid on
+    category = models.CharField(max_length=20, choices=Category.choices)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    currency = models.CharField(max_length=3, validators=[validate_currency])
+    note = models.CharField(max_length=500, blank=True, default="")
+    spent_at = models.DateTimeField()
+    recorded_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        ordering = ["-spent_at"]
+        indexes = [models.Index(fields=["station", "-spent_at"])]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount__gt=0), name="expense_positive"),
+            models.UniqueConstraint(F("tenant"), "client_id", condition=Q(client_id__isnull=False), name="expense_client_id_unique"),
         ]
 
 

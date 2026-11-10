@@ -35,6 +35,9 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # Pesnat mode, set by the platform: for a business whose manager is remote. Turns on the weekly pump rotation
     # (operations/rota.py) and lets the owner allow attendants to dip (User.can_dip). Off: both stop, nothing is deleted.
     pesnat_mode = models.BooleanField(default=False)
+    # Expenses, set by the platform: attendants and managers record what they paid out (lunch, generator fuel...).
+    # Recorded only: the cash they hand in is unchanged. Off: the screens hide, what was recorded stays.
+    expenses_enabled = models.BooleanField(default=False)
     # Demo and trial businesses (Phase 12): never send real SMS/WhatsApp/email, use the billing sandbox, and are the
     # only tenants the demo loader may ever wipe and reload. A trial expires (suspended), then is removed if not converted.
     is_demo = models.BooleanField(default=False)

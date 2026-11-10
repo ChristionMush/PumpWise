@@ -128,7 +128,7 @@ def run_shift(tenant, attendant, fc, start, end, *, started_at, ended_at, cash=(
         services.end_shift(
             user=attendant, shift=shift, ended_at=ended_at,
             readings=[{"nozzle": n, "reading": Decimal(str(r))} for n, r in zip(fc.nozzles, end, strict=False)],
-            cash=[{"payment_type": t, "currency": c, "amount": Decimal(str(a))} for t, c, a in cash],
+            cash=[{"payment_type": t, "currency": c, "amount": Decimal(str(a)), "note": rest[0] if rest else ""} for t, c, a, *rest in cash],
         )
         if approve:
             approve_ends(attendant)

@@ -881,13 +881,14 @@ def submit_cash(*, user, shift, cash, who=None, at=None, request=None, part=None
     handed_in = row.cash_submitted_at is not None
     current = {(c.payment_type, c.currency): c.amount for c in CashSubmission.objects.filter(part=row)}
     lines = [(c["payment_type"], c["currency"], Decimal(str(c["amount"])).quantize(TWO)) for c in cash]
+    notes = {(c["payment_type"], c["currency"]): c.get("note", "") for c in cash}
     differs = any(current.get((t, cur)) != amount for t, cur, amount in lines if not (amount == 0 and (t, cur) not in current))
     grant = unlock_change(user, row, UndoRequest.Kind.CASH) if handed_in and differs else None  # a same-numbers resend is fine
     changes = {}
     for payment_type, currency, amount in lines:
         obj, created = CashSubmission.objects.get_or_create(
             part=row, payment_type=payment_type, currency=currency,
-            defaults={"tenant_id": shift.tenant_id, "shift": shift, "attendant": who, "amount": amount},
+            defaults={"tenant_id": shift.tenant_id, "shift": shift, "attendant": who, "amount": amount, "note": notes[(payment_type, currency)]},
         )
         if created and handed_in:
             changes[f"{payment_type}:{currency}"] = [None, str(amount)]
@@ -895,6 +896,11 @@ def submit_cash(*, user, shift, cash, who=None, at=None, request=None, part=None
             changes[f"{payment_type}:{currency}"] = [str(obj.amount), str(amount)]
             obj.amount = amount
             obj.save(update_fields=["amount", "updated_at"])
+        note = notes[(payment_type, currency)]
+        if not created and note and note != obj.note:  # who was credited: a resend without a note keeps the one saved
+            changes[f"{payment_type}:{currency}:note"] = [obj.note, note]
+            obj.note = note
+            obj.save(update_fields=["note", "updated_at"])
     if not handed_in:
         _mark_handed_in(row, user, at or timezone.now())
     elif differs:
@@ -1170,6 +1176,29 @@ def record_tank_dip(*, user, tank, litres=None, dip_mm=None, at=None, shift=None
     from .rollups import on_tank_changed
 
     on_tank_changed(tank)
+    return row
+
+
+def record_expense(*, user, station, category, amount, currency=None, note="", spent_at=None, client_id=None):
+    """Money an attendant or manager paid out. Recorded only: their cash hand-in is unchanged. Idempotent on client_id."""
+    from django.db.models import Q
+
+    from apps.tenants.models import Tenant
+
+    from .models import Expense
+
+    if client_id and (existing := Expense.objects.filter(client_id=client_id).first()):
+        return existing
+    if not Tenant.objects.filter(pk=station.tenant_id, expenses_enabled=True).exists():
+        raise ValidationError({"detail": "Expenses are not switched on for this business. Ask PumpWise to turn them on."})
+    spent_at = spent_at or timezone.now()
+    part = ShiftAttendant.objects.filter(user=user, shift__station=station, joined_at__lte=spent_at).filter(
+        Q(left_at__isnull=True) | Q(left_at__gte=spent_at)).select_related("shift").order_by("-joined_at").first()
+    row = Expense.objects.create(tenant_id=station.tenant_id, client_id=client_id, station=station, shift=part.shift if part else None,
+                                 category=category, amount=Decimal(str(amount)).quantize(TWO), currency=currency or station.pricing_currency,
+                                 note=note, spent_at=spent_at, recorded_by=user)
+    audit.log("expense_recorded", actor=user, obj=row, changes={"station": station.name, "category": category, "amount": str(row.amount),
+                                                                "currency": row.currency, "note": note})
     return row
 
 

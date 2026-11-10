@@ -26,6 +26,7 @@ from . import approvals, dayclose, imports, rota, services
 from .models import (
     DayClose,
     Delivery,
+    Expense,
     PumpAssignment,
     PumpMeterReading,
     PumpRota,
@@ -44,6 +45,8 @@ from .serializers import (
     DayCloseInput,
     DeliveryInput,
     DeliverySerializer,
+    ExpenseInput,
+    ExpenseSerializer,
     PersonInput,
     PumpAssignmentSerializer,
     ReadingInput,
@@ -547,6 +550,12 @@ def _apply(user, kind, p):
             if shift.merged_from:
                 result["client_shift_id"] = shift.merged_from  # later entries from that phone use this id
         return result
+    if kind == "expense":
+        d = _valid(ExpenseInput, p)
+        _check_station(user, d["station"])
+        row = services.record_expense(user=user, station=d["station"], category=d["category"], amount=d["amount"], currency=d.get("currency"),
+                                      note=d["note"], spent_at=d.get("spent_at"), client_id=d.get("client_id"))
+        return {"id": str(row.pk)}
     if kind in ("tank_dip", "delivery"):
         if kind == "tank_dip":
             require(user, "record_dips", "Dips are recorded by a manager, or an attendant the owner allows to dip.")
@@ -902,3 +911,29 @@ class PumpRotaView(APIView):
                 r.save(update_fields=["on", "week_starts", "applied_slot", "updated_at"])
             audit.log("pump_rota_set", actor=request.user, obj=r, request=request, changes={"station": st.name, "on": r.on, "week_starts": str(r.week_starts)})
         return Response({"station": str(st.pk), "station_name": st.name, **rota.describe(r, Pump.objects.filter(station=st).order_by("name"))})
+
+
+class ExpenseView(APIView):
+    """Expenses (when the business has them): anyone working records what they paid out; managers (their stations) and
+    the owner see every expense, an attendant sees their own. GET ?station= &date_from= &date_to= (local days)."""
+
+    permission_classes = [IsTenantUser]
+
+    def get(self, request):
+        qs = scope(Expense.objects.select_related("station", "recorded_by"), request.user)
+        if not can(request.user, "view_reports"):
+            qs = qs.filter(recorded_by=request.user)
+        if request.query_params.get("station"):
+            qs = qs.filter(station_id=request.query_params["station"])
+        for key, op in (("date_from", "gte"), ("date_to", "lte")):
+            if request.query_params.get(key):
+                qs = qs.filter(**{f"spent_at__date__{op}": request.query_params[key]})
+        return Response(ExpenseSerializer(qs[:500], many=True).data)
+
+    def post(self, request):
+        d = _valid(ExpenseInput, request.data)
+        _check_station(request.user, d["station"])
+        existed = bool(d.get("client_id")) and Expense.objects.filter(client_id=d["client_id"]).exists()
+        row = services.record_expense(user=request.user, station=d["station"], category=d["category"], amount=d["amount"], currency=d.get("currency"),
+                                      note=d["note"], spent_at=d.get("spent_at"), client_id=d.get("client_id"))
+        return Response(ExpenseSerializer(row).data, status=status.HTTP_200_OK if existed else status.HTTP_201_CREATED)

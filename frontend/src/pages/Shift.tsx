@@ -131,6 +131,7 @@ export default function Shift() {
   const [active, setActive] = useState<Active | null>(null);
   const [nums, setNums] = useState<Record<string, string>>({});
   const [cash, setCash] = useState<Record<string, string>>({});
+  const [creditNote, setCreditNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -230,14 +231,17 @@ export default function Shift() {
 
   const cashLines = () => {
     const cur = station!.pricing_currency;
-    const lines = TYPES.filter(([t]) => cash[t]).map(([t]) => ({ payment_type: t, currency: cur, amount: cash[t] }));
+    const lines = TYPES.filter(([t]) => cash[t]).map(([t]) => ({ payment_type: t, currency: cur, amount: cash[t], ...(t === "credit" ? { note: creditNote.trim() } : {}) }));
     return lines;
   };
+  // intercompany issue: who was credited, so the accounting pack can trace it
+  const noCreditNote = () => Number(cash.credit) > 0 && !creditNote.trim();
+  const CREDIT_NOTE = "Write who was credited with the intercompany issue (the company, and the vehicle if any).";
 
   const finish = async (message: string) => {
     if (active) await kvSet("lastEnded", { station_id: active.station_id, at: new Date().toISOString() });
     await kvSet("activeShift", null);
-    setActive(null); setSaved(message); setNums({}); setCash({}); setError(null);
+    setActive(null); setSaved(message); setNums({}); setCash({}); setCreditNote(""); setError(null);
   };
 
   // A pump the manager swapped away mid-shift drops out of the prefill: its end number was taken at the swap.
@@ -252,6 +256,7 @@ export default function Shift() {
   const end = async () => {
     if (!active) return;
     if (hasCents(cash.cash)) return setError("Cash is counted in whole dollars. Remove the cents from the cash.");
+    if (noCreditNote()) return setError(CREDIT_NOTE);
     if (active.member) { // someone else leads: I only hand in my cash
       await enqueue("shift_cash", { shift_id: active.id, cash: cashLines(), at: new Date().toISOString() });
       return finish("Your cash is saved. The lead closes the shift. Your manager approves your end before your next shift.");
@@ -296,6 +301,7 @@ export default function Shift() {
   const handInCash = async (shiftId: string) => {
     if (!cashLines().length) return setError("Enter the cash you are handing in.");
     if (hasCents(cash.cash)) return setError("Cash is counted in whole dollars. Remove the cents from the cash.");
+    if (noCreditNote()) return setError(CREDIT_NOTE);
     await enqueue("shift_cash", { shift_id: shiftId, cash: cashLines(), at: new Date().toISOString() });
     await kvSet("cashDue", null);
     setCashDue(null); setCash({}); setError(null);
@@ -342,6 +348,9 @@ export default function Shift() {
           {TYPES.map(([t, label]) => (
             <CashField key={t} type={t} label={label} value={cash[t] ?? ""} onChange={(v) => setCash({ ...cash, [t]: v })} />
           ))}
+          {Number(cash.credit) > 0 && (
+            <label>Who was credited (company, vehicle)<input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="e.g. Zuva Petroleum, ABC 1234" /></label>
+          )}
           {expected != null && (
             <div className={`summary ${Math.abs(handedIn - expected) < 1 ? "ok" : "off"}`} aria-live="polite">
               <div>Expected <strong>{money(expected)}</strong></div><div>Handed in <strong>{money(handedIn)}</strong></div>
@@ -418,6 +427,9 @@ export default function Shift() {
           {TYPES.map(([t, label]) => (
             <CashField key={t} type={t} label={label} value={cash[t] ?? ""} onChange={(v) => setCash({ ...cash, [t]: v })} />
           ))}
+          {Number(cash.credit) > 0 && (
+            <label>Who was credited (company, vehicle)<input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="e.g. Zuva Petroleum, ABC 1234" /></label>
+          )}
           {calc && (
             <div className={`summary ${Math.abs(calc.variance) < 1 ? "ok" : "off"}`} aria-live="polite">
               <div>Expected <strong>{money(calc.expected)}</strong></div><div>Handed in <strong>{money(calc.submitted)}</strong></div>

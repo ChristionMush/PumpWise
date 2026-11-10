@@ -68,7 +68,7 @@ describe("platform: create business", () => {
     expect(calls.find((c) => c.method === "POST" && c.path === "/api/platform/tenants/")?.body).toEqual({
       business_name: "Msasa Fuel Services", owner_name: "Rudo Chikwanha", owner_phone: "0772123456", owner_email: null,
       plan: "", paid_through: null, stations: [{ name: "Msasa Road", address: "" }, { name: "Borrowdale", address: "" }], pump_system: "assigned",
-      pesnat_mode: false,
+      pesnat_mode: false, expenses_enabled: false,
     });
 
     await user.click(screen.getByRole("button", { name: "Copy" }));

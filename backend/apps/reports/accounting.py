@@ -18,7 +18,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from apps.operations import tradingday
-from apps.operations.models import CashSubmission, Delivery, Shift, Transaction
+from apps.operations.models import CashSubmission, Delivery, Expense, Shift, Transaction
 from apps.stations.models import FuelPrice, Tank
 from apps.stations.services import rate_at
 from apps.tenants.services import get_settings
@@ -142,6 +142,38 @@ def build_pack(station, year, month):
         rows.append([f"Owed to {station.tenant.name} (intercompany issues)", "", "", None, "", float(owed)])
         rows.append(["Total handed in", "", "", None, "", float(received + owed)])
     _sheet(wb, "Takings", station, period, ["Date", "Payment type", "Currency", "Amount", "Rate", f"Amount in {currency}"], rows)
+
+    # Intercompany credit: every issue on account, with who was credited, so each one can be traced and claimed
+    rows, total = [], Decimal(0)
+    credits = (CashSubmission.objects.filter(shift__station=station, payment_type=INTERCOMPANY, amount__gt=0).filter(handed_in)
+               .select_related("part", "attendant", "shift"))
+    for c in sorted(credits, key=lambda c: c.part.cash_submitted_at if c.part_id and c.part.cash_submitted_at else c.created_at):
+        when = c.part.cash_submitted_at if c.part_id and c.part.cash_submitted_at else c.created_at
+        day = cal.day_of(when)
+        rate = rate_at(c.currency, currency, cal.bounds(day)[1] - timedelta(seconds=1))
+        converted = (c.amount * rate).quantize(Q2) if rate is not None else None
+        total += converted or 0
+        rows.append([day, timezone.localtime(c.shift.started_at).strftime("%d %b %H:%M"), c.attendant.full_name if c.attendant_id else "",
+                     c.note or "(not recorded)", c.currency, float(c.amount), float(converted) if converted is not None else None])
+    if rows:
+        rows.append(["Total owed (intercompany)", "", "", "", "", None, float(total)])
+    _sheet(wb, "Intercompany credit", station, period, ["Date", "Shift started", "Attendant", "Who was credited", "Currency", "Amount", f"Amount in {currency}"], rows)
+
+    # Expenses: what was paid out at the station (recorded only; the cash handed in is unchanged). Only for a business
+    # that records expenses, or once any were recorded.
+    spent = list(Expense.objects.filter(station=station, spent_at__gt=start, spent_at__lte=end).select_related("recorded_by").order_by("spent_at"))
+    if spent or station.tenant.expenses_enabled:
+        rows, total = [], Decimal(0)
+        for e in spent:
+            day = cal.day_of(e.spent_at)
+            rate = rate_at(e.currency, currency, cal.bounds(day)[1] - timedelta(seconds=1))
+            converted = (e.amount * rate).quantize(Q2) if rate is not None else None
+            total += converted or 0
+            rows.append([day, timezone.localtime(e.spent_at).strftime("%H:%M"), e.recorded_by.full_name, e.get_category_display(), e.note,
+                         e.currency, float(e.amount), float(converted) if converted is not None else None])
+        if rows:
+            rows.append(["Total expenses", "", "", "", "", "", None, float(total)])
+        _sheet(wb, "Expenses", station, period, ["Date", "Time", "Paid by", "For", "Note", "Currency", "Amount", f"Amount in {currency}"], rows)
 
     # Cash differences: per closed shift (ended in the month) and attendant
     rows, fills = [], []
