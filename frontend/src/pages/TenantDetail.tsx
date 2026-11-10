@@ -158,9 +158,6 @@ export default function TenantDetail() {
           <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.expenses_enabled)}
             onChange={(e) => setFeature({ expenses_enabled: e.target.checked })} /> Expenses</label>
           <p className="muted">Attendants and managers record what they pay out (lunch, generator fuel...). Recorded only; off hides the screens and keeps what was recorded.</p>
-          <label className="row gap"><input type="checkbox" checked={tenant.features.pooled_tanks !== false}
-            onChange={(e) => setFeature({ pooled_tanks: e.target.checked })} /> Pumps draw from every tank of their fuel</label>
-          <p className="muted">E.g. two petrol tanks: every petrol pump draws from both, and stock and the fuel check count them as one. Off: each tank is its own stock.</p>
           <h3>Shift change</h3>
           <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.attendants_pick_pumps)}
             onChange={(e) => setFeature({ attendants_pick_pumps: e.target.checked })} /> Attendants pick their pumps</label>
@@ -205,7 +202,7 @@ export default function TenantDetail() {
 
 interface TankRow { id: string; name: string; fuel_code: string; capacity_litres: string; reserve_litres: string; has_calibration: boolean }
 interface StationTankInfo {
-  tanks: TankRow[]; nozzles: { id: string; pump: string; label: string; tank: string }[]; fuels: { id: string; name: string; code: string }[];
+  tanks: TankRow[]; nozzles: { id: string; pump: string; label: string; tank: string; draws_from?: string[] }[]; fuels: { id: string; name: string; code: string }[];
 }
 
 /** Platform: a station's tanks, the tank each pump nozzle draws from, and adding a tank (opens on demand). Owners and
@@ -243,7 +240,7 @@ function StationTanks({ tenantId, stationId, stationName }: { tenantId: string; 
           {info.nozzles.length > 0 && info.tanks.length > 0 && (<>
             <h3>Which tank each nozzle draws from</h3>
             {info.nozzles.map((n) => (
-              <label key={n.id}>{n.pump} · {n.label}
+              <label key={n.id}>{n.pump} · {n.label}{(n.draws_from?.length ?? 0) > 1 && <span className="muted"> · draws from {n.draws_from!.join(" + ")}</span>}
                 <select aria-label={`${stationName} ${n.pump} ${n.label} tank`} value={n.tank} onChange={(e) => setTank(n.id, e.target.value)}>
                   {info.tanks.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.fuel_code})</option>)}
                 </select>

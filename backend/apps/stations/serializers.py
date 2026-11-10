@@ -91,11 +91,63 @@ class NozzleSerializer(serializers.ModelSerializer):
     tank_name = serializers.CharField(source="tank.name", read_only=True)
     fuel_type = serializers.CharField(source="tank.fuel_type_id", read_only=True)
     fuel_code = serializers.CharField(source="tank.fuel_type.code", read_only=True)
+    draws_from = serializers.SerializerMethodField()
+    # other tanks of its fuel at the station that it also draws from (e.g. a second petrol tank)
+    also_draws_from = serializers.ListField(child=serializers.UUIDField(), required=False)
 
     class Meta:
         model = Nozzle
-        fields = ["id", "pump", "number", "label", "meter_max", "tank", "tank_name", "fuel_type", "fuel_code"]
+        fields = ["id", "pump", "number", "label", "meter_max", "tank", "tank_name", "fuel_type", "fuel_code", "draws_from", "also_draws_from"]
         read_only_fields = ["id", "number"]
+
+    def get_draws_from(self, obj):
+        """The names of the tanks it draws from: its tank, then the others."""
+        from .pools import nozzle_tanks
+
+        names = dict(Tank.objects.filter(pk__in=nozzle_tanks(obj)).values_list("pk", "name"))
+        return [names[i] for i in nozzle_tanks(obj) if i in names]
+
+    def to_representation(self, obj):
+        from .pools import nozzle_tanks
+
+        data = super().to_representation(obj)
+        data["also_draws_from"] = [str(i) for i in nozzle_tanks(obj)[1:]]
+        return data
+
+    def _set_also(self, nozzle, ids):
+        """Link exactly these other tanks (same fuel, same station); a link taken away is kept (soft-deleted)."""
+        from django.utils import timezone
+
+        from .models import NozzleTank
+
+        wanted = {str(i) for i in ids} - {str(nozzle.tank_id)}
+        tanks = {str(t.pk): t for t in Tank.objects.filter(pk__in=wanted).select_related("fuel_type")}
+        for i in wanted:
+            t = tanks.get(i)
+            if t is None or t.station_id != nozzle.pump.station_id:
+                raise serializers.ValidationError({"also_draws_from": "Choose tanks at this pump's station."})
+            if t.fuel_type_id != nozzle.tank.fuel_type_id:
+                raise serializers.ValidationError({"also_draws_from": f"{t.name} holds {t.fuel_type.name}: a nozzle draws only from tanks of its own fuel."})
+        have = {str(x.tank_id): x for x in NozzleTank.objects.filter(nozzle=nozzle)}
+        for i, link in have.items():
+            if i not in wanted:
+                link.deleted_at = timezone.now()
+                link.save(update_fields=["deleted_at", "updated_at"])
+        for i in wanted - set(have):
+            NozzleTank.objects.create(tenant_id=nozzle.tenant_id, nozzle=nozzle, tank=tanks[i])
+
+    def update(self, instance, validated):
+        also = validated.pop("also_draws_from", None)
+        nozzle = super().update(instance, validated)
+        if also is not None:
+            self._set_also(nozzle, also)
+        elif "tank" in validated:  # its tank changed: links to the new tank itself, or of another fuel, no longer hold
+            from .models import NozzleTank
+
+            for link in NozzleTank.objects.filter(nozzle=nozzle).select_related("tank"):
+                if link.tank_id == nozzle.tank_id or link.tank.fuel_type_id != nozzle.tank.fuel_type_id:
+                    link.delete()
+        return nozzle
 
     def validate(self, attrs):
         nozzle = self.instance
@@ -117,7 +169,11 @@ class NozzleSerializer(serializers.ModelSerializer):
         validated_data["number"] = (last.number if last else 0) + 1
         if not validated_data.get("label"):
             validated_data["label"] = validated_data["tank"].fuel_type.name
-        return super().create(validated_data)
+        also = validated_data.pop("also_draws_from", None)
+        nozzle = super().create(validated_data)
+        if also is not None:
+            self._set_also(nozzle, also)
+        return nozzle
 
 
 class NewNozzleSerializer(serializers.Serializer):

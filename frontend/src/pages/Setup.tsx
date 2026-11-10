@@ -39,6 +39,8 @@ export default function Setup() {
   const nozzlePump = pumps.find((p) => p.id === f.npump);
   const setTank = (i: number, v: string) => setPtanks(ptanks.map((t, j) => (j === i ? v : t)));
   const tankName = (id: string) => tanks.find((t) => t.id === id);
+  // every tank a nozzle draws from: its tank and those ticked under "Also draws from" (e.g. Petrol Tank 1 + Petrol Tank 2)
+  const drawsFrom = (n: any) => (n.draws_from?.length ? n.draws_from.join(" + ") : tankName(n.tank)?.name ?? n.tank_name);
   return (
     <>
       <h1>Setup</h1><ErrorNote message={error} />
@@ -81,7 +83,7 @@ export default function Setup() {
           ))}
           {pumps.filter((p) => p.station === s.id).map((p) => (
             <div key={p.id}>
-              <p>⛽ {p.name} · {p.nozzles.map((n: any) => `${n.label || `Nozzle ${n.number}`}: ${tankName(n.tank)?.name ?? n.tank_name} (${n.fuel_code})`).join(" · ")}
+              <p>⛽ {p.name} · {p.nozzles.map((n: any) => `${n.label || `Nozzle ${n.number}`}: ${drawsFrom(n)} (${n.fuel_code})`).join(" · ")}
                 {p.assigned_to_name && <span className="muted"> · {p.assigned_to_name}</span>}
                 {p.brand && <span className="muted"> · {p.brand} {p.model}</span>}
                 {pumpProblem(p) && <span className="warn"> {pumpProblem(p)}</span>}
@@ -92,7 +94,7 @@ export default function Setup() {
                     { key: "model", label: "Model", value: p.model ?? "" }, { key: "year", label: "Year", value: p.year ?? "", numeric: true }]}>
                   {p.nozzles.map((n: any) => (
                     <div key={n.id} className="row gap">
-                      <span>{n.label || `Nozzle ${n.number}`}: {tankName(n.tank)?.name ?? n.tank_name} ({n.fuel_code})</span>
+                      <span>{n.label || `Nozzle ${n.number}`}: {drawsFrom(n)} ({n.fuel_code})</span>
                       {editing !== `nozzle:${n.id}` && <button type="button" className="link" onClick={() => setEditing(`nozzle:${n.id}`)}>Edit nozzle</button>}
                     </div>
                   ))}
@@ -101,9 +103,11 @@ export default function Setup() {
               {p.nozzles.filter((n: any) => editing === `nozzle:${n.id}`).map((n: any) => (
                 <ItemEditor key={n.id} title={`Edit ${p.name}, ${n.label || `nozzle ${n.number}`}`} path={`/api/nozzles/${n.id}/`} onClose={() => setEditing(null)}
                   onSaved={() => saved(`${p.name}, ${n.label || `nozzle ${n.number}`} saved.`)}
-                  note="Change the tank only if the nozzle was set up on the wrong one: its sales are counted against the tank it draws from."
+                  note="Change the tank only if the nozzle was set up on the wrong one. Tick another tank of the same fuel when the pump also draws from it: the tanks it draws from count as one stock."
                   fields={[{ key: "label", label: "Label", value: n.label ?? "" },
-                    { key: "tank", label: "Draws from", value: n.tank, options: tanks.filter((x) => x.station === p.station).map((x) => ({ value: x.id, label: `${x.name} · ${x.fuel_code}` })) }]} />
+                    { key: "tank", label: "Draws from", value: n.tank, options: tanks.filter((x) => x.station === p.station).map((x) => ({ value: x.id, label: `${x.name} · ${x.fuel_code}` })) },
+                    { key: "also_draws_from", label: "Also draws from", value: n.also_draws_from ?? [], multi: true,
+                      options: tanks.filter((x) => x.station === p.station && x.fuel_code === n.fuel_code && x.id !== n.tank).map((x) => ({ value: x.id, label: x.name })) }]} />
               ))}
             </div>
           ))}
@@ -144,7 +148,8 @@ export default function Setup() {
   );
 }
 
-type Field = { key: string; label: string; value: string | number; numeric?: boolean; options?: { value: string; label: string }[] };
+// multi: tick boxes for several of the options (sent as a list of their values)
+type Field = { key: string; label: string; value: string | number | string[]; numeric?: boolean; multi?: boolean; options?: { value: string; label: string }[] };
 
 /** Owner: edit a tank, pump or nozzle in place. Only changed fields are sent; every change is in the audit log. */
 function ItemEditor({ title, path, fields, note, onClose, onSaved, children }: {
@@ -158,7 +163,7 @@ function ItemEditor({ title, path, fields, note, onClose, onSaved, children }: {
     const body: Record<string, unknown> = {};
     for (const f of fields) {
       if (values[f.key] === String(f.value ?? "")) continue;
-      body[f.key] = f.numeric ? (values[f.key] === "" ? null : values[f.key].replace(",", ".")) : values[f.key];
+      body[f.key] = f.multi ? values[f.key].split(",").filter(Boolean) : f.numeric ? (values[f.key] === "" ? null : values[f.key].replace(",", ".")) : values[f.key];
     }
     if (!Object.keys(body).length) return onClose();
     setBusy(true); setError(null);
@@ -167,7 +172,16 @@ function ItemEditor({ title, path, fields, note, onClose, onSaved, children }: {
   return (
     <form className="card form" onSubmit={save} aria-label={title}>
       <h3>{title}</h3>
-      {fields.map((f) => (
+      {fields.map((f) => f.multi ? (
+        <fieldset key={f.key} className="form"><legend>{f.label}</legend>
+          {f.options!.length === 0 && <p className="muted">No other tank of this fuel at this station.</p>}
+          {f.options!.map((o) => {
+            const chosen = values[f.key].split(",").filter(Boolean);
+            return <label key={o.value} className="row gap"><input type="checkbox" checked={chosen.includes(o.value)}
+              onChange={(e) => setValues({ ...values, [f.key]: (e.target.checked ? [...chosen, o.value] : chosen.filter((x) => x !== o.value)).join(",") })} />{o.label}</label>;
+          })}
+        </fieldset>
+      ) : (
         <label key={f.key}>{f.label}
           {f.options
             ? <select value={values[f.key]} onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}>{f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>

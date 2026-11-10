@@ -46,7 +46,6 @@ class TenantCreateSerializer(serializers.Serializer):
     attendants_pick_pumps = serializers.BooleanField(required=False, default=False)
     dip_at_shift_end = serializers.BooleanField(required=False, default=False)
     close_day_at_change = serializers.ChoiceField(choices=["", "07:00", "18:00"], required=False, default="")
-    pooled_tanks = serializers.BooleanField(required=False, default=True)  # pumps draw from every tank of their fuel
 
     def validate_business_name(self, value):
         value = " ".join(value.split())
@@ -108,7 +107,6 @@ class FeaturesSerializer(serializers.Serializer):
     attendants_pick_pumps = serializers.BooleanField(required=False)
     dip_at_shift_end = serializers.BooleanField(required=False)
     close_day_at_change = serializers.ChoiceField(choices=["", "07:00", "18:00"], required=False)
-    pooled_tanks = serializers.BooleanField(required=False)
 
 
 class PumpSystemSerializer(serializers.Serializer):

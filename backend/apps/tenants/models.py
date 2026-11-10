@@ -38,10 +38,6 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # How the shift change works, set by the platform (all off: as before). Assigned pumps: attendants tick the free
     # pumps they take when they start, instead of a manager allocating them.
     attendants_pick_pumps = models.BooleanField(default=False)
-    # Every pump of a fuel draws from every tank of that fuel at its station (e.g. two petrol tanks): for stock, sales
-    # and the fuel check the tanks of a fuel are one (stations/pools.py). On for new businesses; off keeps each tank
-    # its own stock, fed by the pumps whose nozzles are on it (Fuel Zone and Litrix, created before this existed).
-    pooled_tanks = models.BooleanField(default=True)
     # Ending a shift asks the outgoing attendant to dip every tank (unless someone did in the last hour).
     dip_at_shift_end = models.BooleanField(default=False)
     # "07:00" or "18:00": the day closes by itself at that shift change, once everyone from the outgoing shift has ended

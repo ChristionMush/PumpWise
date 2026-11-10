@@ -32,7 +32,7 @@ def test_new_tenants_and_stations_start_on_the_basic_policy():
     assert (st.attendants_mode, st.assignment_mode) == ("single", "shared")
     d = platform_client().get(f"/api/platform/tenants/{a['tenant'].id}/").json()
     assert d["features"] == {"multi_attendant_enabled": False, "pump_assignment_enabled": False, "expenses_enabled": False,
-                                 "attendants_pick_pumps": False, "dip_at_shift_end": False, "close_day_at_change": "", "pooled_tanks": True}
+                                 "attendants_pick_pumps": False, "dip_at_shift_end": False, "close_day_at_change": ""}
 
 
 def test_platform_grants_features_then_sets_a_station_policy_within_them():
@@ -90,7 +90,7 @@ def test_removing_a_grant_falls_stations_back_without_deleting_anything():
     res = features(c, a["tenant"], multi_attendant_enabled=False)  # e.g. unpaid
     assert res.status_code == 200 and res.json()["stations_reset"] == [fc.station.name]
     assert res.json()["features"] == {"multi_attendant_enabled": False, "pump_assignment_enabled": False, "expenses_enabled": False,
-                                 "attendants_pick_pumps": False, "dip_at_shift_end": False, "close_day_at_change": "", "pooled_tanks": True}
+                                 "attendants_pick_pumps": False, "dip_at_shift_end": False, "close_day_at_change": ""}
     st = station_row(a["tenant"], fc.station)
     assert (st.attendants_mode, st.assignment_mode) == ("single", "shared")
     with db_context(tenant_id=a["tenant"].id):

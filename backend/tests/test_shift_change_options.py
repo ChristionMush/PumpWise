@@ -146,12 +146,14 @@ def test_an_attendant_adds_expenses_to_their_end_of_shift_and_their_cash_is_unch
     assert [(e["name"], e["amount"]) for e in detail["expenses"]] == [("Lunch", "5.00"), ("Generator fuel, 10 L", "14.50")]
 
 
-def test_an_attendant_dips_every_tank_of_their_pumps_fuel_both_petrol_tanks():
+def test_an_attendant_dips_every_tank_their_nozzles_draw_from_both_petrol_tanks():
     from .helpers import second_tank
 
     a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
-    backup = second_tank(fc, code="PETROL", name="Petrol Tank 2")  # the pumps may draw from either petrol tank
+    backup = second_tank(fc, code="PETROL", name="Petrol Tank 2")
     diesel = second_tank(fc, code="DIESEL", name="Diesel Tank")
+    for n in fc.nozzles:  # Setup: the petrol nozzles also draw from Petrol Tank 2
+        assert client_for(a[Role.OWNER]).patch(f"/api/nozzles/{n.pk}/", {"also_draws_from": [str(backup.pk)]}, format="json").status_code == 200
     options(a, dip_at_shift_end=True)
     ca = client_for(att_a)
     sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]

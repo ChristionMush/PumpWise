@@ -109,6 +109,23 @@ describe("owner edits tanks, pumps and nozzles", () => {
     await waitFor(() => expect(calls.find((c) => c.path === "/api/nozzles/n1/")?.body).toEqual({ tank: "k2" }));
   });
 
+  it("adds another tank a nozzle also draws from (same fuel only)", async () => {
+    signedIn();
+    const second = { ...tank, id: "k3", name: "Petrol Tank 2" };
+    const { calls } = mockApi({ ...setup(ownerUser), "GET /api/tanks/": { body: { results: [tank, other, second] } }, "PATCH /api/nozzles/n1/": { body: {} } });
+    renderApp("/setup");
+    const user = userEvent.setup();
+    const edits = await screen.findAllByRole("button", { name: "Edit" });
+    await user.click(edits[edits.length - 1]); // the pump
+    await user.click(screen.getByRole("button", { name: "Edit nozzle" }));
+    const nozzle = screen.getByRole("form", { name: "Edit 4A, nozzle 1" });
+    const also = within(nozzle).getByRole("group", { name: "Also draws from" });
+    expect(within(also).queryByLabelText("Diesel Tank")).not.toBeInTheDocument(); // another fuel: not offered
+    await user.click(within(also).getByLabelText("Petrol Tank 2"));
+    await user.click(within(nozzle).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/nozzles/n1/")?.body).toEqual({ also_draws_from: ["k3"] }));
+  });
+
   it("gives managers no edit buttons in Setup", async () => {
     signedIn();
     mockApi(setup(manager));

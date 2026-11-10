@@ -181,6 +181,17 @@ class Nozzle(TenantOwnedModel):
         return self.label or f"Nozzle {self.number}"
 
 
+class NozzleTank(TenantOwnedModel):
+    """Another tank a nozzle also draws from (same fuel, same station), added on the nozzle's "Also draws from". Tanks
+    joined this way are one stock for the fuel check and the forecast (stations/pools.py)."""
+
+    nozzle = models.ForeignKey(Nozzle, on_delete=models.PROTECT, related_name="extra_tanks")
+    tank = models.ForeignKey(Tank, on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(F("nozzle"), F("tank"), condition=Q(deleted_at__isnull=True), name="nozzletank_unique")]
+
+
 class FuelPrice(TenantOwnedModel):
     """Price history per station, fuel type and currency. Never edited in place: a new price closes the previous one."""
 

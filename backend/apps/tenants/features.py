@@ -81,7 +81,7 @@ def set_expenses(*, tenant, on, actor=None, request=None):
         audit.log("tenant_expenses_set", actor=actor, tenant_id=tenant.id, obj=tenant, request=request, changes={"expenses_enabled": [before, tenant.expenses_enabled]})
 
 
-SHIFT_OPTIONS = ("attendants_pick_pumps", "dip_at_shift_end", "close_day_at_change", "pooled_tanks")
+SHIFT_OPTIONS = ("attendants_pick_pumps", "dip_at_shift_end", "close_day_at_change")
 
 
 def set_shift_options(*, tenant, changes, actor=None, request=None):

@@ -1,10 +1,10 @@
-"""Fuel pools: every pump of a fuel draws from every tank of that fuel at its station (e.g. both petrol tanks), so for
-stock, sales and the fuel check the tanks of one fuel are one pool. A fuel with one tank (most stations) is a pool of
-that tank, with its name, id and figures, so nothing changes there. A business with Tenant.pooled_tanks off (Fuel Zone,
-Litrix) keeps every tank its own pool, fed by the pumps whose nozzles are on it, as before pools existed.
+"""Fuel pools: a nozzle can draw from more than one tank of its fuel (its tank, and the tanks added under "also draws
+from", NozzleTank). Tanks joined that way are one stock for the fuel check, the forecast and the alerts: their dips are
+added up and their sales are those of every nozzle drawing from them. A tank no nozzle shares (every Fuel Zone and
+Litrix tank) is a pool of itself, with its name, id and figures, so nothing changes there.
 
 A pool behaves like a tank where the figures are worked out: its dip at a moment is the sum of each tank's latest dip
-up to then, its deliveries are those into any of its tanks, and its sales are every sale of its fuel at the station.
+up to then, its deliveries are those into any of its tanks, and its sales are those of the nozzles drawing from it.
 """
 from decimal import Decimal
 from types import SimpleNamespace
@@ -13,9 +13,9 @@ from django.db.models import Sum
 
 
 class Pool:
-    def __init__(self, tanks, pooled=True):
-        self.pooled = pooled  # False: one tank, its sales those of the nozzles on it
+    def __init__(self, tanks, nozzle_ids):
         self.tanks = sorted(tanks, key=lambda t: t.name.lower())
+        self.nozzle_ids = list(nozzle_ids)  # every nozzle drawing from any of its tanks
         self.lead = self.tanks[0]  # its id names the pool (its status, its alerts)
         self.pk, self.tenant_id, self.station_id = self.lead.pk, self.lead.tenant_id, self.lead.station_id
         self.station, self.fuel_type, self.fuel_type_id = self.lead.station, self.lead.fuel_type, self.lead.fuel_type_id
@@ -69,37 +69,56 @@ class Pool:
     def sales(self):
         from apps.operations.models import Transaction
 
-        if not self.pooled:
-            return Transaction.objects.filter(nozzle__tank__in=self.ids)
-        return Transaction.objects.filter(station_id=self.station_id, fuel_type_id=self.fuel_type_id)
+        return Transaction.objects.filter(nozzle_id__in=self.nozzle_ids)
 
     def sold(self, after, until):
         return self.sales().filter(occurred_at__gt=after, occurred_at__lte=until).aggregate(s=Sum("litres"))["s"] or Decimal(0)
 
 
-def pooled(tenant_id):
-    from apps.tenants.models import Tenant
+def nozzle_tanks(nozzle):
+    """The tanks a nozzle draws from: its tank, then the others it also draws from."""
+    from .models import NozzleTank
 
-    return Tenant.objects.filter(pk=tenant_id, pooled_tanks=True).exists()
+    return [nozzle.tank_id, *NozzleTank.objects.filter(nozzle=nozzle).exclude(tank_id=nozzle.tank_id).values_list("tank_id", flat=True)]
+
+
+def _component(station_id, tank_id):
+    """(tank ids, nozzle ids) joined to this tank through nozzles drawing from more than one tank."""
+    from .models import Nozzle, NozzleTank
+
+    draws = {n: {t} for n, t in Nozzle.objects.filter(pump__station_id=station_id).values_list("pk", "tank_id")}
+    for n, t in NozzleTank.objects.filter(nozzle_id__in=draws).values_list("nozzle_id", "tank_id"):
+        draws[n].add(t)
+    tanks, nozzles, grew = {tank_id}, set(), True
+    while grew:
+        grew = False
+        for n, ts in draws.items():
+            if n not in nozzles and ts & tanks:
+                nozzles.add(n)
+                if not ts <= tanks:
+                    tanks |= ts
+                    grew = True
+    return tanks, nozzles
 
 
 def pool_of(tank):
-    """The pool a tank belongs to: every tank of its fuel at its station (or the tank alone, pooled_tanks off)."""
+    """The pool a tank belongs to: every tank joined to it through a nozzle drawing from several tanks."""
     from .models import Tank
 
     if isinstance(tank, Pool):
         return tank
-    if not pooled(tank.tenant_id):
-        return Pool([tank], pooled=False)
-    return Pool(list(Tank.objects.filter(station_id=tank.station_id, fuel_type_id=tank.fuel_type_id).select_related("fuel_type", "station")))
+    tank_ids, nozzle_ids = _component(tank.station_id, tank.pk)
+    tanks = [tank] if tank_ids == {tank.pk} else list(Tank.objects.filter(pk__in=tank_ids).select_related("fuel_type", "station"))
+    return Pool(tanks, nozzle_ids)
 
 
 def pools_for(tanks):
-    """The pools of these tanks, once each (a fuel with two tanks given twice is one pool), in the tanks' order."""
+    """The pools of these tanks, once each (two joined tanks given twice are one pool), in the tanks' order."""
     seen, out = set(), []
     for t in tanks:
-        key = (t.station_id, t.fuel_type_id) if pooled(t.tenant_id) else t.pk
-        if key not in seen:
-            seen.add(key)
-            out.append(pool_of(t))
+        if t.pk in seen:
+            continue
+        p = pool_of(t)
+        seen.update(p.ids)
+        out.append(p)
     return out

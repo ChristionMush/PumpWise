@@ -138,7 +138,7 @@ def meter_fuel_checks(station, opening, close, cfg):
     for t in pools_for(Tank.objects.filter(station=station).select_related("fuel_type", "station").order_by("name")):  # per fuel pool
         firsts = [TankReading.objects.filter(tank_id=i, day_close=opening).first() for i in t.ids]
         lasts = [TankReading.objects.filter(tank_id=i, day_close=close).first() for i in t.ids]
-        nozzles = list(Nozzle.objects.filter(pump__station=station, tank_id__in=t.ids))  # pooled: every nozzle of the fuel is on one of its tanks
+        nozzles = list(Nozzle.objects.filter(pk__in=t.nozzle_ids))  # every nozzle drawing from the pool's tanks
         if None in firsts or None in lasts or not nozzles or any(n.pk not in opened or n.pk not in closed for n in nozzles):
             continue
         first = SimpleNamespace(litres=sum((r.litres for r in firsts), Decimal(0)))

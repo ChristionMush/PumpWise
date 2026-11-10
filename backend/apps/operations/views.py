@@ -20,6 +20,7 @@ from apps.accounts.permissions import Allow, IsOwner, IsOwnerOrManager, IsTenant
 from apps.audit import services as audit
 from apps.stations.access import scope, visible_station_ids
 from apps.stations.models import FuelPrice, Pump, Station, StationAssignment, Tank
+from apps.stations.pools import pool_of
 from apps.stations.views import validate_image
 
 from . import approvals, dayclose, imports, services
@@ -193,7 +194,8 @@ class PrefillView(APIView):
                 for n in p.nozzles.all():
                     last = services.last_end_reading(n)
                     nozzles.append({"id": str(n.pk), "number": n.number, "label": str(n), "meter_max": str(n.meter_max), "last_reading": str(last.reading) if last else None,
-                                    "fuel_type": str(n.tank.fuel_type_id), "fuel_code": n.tank.fuel_type.code, "tank": str(n.tank_id)})
+                                    "fuel_type": str(n.tank.fuel_type_id), "fuel_code": n.tank.fuel_type.code, "tank": str(n.tank_id),
+                                    "tanks": [str(i) for i in pool_of(n.tank).ids]})  # every tank it draws from (dipped at the end of a shift)
                 pump = {"id": str(p.pk), "name": p.name, "data_source": p.data_source, "nozzles": nozzles}
                 if assigned:
                     pump.update(assigned_to=str(p.assigned_to_id) if p.assigned_to_id else None, assigned_to_name=p.assigned_to.full_name if p.assigned_to_id else None)
@@ -225,7 +227,6 @@ class PrefillView(APIView):
                 entry["pick_pumps"] = True
             if user.tenant.dip_at_shift_end:  # ending a shift asks for the dips of the attendant's tanks, unless just taken
                 entry["dip_at_end"] = True
-                entry["pooled_tanks"] = user.tenant.pooled_tanks  # all tanks of their pumps' fuel, or only the tanks their nozzles are on
                 last = TankReading.objects.filter(tank__station=st).order_by("-reading_at").first()
                 entry["last_dip_at"] = last.reading_at if last else None
             if can(user, "view_tank_levels"):  # tank levels are for managers and owners only (rule 11)

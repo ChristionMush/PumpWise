@@ -201,8 +201,11 @@ def station_tanks(station):
     tanks = [{"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres),
               "reserve_litres": str(t.reserve_litres), "has_calibration": t.calibration.count() >= 2}
              for t in Tank.objects.filter(station=station).select_related("fuel_type").order_by("name")]
-    nozzles = [{"id": str(n.pk), "pump": n.pump.name, "label": str(n), "tank": str(n.tank_id)}
-               for n in Nozzle.objects.filter(pump__station=station).select_related("pump").order_by("pump__name", "number")]
+    from apps.stations.pools import nozzle_tanks
+
+    names = {t.pk: t.name for t in Tank.objects.filter(station=station)}
+    nozzles = [{"id": str(n.pk), "pump": n.pump.name, "label": str(n), "tank": str(n.tank_id), "draws_from": [names[i] for i in nozzle_tanks(n) if i in names]}
+               for n in Nozzle.objects.filter(pump__station=station).select_related("pump", "tank").order_by("pump__name", "number")]
     fuels = [{"id": str(f.pk), "name": f.name, "code": f.code} for f in FuelType.objects.order_by("name")]
     return {"station": str(station.pk), "tanks": tanks, "nozzles": nozzles, "fuels": fuels}
 
