@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { kvSet, resetOffline } from "../offline";
@@ -28,6 +28,10 @@ describe("attendants pick their pumps", () => {
     renderApp("/");
     const user = userEvent.setup();
     const a = await screen.findByRole("checkbox", { name: "Pump A" });
+    // listed by fuel: petrol first, then diesel
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Petrol", "Diesel"]);
+    expect(within(screen.getByRole("group", { name: "Petrol" })).getByRole("checkbox", { name: "Pump A" })).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Diesel" })).getByRole("checkbox", { name: /Pump B/ })).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Pump B/ })).toBeDisabled();
     expect(screen.getByText(/still with Rudo/)).toBeInTheDocument();
     expect(screen.queryByText(/Your pumps:/)).not.toBeInTheDocument();

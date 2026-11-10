@@ -45,6 +45,17 @@ interface CashDue { shift_id: string; station_id: string; expected: number | nul
 /** The shift this phone is working. `member`: joined someone else's shift (hands in cash only; the lead enters meters). */
 export interface Active { id: string; station_id: string; started_at: string; starts: Record<string, number>; member?: boolean }
 
+/** Pumps grouped by the fuel they sell (Petrol, Diesel; "Diesel + Petrol" for a pump selling both), fuels A-Z. */
+function byFuel(pumps: PumpInfo[]): [string, PumpInfo[]][] {
+  const name = (code: string) => code.charAt(0) + code.slice(1).toLowerCase();
+  const groups = new Map<string, PumpInfo[]>();
+  for (const p of pumps) {
+    const fuel = [...new Set(p.nozzles.map((n) => name(n.fuel_code)))].sort().join(" + ") || "Other";
+    groups.set(fuel, [...(groups.get(fuel) ?? []), p]);
+  }
+  return [...groups.entries()].sort(([a], [b]) => (a === "Petrol" ? -1 : b === "Petrol" ? 1 : a.localeCompare(b)));
+}
+
 /** Loads the phone's working data; falls back to the saved copy when there is no signal. */
 export async function loadStations(): Promise<{ stations: StationInfo[]; error: string | null }> {
   try {
@@ -450,10 +461,16 @@ export default function Shift() {
       {!active && picking && (
         <fieldset className="card form" aria-label="Pumps I am taking">
           <legend><strong>Pumps I am taking</strong></legend>
-          {station.pumps.map((p) => (
-            <label key={p.id} className="row gap"><input type="checkbox" checked={picked.includes(p.id)} disabled={Boolean(p.in_use_by)}
-              onChange={(e) => setPicked(e.target.checked ? [...picked, p.id] : picked.filter((x) => x !== p.id))} />
-              {p.name}{p.in_use_by ? <span className="muted"> · still with {p.in_use_by}</span> : null}</label>
+          {/* by fuel: Petrol, then Diesel; a pump selling two fuels is under both together */}
+          {byFuel(station.pumps).map(([fuel, pumps]) => (
+            <div key={fuel} role="group" aria-label={fuel}>
+              <h3>{fuel}</h3>
+              {pumps.map((p) => (
+                <label key={p.id} className="row gap"><input type="checkbox" checked={picked.includes(p.id)} disabled={Boolean(p.in_use_by)}
+                  onChange={(e) => setPicked(e.target.checked ? [...picked, p.id] : picked.filter((x) => x !== p.id))} />
+                  {p.name}{p.in_use_by ? <span className="muted"> · still with {p.in_use_by}</span> : null}</label>
+              ))}
+            </div>
           ))}
         </fieldset>
       )}
