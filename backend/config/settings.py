@@ -132,8 +132,7 @@ USE_TZ = True
 # Default country calling code used to normalise local phone numbers (0771234567 -> +263771234567)
 DEFAULT_PHONE_COUNTRY_CODE = env("DEFAULT_PHONE_COUNTRY_CODE", "263")
 
-# Used to build absolute links (QR codes, export links)
-# Where QR codes point (the PWA)
+# The app's address, for absolute links (export links)
 FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", "http://localhost:5173")
 USE_S3_MEDIA = bool(env("AWS_STORAGE_BUCKET_NAME"))
 MEDIA_ROOT = env("MEDIA_ROOT", str(BASE_DIR / "media"))

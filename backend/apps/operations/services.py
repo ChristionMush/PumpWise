@@ -403,10 +403,6 @@ def resolve_readings(*, user, shift, keep, request=None):
 
 # ---- pump assignment (managers and owners only) ----------------------------------------------------------------
 
-def station_pumps(station):
-    return list(Pump.objects.filter(station=station).prefetch_related("nozzles"))
-
-
 def is_assigned_station(station):
     return station.assignment_mode == Station.AssignmentMode.ASSIGNED
 

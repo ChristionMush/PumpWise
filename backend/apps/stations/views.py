@@ -6,13 +6,12 @@ from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
-from rest_framework.generics import ListAPIView
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import Role
-from apps.accounts.permissions import Allow, IsOwnerOrManager, IsTenantUser, SetupPermission, can, require
+from apps.accounts.permissions import Allow, IsOwnerOrManager, SetupPermission, can, require
 from apps.audit import services as audit
 
 from . import services
@@ -348,12 +347,3 @@ class StationAssignmentView(APIView):
             return []
         return list(Station.objects.filter(pk__in=chosen))
 
-
-class StationListView(ListAPIView):
-    """Kept for the Phase 2 URL."""
-
-    permission_classes = [IsTenantUser]
-    serializer_class = StationSerializer
-
-    def get_queryset(self):
-        return scope(Station.objects.all(), self.request.user, "id")

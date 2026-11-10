@@ -6,7 +6,6 @@ redis~=5.2
 gunicorn~=23.0
 celery~=5.6.0
 kombu~=5.6.0  # celery 5.6 accepts kombu 5.7, which needs redis-py 6.1+ (the worker crashed on 5.3); move these together
-qrcode~=8.0
 boto3~=1.35
 django-storages~=1.14
 openpyxl~=3.1
