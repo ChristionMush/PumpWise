@@ -51,7 +51,7 @@ def _part(tank):
 
     last = TankReading.objects.filter(tank=tank).order_by("-reading_at").first()
     return {"tank_id": str(tank.pk), "tank": tank.name, "capacity_litres": str(tank.capacity_litres),
-            "last_litres": str(last.litres) if last else None, "last_dip_at": last.reading_at if last else None}
+            "last_litres": str(last.litres) if last else None, "last_dip_at": last.reading_at.isoformat() if last else None}
 
 
 def forecast_tank(tank, cfg=None, now=None):
