@@ -111,6 +111,33 @@ def test_a_dip_entered_after_the_shift_ended_closes_the_day():
         assert str(close.day) == "2026-10-01" and "17:10" in close.note
 
 
+def test_the_day_closes_once_the_outgoing_attendants_have_handed_in_and_their_credit_is_on_that_day():
+    from datetime import datetime
+
+    from apps.operations.models import Shift
+    from apps.operations.services import submit_cash
+    from apps.reports.daily import daily_report
+    from apps.stations.models import Station
+
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    options(a, dip_at_shift_end=True, close_day_at_change="18:00")
+    ca = client_for(att_a)
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    # meters and dip at 16:25, the money counted and handed in at 16:34 (Harare)
+    assert ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T14:25:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": [], "cash_later": True,
+                                                "dips": [{"tank": str(fc.tank.pk), "dip_mm": "500"}]}, format="json").status_code == 200
+    with db_context(tenant_id=a["tenant"].id):
+        assert not DayClose.objects.exists()  # not handed in yet
+    with db_context(tenant_id=a["tenant"].id):  # the phone's hand-in, as sent at 16:34
+        submit_cash(user=att_a, shift=Shift.objects.get(pk=sid), at=datetime.fromisoformat("2026-10-01T14:34:00+00:00"),
+                    cash=[{"payment_type": "cash", "currency": "USD", "amount": "100"}, {"payment_type": "credit", "currency": "USD", "amount": "50", "note": "Truck"}])
+    with db_context(tenant_id=a["tenant"].id):
+        close = DayClose.objects.get()
+        assert str(close.day) == "2026-10-01" and "16:34" in close.note
+        report = daily_report(Station.objects.get(pk=fc.station.pk), close.day)
+    assert report["totals"]["intercompany"] == "50.00", report["totals"]
+
+
 def test_without_the_option_an_attendant_cannot_send_dips_and_nothing_changes():
     a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
     ca = client_for(att_a)

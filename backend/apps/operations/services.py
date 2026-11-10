@@ -925,6 +925,9 @@ def submit_cash(*, user, shift, cash, who=None, at=None, request=None, part=None
             obj.save(update_fields=["note", "updated_at"])
     if not handed_in:
         _mark_handed_in(row, user, at or timezone.now())
+        from . import dayclose  # dayclose imports this module
+
+        dayclose.try_close_at_shift_change(station=shift.station, user=user, at=row.cash_submitted_at, request=request)
     elif differs:
         after_change(user, row, grant)
     if changes:
