@@ -251,6 +251,8 @@ def daily_report(station, day):
 
     def attendant_reading(nozzle, at):
         r = PumpMeterReading.objects.filter(nozzle=nozzle, reading_at__lte=at).order_by("-reading_at", "-created_at").first()
+        if r is None and at == start:  # a pump's first day: nothing before the day began, so its first number that day
+            r = PumpMeterReading.objects.filter(nozzle=nozzle, reading_at__gt=start, reading_at__lte=until).order_by("reading_at", "created_at").first()
         return (r.reading, r.reading_at) if r else (None, None)
 
     pumps = []

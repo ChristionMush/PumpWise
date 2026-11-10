@@ -136,6 +136,8 @@ def test_the_day_closes_once_the_outgoing_attendants_have_handed_in_and_their_cr
         assert str(close.day) == "2026-10-01" and "16:34" in close.note
         report = daily_report(Station.objects.get(pk=fc.station.pk), close.day)
     assert report["totals"]["intercompany"] == "50.00", report["totals"]
+    first_day = [p for p in report["pumps"] if p["pump"] == fc.pump.name]
+    assert first_day and all(p["opening_meter"] == "0.00" for p in first_day), first_day  # its first day: the start numbers
 
 
 def test_without_the_option_an_attendant_cannot_send_dips_and_nothing_changes():
