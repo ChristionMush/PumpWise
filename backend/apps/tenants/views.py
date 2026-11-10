@@ -183,6 +183,95 @@ class PlatformStationView(APIView):
         return Response(StationSerializer(station).data, status=status.HTTP_201_CREATED)
 
 
+def _station_of(tenant, station_id):
+    with transaction.atomic(), tenant_scope(tenant.id):
+        try:
+            station = Station.objects.filter(pk=station_id).first()
+        except DjangoValidationError:
+            station = None
+    if station is None:
+        raise NotFound("No such station at this business.")
+    return station
+
+
+def station_tanks(station):
+    """A station's tanks and, for each pump nozzle, the tank it draws from (call inside the tenant's scope)."""
+    from apps.stations.models import FuelType, Nozzle, Tank
+
+    tanks = [{"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres),
+              "reserve_litres": str(t.reserve_litres), "has_calibration": t.calibration.count() >= 2}
+             for t in Tank.objects.filter(station=station).select_related("fuel_type").order_by("name")]
+    nozzles = [{"id": str(n.pk), "pump": n.pump.name, "label": str(n), "tank": str(n.tank_id)}
+               for n in Nozzle.objects.filter(pump__station=station).select_related("pump").order_by("pump__name", "number")]
+    fuels = [{"id": str(f.pk), "name": f.name, "code": f.code} for f in FuelType.objects.order_by("name")]
+    return {"station": str(station.pk), "tanks": tanks, "nozzles": nozzles, "fuels": fuels}
+
+
+class PlatformStationTanksView(APIView):
+    """A station's tanks, from the platform: GET lists them with the nozzles drawing from each; POST adds a tank
+    (name, fuel, capacity, reserve). The owner and managers can do the same on their Setup screen."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def get(self, request, pk, station_id):
+        tenant = _get_tenant(pk)
+        station = _station_of(tenant, station_id)
+        with transaction.atomic(), tenant_scope(tenant.id):
+            return Response(station_tanks(station))
+
+    def post(self, request, pk, station_id):
+        from apps.stations.serializers import TankSerializer
+
+        tenant = _get_tenant(pk)
+        station = _station_of(tenant, station_id)
+        try:
+            with transaction.atomic(), tenant_scope(tenant.id):
+                data = TankSerializer(data={**request.data, "station": str(station.pk)})
+                data.is_valid(raise_exception=True)
+                if data.validated_data["fuel_type"].tenant_id != tenant.id:
+                    raise ValidationError({"fuel_type": "Choose one of this business's fuels."})
+                tank = data.save(tenant_id=tenant.id)
+                audit.log("tank_created", actor=request.user, tenant_id=tenant.id, obj=tank, request=request,
+                          changes={"station": station.name, "tank": tank.name, "fuel": tank.fuel_type.code, "capacity_litres": str(tank.capacity_litres)})
+                body = station_tanks(station)
+        except IntegrityError:
+            raise ValidationError({"name": f"{station.name} already has a tank with this name."})
+        return Response(body, status=status.HTTP_201_CREATED)
+
+
+class PlatformNozzleTankView(APIView):
+    """PATCH {tank}: the tank a pump nozzle draws from, from the platform. Not while a shift is open at the station
+    (it changes the fuel, and so the price, of what is being sold)."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def patch(self, request, pk, nozzle_id):
+        from apps.operations.models import Shift
+        from apps.stations.models import Nozzle, Tank
+
+        tenant = _get_tenant(pk)
+        with transaction.atomic(), tenant_scope(tenant.id):
+            try:
+                nozzle = Nozzle.objects.select_related("pump__station", "tank").filter(pk=nozzle_id).first()
+                tank = Tank.objects.filter(pk=request.data.get("tank")).first()
+            except DjangoValidationError:
+                nozzle = tank = None
+            if nozzle is None:
+                raise NotFound("No such nozzle at this business.")
+            station = nozzle.pump.station
+            if tank is None or tank.station_id != station.pk:
+                raise ValidationError({"tank": f"Choose a tank at {station.name}."})
+            if tank.pk != nozzle.tank_id:
+                if Shift.objects.filter(station=station, status="open").exists():
+                    raise ValidationError({"detail": f"A shift is open at {station.name}. Change which tank a nozzle draws from after it closes."})
+                before = nozzle.tank.name
+                nozzle.tank = tank
+                nozzle.save(update_fields=["tank", "updated_at"])
+                audit.log("nozzle_tank_set", actor=request.user, tenant_id=tenant.id, obj=nozzle, request=request,
+                          changes={"pump": nozzle.pump.name, "nozzle": str(nozzle), "tank": [before, tank.name]})
+            return Response(station_tanks(station))
+
+
 class PlatformTrialView(APIView):
     """'Create trial tenant': a demo business for a prospect, filled from the template, with an owner login whose random
     password is shown once. It expires after 14 days (suspended) and is removed 30 days later unless converted."""

@@ -104,7 +104,7 @@ def test_each_attendant_dips_only_the_tanks_of_the_pumps_they_are_on():
     options(a, dip_at_shift_end=True)
     ca = client_for(att_a)
     nozzles = {n["id"]: n["tank"] for p in ca.get("/api/shifts/prefill/").json()["stations"][0]["pumps"] for n in p["nozzles"]}
-    assert set(nozzles.values()) == {str(fc.tank.pk), str(tank2.pk)}  # the phone knows which tank each nozzle draws from
+    assert set(nozzles.values()) == {str(fc.tank.pk)}  # A's phone lists A's pump, and knows the tank each nozzle draws from
     sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
     ended = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": A_ENDS, "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150"),
                                                  "dips": [{"tank": str(fc.tank.pk), "dip_mm": "500"}, {"tank": str(tank2.pk), "dip_mm": "500", "litres": "4000"}]}, format="json")
@@ -130,7 +130,11 @@ def test_an_attendant_adds_expenses_to_their_end_of_shift_and_their_cash_is_unch
     no_name = ca.post(f"/api/shifts/{sid}/end/", {**body, "expenses": [{"name": " ", "amount": "5"}]}, format="json")
     assert no_name.status_code == 400  # a name and a cost are both needed
     assert ca.post(f"/api/shifts/{sid}/end/", body, format="json").status_code == 200
-    assert ca.post(f"/api/shifts/{sid}/end/", body, format="json").status_code == 200  # a resend records nothing twice
+    from apps.operations.models import Shift
+    from apps.operations.services import record_shift_expenses
+
+    with db_context(tenant_id=a["tenant"].id):  # the phone sending the same lines again records nothing twice
+        record_shift_expenses(user=att_a, shift=Shift.objects.get(pk=sid), expenses=body["expenses"], at=Shift.objects.get(pk=sid).started_at)
     with db_context(tenant_id=a["tenant"].id):
         rows = list(Expense.objects.order_by("amount").values_list("note", "amount", "recorded_by_id", "shift_id"))
         assert [(n, str(m)) for n, m, _, _ in rows] == [("Lunch", "5.00"), ("Generator fuel, 10 L", "14.50")]

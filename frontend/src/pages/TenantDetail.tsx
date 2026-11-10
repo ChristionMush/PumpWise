@@ -186,6 +186,7 @@ export default function TenantDetail() {
                   </select>
                 </div>
               )}
+              <StationTanks tenantId={id!} stationId={s.id} stationName={s.name} />
             </li>
           ))}
         </ul>
@@ -196,5 +197,68 @@ export default function TenantDetail() {
         </form>
       </section>
     </>
+  );
+}
+
+interface TankRow { id: string; name: string; fuel_code: string; capacity_litres: string; reserve_litres: string; has_calibration: boolean }
+interface StationTankInfo {
+  tanks: TankRow[]; nozzles: { id: string; pump: string; label: string; tank: string }[]; fuels: { id: string; name: string; code: string }[];
+}
+
+/** Platform: a station's tanks, the tank each pump nozzle draws from, and adding a tank (opens on demand). Owners and
+ *  managers do the same on their Setup screen; changing a nozzle's tank waits until no shift is open there. */
+function StationTanks({ tenantId, stationId, stationName }: { tenantId: string; stationId: string; stationName: string }) {
+  const [info, setInfo] = useState<StationTankInfo | null>(null);
+  const [form, setForm] = useState({ name: "", fuel_type: "", capacity_litres: "", reserve_litres: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const url = `/api/platform/tenants/${tenantId}/stations/${stationId}/tanks/`;
+  const load = () => api<StationTankInfo>(url).then((i) => { setInfo(i); setForm((f) => ({ ...f, fuel_type: f.fuel_type || i.fuels[0]?.id || "" })); })
+    .catch((e) => setError(errorMessage(e)));
+  const run = async (fn: () => Promise<StationTankInfo>, ok: string) => {
+    setError(null); setNote(null);
+    try { setInfo(await fn()); setNote(ok); return true; } catch (e) { setError(errorMessage(e)); return false; }
+  };
+  const addTank = (e: FormEvent) => {
+    e.preventDefault();
+    void run(() => api(url, { method: "POST", body: { ...form, reserve_litres: form.reserve_litres || "0" } }), `${form.name} added to ${stationName}.`)
+      .then((saved) => { if (saved) setForm((f) => ({ ...f, name: "", capacity_litres: "", reserve_litres: "" })); }); // a refused tank keeps what was typed
+  };
+  const setTank = (nozzle: string, tank: string) =>
+    void run(() => api(`/api/platform/tenants/${tenantId}/nozzles/${nozzle}/tank/`, { method: "PATCH", body: { tank } }), "Saved.");
+  return (
+    <details onToggle={(e) => { if ((e.target as HTMLDetailsElement).open && !info) void load(); }}>
+      <summary>Tanks</summary>
+      {info && (
+        <div className="form">
+          {info.tanks.length ? (
+            <ul className="plain">{info.tanks.map((t) => (
+              <li key={t.id}>{t.name} · {t.fuel_code} · {Number(t.capacity_litres).toLocaleString()} L (reserve {Number(t.reserve_litres).toLocaleString()} L)
+                {t.has_calibration ? "" : <span className="muted"> · no dip chart yet</span>}</li>
+            ))}</ul>
+          ) : <p className="muted">No tanks yet.</p>}
+          {info.nozzles.length > 0 && info.tanks.length > 0 && (<>
+            <h3>Which tank each nozzle draws from</h3>
+            {info.nozzles.map((n) => (
+              <label key={n.id}>{n.pump} · {n.label}
+                <select aria-label={`${stationName} ${n.pump} ${n.label} tank`} value={n.tank} onChange={(e) => setTank(n.id, e.target.value)}>
+                  {info.tanks.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.fuel_code})</option>)}
+                </select>
+              </label>
+            ))}
+          </>)}
+          <form onSubmit={addTank} className="form" aria-label={`Add a tank at ${stationName}`}>
+            <h3>Add a tank</h3>
+            <label>Tank name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
+            <label>Fuel<select value={form.fuel_type} onChange={(e) => setForm({ ...form, fuel_type: e.target.value })}>
+              {info.fuels.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
+            <label>Capacity (litres)<input inputMode="decimal" value={form.capacity_litres} onChange={(e) => setForm({ ...form, capacity_litres: e.target.value })} required /></label>
+            <label>Reserve (litres, optional)<input inputMode="decimal" value={form.reserve_litres} onChange={(e) => setForm({ ...form, reserve_litres: e.target.value })} /></label>
+            <button className="btn">+ Add tank</button>
+          </form>
+        </div>
+      )}
+      <ErrorNote message={error} />{note && <p role="status" className="ok-note">{note}</p>}
+    </details>
   );
 }
