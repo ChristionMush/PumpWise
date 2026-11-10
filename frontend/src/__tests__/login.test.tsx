@@ -107,6 +107,21 @@ describe("login", () => {
     expect(screen.queryByRole("heading", { name: "Businesses" })).not.toBeInTheDocument();
   });
 
+  it("shows joined tanks as one stock on Today, with each tank listed under it", async () => {
+    localStorage.setItem("fs_access", "a"); localStorage.setItem("fs_refresh", "r");
+    const pair = { tank_id: "k1", tank: "Petrol Tank 1 + Petrol Tank 2", fuel_code: "PETROL", current_litres: "7900", capacity_litres: "20000", level_pct: 39.5,
+      days_to_empty: 6, refill_by: "2026-11-14", low: false, status: "ok",
+      parts: [{ tank_id: "k1", tank: "Petrol Tank 1", capacity_litres: "10000", last_litres: "4950", last_dip_at: "2026-11-10T16:00:00Z" },
+              { tank_id: "k2", tank: "Petrol Tank 2", capacity_litres: "10000", last_litres: null, last_dip_at: null }] };
+    const station = { id: "s1", name: "Mverechena", today: { litres: "0", amount_by_currency: {} }, tanks: [pair], open_shifts: [] };
+    mockApi({ "GET /api/auth/me/": { body: { user: ownerUser, tenant: { id: "t1", name: "Pesnat", slug: "p", status: "active" } } }, "GET /api/dashboard/": { body: { ...DASH, stations: [station] } } });
+    renderApp("/");
+    expect(await screen.findByText(/Petrol Tank 1 \+ Petrol Tank 2/)).toBeInTheDocument();
+    const tanks = screen.getByRole("list", { name: "Tanks" });
+    expect(tanks).toHaveTextContent(/Petrol Tank 1: 4.950 L at the last dip/);
+    expect(tanks).toHaveTextContent("Petrol Tank 2: no dip yet");
+  });
+
   it("shows the lock screen to a suspended owner, with the subscription", async () => {
     localStorage.setItem("fs_access", "a"); localStorage.setItem("fs_refresh", "r");
     mockApi({

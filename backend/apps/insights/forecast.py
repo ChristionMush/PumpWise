@@ -46,6 +46,14 @@ def usage_profile(tank, today):
     return overall, {wd: sum(v, Decimal(0)) / len(v) for wd, v in by_wd.items()}
 
 
+def _part(tank):
+    from apps.operations.models import TankReading
+
+    last = TankReading.objects.filter(tank=tank).order_by("-reading_at").first()
+    return {"tank_id": str(tank.pk), "tank": tank.name, "capacity_litres": str(tank.capacity_litres),
+            "last_litres": str(last.litres) if last else None, "last_dip_at": last.reading_at if last else None}
+
+
 def forecast_tank(tank, cfg=None, now=None):
     tank = pool_of(tank)  # per fuel pool: its name, capacity and reserve are its tanks' together
     cfg = cfg or get_settings(tank.tenant_id)
@@ -54,6 +62,8 @@ def forecast_tank(tank, cfg=None, now=None):
     level, as_of = estimated_level(tank, now)
     out = {"tank_id": str(tank.pk), "tank": tank.name, "station_id": str(tank.station_id), "fuel_code": tank.fuel_type.code,
            "capacity_litres": str(tank.capacity_litres), "reserve_litres": str(tank.reserve_litres)}
+    if len(tank.tanks) > 1:  # joined tanks (a nozzle draws from them all): each one, with its own last dip
+        out["parts"] = [_part(t) for t in tank.tanks]
     if level is None:
         return {**out, "status": "no_dip"}
     available = max(level - tank.reserve_litres, Decimal(0))

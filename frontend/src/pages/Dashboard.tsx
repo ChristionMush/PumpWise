@@ -37,8 +37,9 @@ export default function Dashboard() {
           {s.tanks.map((k: any) => k.status === "ok" ? (
             <div key={k.tank_id} className="tank"><div className="row between"><span>{k.tank} <span className="muted">{k.fuel_code}</span></span><span>{Number(k.current_litres).toLocaleString()} L {k.low && <Badge kind="suspended">low</Badge>}</span></div>
               <div className="bar"><div className={k.low ? "fill low" : "fill"} style={{ width: `${Math.min(k.level_pct, 100)}%` }} /></div>
-              <span className="muted">{k.days_to_empty != null ? `${k.days_to_empty} days left · order by ${k.refill_by}` : "Not enough sales history to forecast"}</span></div>
-          ) : <p key={k.tank_id} className="muted">{k.tank}: no dip recorded yet</p>)}
+              <span className="muted">{k.days_to_empty != null ? `${k.days_to_empty} days left · order by ${k.refill_by}` : "Not enough sales history to forecast"}</span>
+              <TankParts parts={k.parts} /></div>
+          ) : <div key={k.tank_id}><p className="muted">{k.tank}: no dip recorded yet</p><TankParts parts={k.parts} /></div>)}
           {s.open_shifts.map((o: any) => <p key={o.id} className="muted">Shift open: {(o.attendants?.length ? o.attendants : [o.attendant]).filter(Boolean).join(", ") || "no one yet"} for {o.hours_open} h</p>)}
         </section>
       ))}
@@ -115,4 +116,18 @@ function shortNames(names: string[]) {
   let common = 0;
   while (words.every((w) => w.length > common + 1 && w[w.length - 1 - common] === words[0][words[0].length - 1 - common])) common++;
   return words.map((w) => w.slice(0, w.length - common).join(" "));
+}
+
+/** Joined tanks (a nozzle draws from them all) show as one stock above; here each tank, with its own last dip. */
+function TankParts({ parts }: { parts?: { tank_id: string; tank: string; capacity_litres: string; last_litres: string | null; last_dip_at: string | null }[] }) {
+  if (!parts?.length) return null;
+  return (
+    <ul className="plain tank-parts" aria-label="Tanks">
+      {parts.map((p) => (
+        <li key={p.tank_id} className="muted">{p.tank}: {p.last_litres != null
+          ? `${Number(p.last_litres).toLocaleString()} L at the last dip (${new Date(p.last_dip_at!).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })})`
+          : "no dip yet"} · holds {Number(p.capacity_litres).toLocaleString()} L</li>
+      ))}
+    </ul>
+  );
 }

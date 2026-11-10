@@ -22,7 +22,8 @@ from apps.stations.pools import pools_for
 from .models import Alert
 
 CACHE_SECONDS = 45
-TANK_KEYS = ("tank_id", "tank", "fuel_code", "current_litres", "capacity_litres", "level_pct", "days_to_empty", "refill_by", "low", "status", "as_of")
+TANK_KEYS = ("tank_id", "tank", "fuel_code", "current_litres", "capacity_litres", "level_pct", "days_to_empty", "refill_by", "low", "status", "as_of",
+             "parts")  # parts: the tanks of a joined pair, each with its own last dip
 
 
 def _cache_key(user):

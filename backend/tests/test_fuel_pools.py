@@ -47,6 +47,7 @@ def test_a_nozzle_that_also_draws_from_a_second_tank_makes_them_one_stock():
         assert len(tank_range(tanks, date(2026, 10, 1), date(2026, 10, 1))) == 2  # one row for the joined tanks
         f = forecast_tank(tank2, now=at(2026, 10, 1, 19))
         assert (f["tank"], f["current_litres"], f["capacity_litres"]) == ("Tank 1 + Tank 2", "7900.0", "20000.000")
+        assert [(p["tank"], p["last_litres"]) for p in f["parts"]] == [("Tank 1", "4950.000"), ("Tank 2", "2950.000")]  # each tank shown too
 
     # taken away again: each tank is its own stock
     for n in fc.nozzles:
