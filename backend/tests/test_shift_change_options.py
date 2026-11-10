@@ -123,6 +123,9 @@ def test_the_day_closes_once_the_outgoing_attendants_have_handed_in_and_their_cr
     options(a, dip_at_shift_end=True, close_day_at_change="18:00")
     ca = client_for(att_a)
     sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb = client_for(att_b)  # B ends with the money at 16:20; A is the last to hand in
+    cb.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(p2, [0, 0])}, format="json")
+    assert cb.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T14:20:00Z", "readings": readings(p2, [40, 0]), "cash": cash("60")}, format="json").status_code == 200
     # meters and dip at 16:25, the money counted and handed in at 16:34 (Harare)
     assert ca.post(f"/api/shifts/{sid}/end/", {"ended_at": "2026-10-01T14:25:00Z", "readings": readings(fc.nozzles, [100, 0]), "cash": [], "cash_later": True,
                                                 "dips": [{"tank": str(fc.tank.pk), "dip_mm": "500"}]}, format="json").status_code == 200
