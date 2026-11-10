@@ -83,7 +83,7 @@ def close_day(*, user, station, dips, meters, at=None, note="", request=None):
         close = DayClose.objects.create(tenant_id=station.tenant_id, station=station, day=day, closed_at=at, closed_by=user, note=(note or "").strip())
         for t in tanks:
             d = dip_of[t.pk]
-            row = services.record_tank_dip(user=user, tank=t, litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=at)
+            row = services.record_tank_dip(user=user, tank=t, litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=at, linked=d.get("linked"))
             row.day_close = close
             row.save(update_fields=["day_close", "updated_at"])
         split = set()
@@ -189,6 +189,8 @@ def correct_close(*, user, close, dips, meters, note="", request=None):
         if row is None:
             raise ValidationError({"detail": f"{d['tank'].name} is not part of this day close."})
         mm = d["dip_mm"]
+        if d.get("litres") is None and row.tank.linked.exists():
+            raise ValidationError({"detail": f"{row.tank.name} is joined to another tank: enter the litres of both together to correct it."})
         litres = Decimal(str(d["litres"])) if d.get("litres") is not None else litres_from_dip(row.tank, mm)
         litres = litres.quantize(Decimal("0.001"))
         if litres < 0 or litres > row.tank.capacity_litres * Decimal("1.05"):

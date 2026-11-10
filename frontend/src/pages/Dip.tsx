@@ -31,6 +31,7 @@ export default function Dip() {
   const [tankId, setTankId] = useState("");
   const [litres, setLitres] = useState("");
   const [dipMm, setDipMm] = useState("");
+  const [spotLinked, setSpotLinked] = useState<Record<string, { mm: string; litres: string }>>({}); // the spot dip's joined tanks
   const [delivered, setDelivered] = useState({ fuel: "", tank: "", litres: "", supplier: "", note: "" });
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +47,11 @@ export default function Dip() {
   const today = status.find((s) => s.station === stationId);
   const tanks = stations.flatMap((s) => (s.tanks ?? []).map((t) => ({ ...t, station: s.name })));
   const tank = tanks.find((t) => t.id === tankId);
+  // a tank joined to others (manifolded): they are one stock, so each is dipped with it and the litres are added up
+  const linkedOf = (t: any): { id: string; name: string; has_calibration: boolean }[] => t?.linked ?? [];
+  const linkedMissing = (t: any, d: Record<string, { mm: string; litres: string }>) => linkedOf(t).filter((l) => !d[l.id]?.mm || (!l.has_calibration && !d[l.id]?.litres));
+  const linkedLines = (t: any, d: Record<string, { mm: string; litres: string }>) => (linkedOf(t).length
+    ? { linked: linkedOf(t).map((l) => ({ tank: l.id, dip_mm: d[l.id]?.mm, ...(d[l.id]?.litres ? { litres: d[l.id].litres } : {}) })) } : {});
 
   const closeDay = async (e: FormEvent) => {
     e.preventDefault();
@@ -53,7 +59,7 @@ export default function Dip() {
     // every tank: the dip height in mm first, then the litres (from the chart when the tank has one)
     const latest = today?.latest;
     if (correcting && latest) return correctClose(latest.id);
-    const missingDip = stationTanks.filter((t) => !dips[t.id]?.mm || (!dips[t.id]?.litres && !t.has_calibration));
+    const missingDip = [...stationTanks.filter((t) => !dips[t.id]?.mm || (!dips[t.id]?.litres && !t.has_calibration)), ...stationTanks.flatMap((t) => linkedMissing(t, dips))];
     const missingMeter = nozzles.filter((n) => !meters[n.id]);
     if (missingDip.length || missingMeter.length) {
       return setError(`Enter every tank's dip and every pump's meter. Missing: ${[...missingDip.map((t) => t.name), ...missingMeter.map((n) => `${n.pump.name} ${n.label}`)].join(", ")}.`);
@@ -62,7 +68,7 @@ export default function Dip() {
     try {
       await api("/api/day-close/", { method: "POST", body: {
         station: station.id, note,
-        dips: stationTanks.map((t) => ({ tank: t.id, dip_mm: dips[t.id].mm, ...(dips[t.id].litres ? { litres: dips[t.id].litres } : {}) })),
+        dips: stationTanks.map((t) => ({ tank: t.id, dip_mm: dips[t.id].mm, ...(dips[t.id].litres ? { litres: dips[t.id].litres } : {}), ...linkedLines(t, dips) })),
         meters: nozzles.map((n) => ({ nozzle: n.id, reading: meters[n.id] })),
       } });
       setDips({}); setMeters({}); setNote("");
@@ -108,9 +114,11 @@ export default function Dip() {
     e.preventDefault();
     if (!dipMm) return setError("Enter the dip height in mm first.");
     if (!litres && !tank?.has_calibration) return setError("This tank has no calibration chart yet. Enter the litres too.");
+    const joinedMissing = linkedMissing(tank, spotLinked);
+    if (joinedMissing.length) return setError(`Dip ${joinedMissing.map((l) => l.name).join(", ")} too: joined to ${tank?.name}, they are dipped together.`);
     // client_id: made on the phone, so a retry can never record the same dip twice (rule 8)
-    await enqueue("tank_dip", { client_id: uuid(), tank: tankId, at: new Date().toISOString(), ...(litres ? { litres } : {}), ...(dipMm ? { dip_mm: dipMm } : {}) });
-    setLitres(""); setDipMm(""); setError(null); setMsg("Dip saved.");
+    await enqueue("tank_dip", { client_id: uuid(), tank: tankId, at: new Date().toISOString(), ...(litres ? { litres } : {}), ...(dipMm ? { dip_mm: dipMm } : {}), ...linkedLines(tank, spotLinked) });
+    setLitres(""); setDipMm(""); setSpotLinked({}); setError(null); setMsg("Dip saved.");
   };
   const fuels = [...new Set(tanks.map((t) => t.fuel_code))];
   const fuelTanks = tanks.filter((t) => t.fuel_code === delivered.fuel);
@@ -146,6 +154,13 @@ export default function Dip() {
               <strong>{t.name} <span className="muted">· {t.fuel_code}</span></strong>
               <label>Dip (mm)<input inputMode="decimal" value={dips[t.id]?.mm ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: e.target.value, litres: dips[t.id]?.litres ?? "" } })} /></label>
               <label>{t.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={dips[t.id]?.litres ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: dips[t.id]?.mm ?? "", litres: e.target.value } })} /></label>
+              {!correcting && linkedOf(t).map((l) => (
+                <div key={l.id} className="row gap">
+                  <span>{l.name} <span className="muted">· joined to {t.name}</span></span>
+                  <label>Dip (mm)<input inputMode="decimal" aria-label={`${l.name} dip (mm)`} value={dips[l.id]?.mm ?? ""} onChange={(e) => setDips({ ...dips, [l.id]: { mm: e.target.value, litres: dips[l.id]?.litres ?? "" } })} /></label>
+                  <label>{l.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" aria-label={`${l.name} litres`} value={dips[l.id]?.litres ?? ""} onChange={(e) => setDips({ ...dips, [l.id]: { mm: dips[l.id]?.mm ?? "", litres: e.target.value } })} /></label>
+                </div>
+              ))}
             </div>
           ))}
           <h3>Pump meters</h3>
@@ -187,6 +202,13 @@ export default function Dip() {
           <label>Tank<select value={tankId} onChange={(e) => setTankId(e.target.value)}>{tanks.map((t) => <option key={t.id} value={t.id}>{t.station} · {t.name} ({t.fuel_code})</option>)}</select></label>
           <label>Dip height (mm)<input inputMode="decimal" value={dipMm} onChange={(e) => setDipMm(e.target.value)} /></label>
           <label>{tank?.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={litres} onChange={(e) => setLitres(e.target.value)} /></label>
+          {linkedOf(tank).map((l) => (
+            <div key={l.id} className="row gap">
+              <span>{l.name} <span className="muted">· joined to {tank?.name}</span></span>
+              <label>Dip (mm)<input inputMode="decimal" aria-label={`${l.name} dip (mm)`} value={spotLinked[l.id]?.mm ?? ""} onChange={(e) => setSpotLinked({ ...spotLinked, [l.id]: { mm: e.target.value, litres: spotLinked[l.id]?.litres ?? "" } })} /></label>
+              <label>{l.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" aria-label={`${l.name} litres`} value={spotLinked[l.id]?.litres ?? ""} onChange={(e) => setSpotLinked({ ...spotLinked, [l.id]: { mm: spotLinked[l.id]?.mm ?? "", litres: e.target.value } })} /></label>
+            </div>
+          ))}
           <button className="btn">Save dip</button></form>
       </details>
       <ErrorNote message={error} />{msg && <p role="status" className="ok-note">{msg}</p>}

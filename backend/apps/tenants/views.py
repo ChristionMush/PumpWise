@@ -199,7 +199,9 @@ def station_tanks(station):
     from apps.stations.models import FuelType, Nozzle, Tank
 
     tanks = [{"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres),
-              "reserve_litres": str(t.reserve_litres), "has_calibration": t.calibration.count() >= 2}
+              "reserve_litres": str(t.reserve_litres), "has_calibration": t.calibration.count() >= 2,
+              "linked": [{"id": str(lt.pk), "name": lt.name, "capacity_litres": str(lt.capacity_litres), "has_calibration": len(lt.calibration) >= 2}
+                         for lt in t.linked.all()]}
              for t in Tank.objects.filter(station=station).select_related("fuel_type").order_by("name")]
     nozzles = [{"id": str(n.pk), "pump": n.pump.name, "label": str(n), "tank": str(n.tank_id)}
                for n in Nozzle.objects.filter(pump__station=station).select_related("pump").order_by("pump__name", "number")]
@@ -236,6 +238,48 @@ class PlatformStationTanksView(APIView):
                 body = station_tanks(station)
         except IntegrityError:
             raise ValidationError({"name": f"{station.name} already has a tank with this name."})
+        return Response(body, status=status.HTTP_201_CREATED)
+
+
+class PlatformLinkedTankView(APIView):
+    """POST {name, capacity_litres}: join another tank to this one (manifolded, same fuel). The pumps drawing from the
+    tank pull from both; it is dipped with it, and its capacity adds to the tank's."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def post(self, request, pk, tank_id):
+        from decimal import Decimal, InvalidOperation
+
+        from apps.stations.models import LinkedTank, Tank
+
+        tenant = _get_tenant(pk)
+        name = " ".join(str(request.data.get("name", "")).split())
+        try:
+            capacity = Decimal(str(request.data.get("capacity_litres", "")))
+        except InvalidOperation:
+            capacity = None
+        if not name:
+            raise ValidationError({"name": "Name the tank."})
+        if capacity is None or capacity < 1:
+            raise ValidationError({"capacity_litres": "Enter the tank's capacity in litres."})
+        try:
+            with transaction.atomic(), tenant_scope(tenant.id):
+                try:
+                    tank = Tank.objects.select_related("station").filter(pk=tank_id).first()
+                except DjangoValidationError:
+                    tank = None
+                if tank is None:
+                    raise NotFound("No such tank at this business.")
+                if tank.name.lower() == name.lower():
+                    raise ValidationError({"name": "Give the joined tank its own name."})
+                linked = LinkedTank.objects.create(tenant_id=tenant.id, tank=tank, name=name, capacity_litres=capacity)
+                tank.capacity_litres += capacity
+                tank.save(update_fields=["capacity_litres", "updated_at"])
+                audit.log("tank_linked", actor=request.user, tenant_id=tenant.id, obj=tank, request=request,
+                          changes={"tank": tank.name, "joined": linked.name, "capacity_litres": str(capacity), "combined_capacity": str(tank.capacity_litres)})
+                body = station_tanks(tank.station)
+        except IntegrityError:
+            raise ValidationError({"name": "That tank already has a joined tank with this name."})
         return Response(body, status=status.HTTP_201_CREATED)
 
 

@@ -154,6 +154,7 @@ class TankDipInput(serializers.Serializer):
     dip_mm = serializers.DecimalField(max_digits=8, decimal_places=1, min_value=Decimal(0), required=False)
     at = serializers.DateTimeField(required=False)
     shift = serializers.PrimaryKeyRelatedField(queryset=Shift.objects.all(), required=False, allow_null=True)
+    linked = serializers.ListField(child=serializers.DictField(), required=False, default=list)  # the dips of tanks joined to it
 
 
 class DeliveryInput(serializers.Serializer):
@@ -264,6 +265,7 @@ class DayCloseDipInput(serializers.Serializer):
     tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.all())
     litres = serializers.DecimalField(max_digits=12, decimal_places=3, required=False, allow_null=True)
     dip_mm = serializers.DecimalField(max_digits=8, decimal_places=1, required=False, allow_null=True)
+    linked = serializers.ListField(child=serializers.DictField(), required=False, default=list)  # the dips of tanks joined to it
 
     def validate(self, attrs):
         # the dip height in mm is always taken first; the litres too, unless the tank's chart gives them
