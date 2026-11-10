@@ -995,13 +995,7 @@ def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close
             record_shift_expenses(user=user, shift=shift, expenses=expenses, at=ended_at, who=who)
         result = _end_shift(user=user, shift=shift, readings=readings, cash=cash, ended_at=ended_at, strict=strict, close=close, who=who,
                             request=request, cash_later=cash_later)
-    try:  # the end is saved whatever happens here; a close that cannot be made waits for the Dip screen
-        with db_tx.atomic():
-            dayclose.close_at_shift_change(station=shift.station, user=user, at=ended_at, request=request)
-    except Exception:  # noqa: BLE001
-        import logging
-
-        logging.getLogger(__name__).exception("closing the day at the shift change failed at %s", shift.station_id)
+    dayclose.try_close_at_shift_change(station=shift.station, user=user, at=ended_at, request=request)
     return result
 
 

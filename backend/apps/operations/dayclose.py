@@ -110,14 +110,17 @@ def close_day(*, user, station, dips, meters, at=None, note="", request=None):
     return close
 
 
-CHANGE_WINDOW = timedelta(minutes=90)  # an end this close to the business's closing shift change belongs to it
+CHANGE_WINDOW = timedelta(hours=5)  # people change shifts when they do (16:00, 18:00, 20:00): an end or a dip this close to
+# the business's closing change belongs to it. 5 hours either side keeps the evening change (13:00-23:00) and the morning
+# change (02:00-12:00) apart, and each on its own trading day.
 
 
 def close_at_shift_change(*, station, user, at, request=None):
-    """A business that closes the day at a shift change (Tenant.close_day_at_change, "07:00" or "18:00"): once everyone
-    who was on before the change has ended, and every tank was dipped at the change, the day closes at the last end,
-    with the latest dip of each tank and every pump's latest meter number. Returns the close, or None (not yet, or the
-    business does not close this way; the Dip screen still can)."""
+    """A business that closes the day at a shift change (Tenant.close_day_at_change: "18:00" the evening change, "07:00"
+    the morning one), whenever the attendants actually change over: once everyone who was on before the change has
+    ended, and every tank was dipped at the change, the day closes at that moment (the last end, or a dip entered after
+    it), with the latest dip of each tank and every pump's latest meter number. Returns the close, or None (not yet, or
+    the business does not close this way; the Dip screen still can)."""
     from datetime import datetime, time
 
     from apps.tenants.models import Tenant
@@ -152,7 +155,7 @@ def close_at_shift_change(*, station, user, at, request=None):
         return None
     with db_tx.atomic():
         close = DayClose.objects.create(tenant_id=station.tenant_id, station=station, day=day, closed_at=at, closed_by=user,
-                                        note=f"Closed at the {tenant.close_day_at_change} shift change")
+                                        note=f"Closed at the {_change_name(tenant.close_day_at_change)} shift change, {timezone.localtime(at):%H:%M}")
         for d in dips.values():
             d.day_close = close
             d.save(update_fields=["day_close", "updated_at"])
@@ -166,6 +169,23 @@ def close_at_shift_change(*, station, user, at, request=None):
             "station": station.name, "day": day.isoformat(), "at": at.isoformat(), "at_shift_change": tenant.close_day_at_change,
             "dips": {t.name: str(dips[t.pk].litres) for t in tanks}, "meters": {f"{n.pump.name} {n}": str(meters[n.pk].reading) for n in nozzles}})
     return close
+
+
+def _change_name(value):
+    return "morning" if value == "07:00" else "evening"
+
+
+def try_close_at_shift_change(*, station, user, at, request=None):
+    """close_at_shift_change after a shift ends or a dip is entered (a dip entered after the outgoing shift ended can be
+    the last thing the close was waiting for). Never stops the end or the dip being saved."""
+    try:
+        with db_tx.atomic():
+            return close_at_shift_change(station=station, user=user, at=at, request=request)
+    except Exception:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).exception("closing the day at the shift change failed at %s", station.pk)
+        return None
 
 
 def latest_close(station):
