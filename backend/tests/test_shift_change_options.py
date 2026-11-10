@@ -208,5 +208,5 @@ def test_an_offline_end_with_a_dip_that_cannot_be_right_is_kept_and_the_dip_set_
         assert set(TankReading.objects.filter(recorded_by=att_a).values_list("tank__name", flat=True)) == {fc.tank.name}  # the good dip saved
         assert f"dip_refused:{tank2.pk}" in Shift.objects.get(pk=sid).flags
     end = next(e for e in mgr.get("/api/shift-ends/").json() if e["shift_id"] == sid)
-    assert any("Petrol Tank 2: the dip (1700 mm, 20000 L) was set aside: That is more than the tank can hold" in c for c in end["checks"]), end["checks"]
+    assert "Petrol Tank 2: the dip (1700 mm, 20000 L) was set aside: That is more than the tank can hold. Check the number. Dip it again." in end["checks"], end["checks"]
 

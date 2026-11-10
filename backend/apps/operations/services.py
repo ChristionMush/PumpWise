@@ -1054,7 +1054,8 @@ def _record_end_dips(*, user, shift, dips, at, who=None, strict=True):
             except ValidationError as exc:
                 shift.add_flag(f"dip_refused:{d['tank'].pk}")
                 shift.save(update_fields=["flags", "updated_at"])
-                audit.log("dip_refused", actor=user, obj=shift, changes={"tank": d["tank"].name, "dip_mm": str(d.get("dip_mm")), "litres": str(d.get("litres")),
+                number = lambda v: format(v.normalize(), "f") if v is not None else "?"  # noqa: E731 - 1700.0 -> 1700
+                audit.log("dip_refused", actor=user, obj=shift, changes={"tank": d["tank"].name, "dip_mm": number(d.get("dip_mm")), "litres": number(d.get("litres")),
                                                                          "why": _plain_error(exc)})
 
 

@@ -159,7 +159,8 @@ def end_summary(row):
 
     for log in AuditLog.objects.filter(action="dip_refused", actor_id=row.user_id, object_id=str(shift.pk)).order_by("created_at"):
         c = log.changes or {}  # a dip sent offline with this end that could not be right: set aside, the end kept
-        checks.append(f"{c.get('tank')}: the dip ({c.get('dip_mm')} mm, {c.get('litres')} L) was set aside: {c.get('why')}. Dip it again.")
+        why = (c.get("why") or "").rstrip(".")
+        checks.append(f"{c.get('tank')}: the dip ({c.get('dip_mm')} mm, {c.get('litres')} L) was set aside: {why}. Dip it again.")
     return {
         "person": row.user.full_name, "currency": currency, "meters": meters, "cash": cash,
         "expenses": [{"name": e.note or e.get_category_display(), "amount": str(e.amount), "currency": e.currency} for e in expenses],
