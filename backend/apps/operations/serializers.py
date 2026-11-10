@@ -33,6 +33,22 @@ class CashInput(serializers.Serializer):
         return attrs
 
 
+class ShiftExpenseInput(serializers.Serializer):
+    """An expense an attendant paid on their shift, sent with their end of shift or cash: what it was, and what it cost."""
+
+    client_id = serializers.UUIDField(required=False, allow_null=True)  # made on the phone: a resend never records it twice
+    name = serializers.CharField(max_length=200)
+    amount = serializers.DecimalField(**NUM)
+
+    def validate(self, attrs):
+        attrs["name"] = " ".join(attrs["name"].split())
+        if not attrs["name"]:
+            raise serializers.ValidationError({"name": "Say what the expense was."})
+        if attrs["amount"] <= 0:
+            raise serializers.ValidationError({"amount": f"Enter what {attrs['name']} cost."})
+        return attrs
+
+
 class ExpenseInput(serializers.Serializer):
     client_id = serializers.UUIDField(required=False, allow_null=True)
     station = serializers.PrimaryKeyRelatedField(queryset=Station.objects.all())
@@ -90,10 +106,12 @@ class ShiftEndInput(serializers.Serializer):
     user = serializers.UUIDField(required=False, allow_null=True)  # lead/manager handing in for someone
     cash_later = serializers.BooleanField(required=False, default=False)  # assigned pumps: close the meters now, cash after
     dips = serializers.ListField(child=serializers.DictField(), required=False, default=list)  # dip at the end of a shift (checked in services)
+    expenses = serializers.ListField(child=serializers.DictField(), required=False, default=list)  # paid out on the shift (ShiftExpenseInput)
 
 
 class CashInputOnly(serializers.Serializer):
     cash = CashInput(many=True)
+    expenses = serializers.ListField(child=serializers.DictField(), required=False, default=list)  # paid out on the shift (ShiftExpenseInput)
     user = serializers.UUIDField(required=False, allow_null=True)
     at = serializers.DateTimeField(required=False)
 

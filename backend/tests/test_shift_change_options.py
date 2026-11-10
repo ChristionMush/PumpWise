@@ -90,3 +90,53 @@ def test_without_the_option_an_attendant_cannot_send_dips_and_nothing_changes():
     with db_context(tenant_id=a["tenant"].id):
         assert not TankReading.objects.filter(recorded_by=att_a).exists()
     assert client_for(a[Role.OWNER]).patch(f"/api/platform/tenants/{a['tenant'].id}/features/", {"dip_at_shift_end": True}, format="json").status_code == 403
+
+
+def test_each_attendant_dips_only_the_tanks_of_the_pumps_they_are_on():
+    from apps.stations.models import Nozzle
+
+    from .helpers import second_tank
+
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    tank2 = second_tank(fc)
+    with db_context(tenant_id=a["tenant"].id):
+        Nozzle.objects.filter(pump=pump2).update(tank=tank2)  # Pump 2 draws from Tank 2
+    options(a, dip_at_shift_end=True)
+    ca = client_for(att_a)
+    nozzles = {n["id"]: n["tank"] for p in ca.get("/api/shifts/prefill/").json()["stations"][0]["pumps"] for n in p["nozzles"]}
+    assert set(nozzles.values()) == {str(fc.tank.pk), str(tank2.pk)}  # the phone knows which tank each nozzle draws from
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    ended = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": A_ENDS, "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150"),
+                                                 "dips": [{"tank": str(fc.tank.pk), "dip_mm": "500"}, {"tank": str(tank2.pk), "dip_mm": "500", "litres": "4000"}]}, format="json")
+    assert ended.status_code == 200, ended.content
+    with db_context(tenant_id=a["tenant"].id):
+        assert list(TankReading.objects.filter(recorded_by=att_a).values_list("tank_id", flat=True)) == [fc.tank.pk]  # Pump 1's tank only
+    tanks = {t["name"]: t for t in ca.get("/api/shifts/prefill/").json()["stations"][0]["tanks"]}
+    assert tanks[fc.tank.name]["last_dip_at"] is not None and tanks["Tank 2"]["last_dip_at"] is None and "last_litres" not in tanks["Tank 2"]
+
+
+def test_an_attendant_adds_expenses_to_their_end_of_shift_and_their_cash_is_unchanged():
+    import uuid
+
+    from apps.operations.models import CashSubmission, Expense
+
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    options(a, expenses_enabled=True)
+    ca = client_for(att_a)
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    lunch, fuel = str(uuid.uuid4()), str(uuid.uuid4())
+    body = {"ended_at": A_ENDS, "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150"),
+            "expenses": [{"client_id": lunch, "name": "Lunch", "amount": "5"}, {"client_id": fuel, "name": "Generator fuel, 10 L", "amount": "14.50"}]}
+    no_name = ca.post(f"/api/shifts/{sid}/end/", {**body, "expenses": [{"name": " ", "amount": "5"}]}, format="json")
+    assert no_name.status_code == 400  # a name and a cost are both needed
+    assert ca.post(f"/api/shifts/{sid}/end/", body, format="json").status_code == 200
+    assert ca.post(f"/api/shifts/{sid}/end/", body, format="json").status_code == 200  # a resend records nothing twice
+    with db_context(tenant_id=a["tenant"].id):
+        rows = list(Expense.objects.order_by("amount").values_list("note", "amount", "recorded_by_id", "shift_id"))
+        assert [(n, str(m)) for n, m, _, _ in rows] == [("Lunch", "5.00"), ("Generator fuel, 10 L", "14.50")]
+        assert {(u, s) for _, _, u, s in rows} == {(att_a.pk, uuid.UUID(sid))}
+        assert list(CashSubmission.objects.filter(shift_id=sid).values_list("payment_type", "amount")) == [("cash", 150)]  # recorded only
+    # the manager sees them on the end of shift being approved
+    end = next(e for e in mgr.get("/api/shift-ends/").json() if e["person"] == att_a.full_name)
+    detail = mgr.get(f"/api/shift-ends/{end['id']}/").json()
+    assert [(e["name"], e["amount"]) for e in detail["expenses"]] == [("Lunch", "5.00"), ("Generator fuel, 10 L", "14.50")]

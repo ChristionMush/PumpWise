@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
-import { resetOffline } from "../offline";
+import { kvSet, resetOffline } from "../offline";
 import { mockApi, renderApp, signedIn } from "./helpers";
 
 const tenant = { id: "t", name: "Pesnat", slug: "p", status: "active", expenses_enabled: true };
@@ -13,9 +13,32 @@ const applyAll = (body: any) => ({ body: { results: body.ops.map((o: any) => ({ 
 beforeEach(async () => { await resetOffline(); localStorage.clear(); localStorage.setItem("fs_tutorial_done", "1"); signedIn(); });
 
 describe("expenses", () => {
-  it("lets an attendant record an expense, saved on the phone and sent when there is signal", async () => {
+  it("lets an attendant add expenses under their cash at the end of their shift: a name and a cost each", async () => {
+    await kvSet("activeShift", { id: "s1", station_id: "st1", started_at: "2026-11-10T05:00:00Z", starts: { n1: 1000 } });
+    const onPump = { ...station, prices: [{ fuel_type: "p", currency: "USD", price: "1.50", from: "2026-01-01T00:00:00Z", to: null }],
+      pumps: [{ id: "pu1", name: "Pump 1", nozzles: [{ id: "n1", number: 1, label: "Petrol", meter_max: "99999999.99", last_reading: "1000.00", fuel_type: "p", fuel_code: "PETROL" }] }] };
+    const { calls } = mockApi({ "GET /api/auth/me/": { body: { user: attendant, tenant } }, "GET /api/shifts/prefill/": { body: { stations: [onPump] } }, "POST /api/sync/": applyAll });
+    renderApp("/");
+    const user = userEvent.setup();
+    expect(screen.queryByRole("link", { name: "Expenses" })).not.toBeInTheDocument(); // attendants add theirs here, at the end
+    await user.type(await screen.findByPlaceholderText("Meter number now"), "1100");
+    await user.type(screen.getByLabelText("Cash"), "150");
+    await user.click(screen.getByRole("button", { name: "+ Add expense" }));
+    await user.type(screen.getByLabelText("What it was"), "Lunch");
+    await user.click(screen.getByRole("button", { name: "End shift" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Each expense needs what it was and what it cost");
+    await user.type(screen.getByLabelText("Cost"), "5");
+    await user.click(screen.getByRole("button", { name: "End shift" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/api/sync/" && c.body.ops.some((o: any) => o.kind === "shift_end"))).toBe(true));
+    const end = calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops).find((o: any) => o.kind === "shift_end");
+    expect(end.payload.cash).toEqual([{ payment_type: "cash", currency: "USD", amount: "150" }]); // the cash as counted
+    expect(end.payload.expenses).toEqual([{ client_id: expect.any(String), name: "Lunch", amount: "5" }]);
+  });
+
+  it("lets a manager record an expense on the Expenses screen, saved on the phone first", async () => {
+    const manager = { ...attendant, id: "m", role: "manager", full_name: "Justice" };
     const { calls } = mockApi({
-      "GET /api/auth/me/": { body: { user: attendant, tenant } }, "GET /api/shifts/prefill/": { body: { stations: [station] } },
+      "GET /api/auth/me/": { body: { user: manager, tenant } }, "GET /api/shifts/prefill/": { body: { stations: [station] } },
       "GET /api/expenses/": { body: [] }, "POST /api/sync/": applyAll,
     });
     renderApp("/expenses");

@@ -9,7 +9,8 @@ import { CashField, hasCents } from "../components";
 import { OthersWaiting } from "../components2";
 
 /** Each nozzle draws from its own tank, so the fuel (and its price) is per nozzle. */
-export interface Nozzle { id: string; number: number; label: string; meter_max: string; last_reading: string | null; fuel_type: string; fuel_code: string }
+export interface Nozzle { id: string; number: number; label: string; meter_max: string; last_reading: string | null; fuel_type: string; fuel_code: string;
+  tank?: string } // the tank it draws from
 export interface PumpInfo {
   id: string; name: string; nozzles: Nozzle[];
   assigned_to?: string | null; assigned_to_name?: string | null; // assigned-pump stations
@@ -137,6 +138,7 @@ export default function Shift() {
   const [creditNote, setCreditNote] = useState("");
   const [picked, setPicked] = useState<string[]>([]); // pump ids ticked at the start (pumps picked by attendants)
   const [endDips, setEndDips] = useState<Record<string, { mm: string; litres: string }>>({});
+  const [shiftExpenses, setShiftExpenses] = useState<{ id: string; name: string; amount: string }[]>([]); // paid out on this shift
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -147,7 +149,7 @@ export default function Shift() {
   const [checking, setChecking] = useState<Record<string, boolean>>({});
   const [belowOk, setBelowOk] = useState(false); // "the pump really shows these numbers" (an end below the start)
   const [warned, setWarned] = useState<string | null>(null); // a big cash difference was pointed out for these numbers
-  const { user } = useAuth();
+  const { user, tenant } = useAuth();
   const canType = user?.role === "owner" || user?.role === "manager"; // attendants start from the last closing number
   const navigate = useNavigate();
 
@@ -244,15 +246,40 @@ export default function Shift() {
     const lines = TYPES.filter(([t]) => cash[t]).map(([t]) => ({ payment_type: t, currency: cur, amount: cash[t], ...(t === "credit" ? { note: creditNote.trim() } : {}) }));
     return lines;
   };
-  // a business that dips at the end of a shift: every tank, unless someone dipped in the last hour (the first to end dips)
-  const askDips = Boolean(active && !active.member && station?.dip_at_end && (station.tanks ?? []).length
-    && !(station.last_dip_at && Date.now() - new Date(station.last_dip_at).getTime() < 60 * 60 * 1000));
+  // A pump the manager swapped away mid-shift drops out of the prefill: its end number was taken at the swap.
+  const rows = active ? nozzles.filter((n) => n.id in active.starts) : [];
+  // a business that dips at the end of a shift: the tanks feeding the pumps this attendant is on, unless one was dipped
+  // in the last hour (of two attendants on the same tank, the first to end dips)
+  const myTanks = new Set(rows.map((n) => n.tank).filter(Boolean));
+  const recent = (at?: string | null) => Boolean(at && Date.now() - new Date(at).getTime() < 60 * 60 * 1000);
+  const dipTanks = active && !active.member && station?.dip_at_end
+    ? (station.tanks ?? []).filter((t: any) => (!myTanks.size || myTanks.has(t.id)) && !recent(t.last_dip_at ?? station.last_dip_at)) : [];
+  const askDips = dipTanks.length > 0;
   const dipsWrong = () => {
-    if (!askDips) return null;
-    const missing = (station!.tanks ?? []).filter((t: any) => !endDips[t.id]?.mm || (!t.has_calibration && !endDips[t.id]?.litres));
-    return missing.length ? `Dip every tank before you end: ${missing.map((t: any) => t.name).join(", ")}.` : null;
+    const missing = dipTanks.filter((t: any) => !endDips[t.id]?.mm || (!t.has_calibration && !endDips[t.id]?.litres));
+    return missing.length ? `Dip ${missing.map((t: any) => t.name).join(", ")} before you end.` : null;
   };
-  const dipLines = () => (askDips ? (station!.tanks ?? []).map((t: any) => ({ tank: t.id, dip_mm: endDips[t.id].mm, ...(endDips[t.id].litres ? { litres: endDips[t.id].litres } : {}) })) : []);
+  const dipLines = () => dipTanks.map((t: any) => ({ tank: t.id, dip_mm: endDips[t.id].mm, ...(endDips[t.id].litres ? { litres: endDips[t.id].litres } : {}) }));
+  // a business with expenses: what the attendant paid out on the shift goes with their cash (a name and a cost each)
+  const expensesWrong = () => {
+    const bad = shiftExpenses.find((e) => !e.name.trim() || !(Number(e.amount) > 0));
+    return bad ? "Each expense needs what it was and what it cost (or remove the line)." : null;
+  };
+  const expenseLines = () => (shiftExpenses.length ? { expenses: shiftExpenses.map((e) => ({ client_id: e.id, name: e.name.trim(), amount: e.amount })) } : {});
+  const expensesField = tenant?.expenses_enabled ? (
+    <div className="form" aria-label="Expenses paid on this shift" role="group">
+      <h3>Expenses paid on this shift</h3>
+      {shiftExpenses.map((e, i) => (
+        <div key={e.id} className="row gap">
+          <label>What it was<input value={e.name} onChange={(ev) => setShiftExpenses(shiftExpenses.map((x, j) => (j === i ? { ...x, name: ev.target.value } : x)))} placeholder="e.g. Lunch" /></label>
+          <label>Cost<input inputMode="decimal" value={e.amount} onChange={(ev) => setShiftExpenses(shiftExpenses.map((x, j) => (j === i ? { ...x, amount: ev.target.value.replace(",", ".") } : x)))} /></label>
+          <button type="button" className="link" onClick={() => setShiftExpenses(shiftExpenses.filter((_, j) => j !== i))}>Remove</button>
+        </div>
+      ))}
+      <button type="button" className="btn" onClick={() => setShiftExpenses([...shiftExpenses, { id: uuid(), name: "", amount: "" }])}>+ Add expense</button>
+      {shiftExpenses.length > 0 && <p className="muted">Recorded for your manager. Hand in your cash as counted: expenses do not change it.</p>}
+    </div>
+  ) : null;
   // intercompany issue: who was credited, so the accounting pack can trace it
   const noCreditNote = () => Number(cash.credit) > 0 && !creditNote.trim();
   const CREDIT_NOTE = "Write who was credited with the intercompany issue (the company, and the vehicle if any).";
@@ -260,11 +287,9 @@ export default function Shift() {
   const finish = async (message: string) => {
     if (active) await kvSet("lastEnded", { station_id: active.station_id, at: new Date().toISOString() });
     await kvSet("activeShift", null);
-    setActive(null); setSaved(message); setNums({}); setCash({}); setCreditNote(""); setEndDips({}); setError(null);
+    setActive(null); setSaved(message); setNums({}); setCash({}); setCreditNote(""); setEndDips({}); setShiftExpenses([]); setError(null);
   };
 
-  // A pump the manager swapped away mid-shift drops out of the prefill: its end number was taken at the swap.
-  const rows = active ? nozzles.filter((n) => n.id in active.starts) : [];
   const handed = [
     ...TYPES.map(([t]) => ({ amount: Number(cash[t] || 0), rate: 1 })),
   ];
@@ -276,8 +301,9 @@ export default function Shift() {
     if (!active) return;
     if (hasCents(cash.cash)) return setError("Cash is counted in whole dollars. Remove the cents from the cash.");
     if (noCreditNote()) return setError(CREDIT_NOTE);
+    if (expensesWrong()) return setError(expensesWrong());
     if (active.member) { // someone else leads: I only hand in my cash
-      await enqueue("shift_cash", { shift_id: active.id, cash: cashLines(), at: new Date().toISOString() });
+      await enqueue("shift_cash", { shift_id: active.id, cash: cashLines(), at: new Date().toISOString(), ...expenseLines() });
       return finish("Your cash is saved. The lead closes the shift. Your manager approves your end before your next shift.");
     }
     const missing = rows.filter((n) => !nums[n.id]);
@@ -293,7 +319,7 @@ export default function Shift() {
         : `Your cash is ${money(-gap)} short of what your meters say. Count the cash again and check each end number. Tap End shift again to send it as it is.`);
     }
     await enqueue("shift_end", { shift_id: active.id, ended_at: new Date().toISOString(), readings: rows.map((n) => ({ nozzle: n.id, reading: nums[n.id] })), cash: cashLines(),
-      ...(askDips ? { dips: dipLines() } : {}) });
+      ...(askDips ? { dips: dipLines() } : {}), ...expenseLines() });
     return finish(assigned
       ? "Your part of the shift is saved. Your pumps pass to the next attendant. Your manager approves it before your next shift."
       : station?.attendants_mode === "multiple"
@@ -323,9 +349,10 @@ export default function Shift() {
     if (!cashLines().length) return setError("Enter the cash you are handing in.");
     if (hasCents(cash.cash)) return setError("Cash is counted in whole dollars. Remove the cents from the cash.");
     if (noCreditNote()) return setError(CREDIT_NOTE);
-    await enqueue("shift_cash", { shift_id: shiftId, cash: cashLines(), at: new Date().toISOString() });
+    if (expensesWrong()) return setError(expensesWrong());
+    await enqueue("shift_cash", { shift_id: shiftId, cash: cashLines(), at: new Date().toISOString(), ...expenseLines() });
     await kvSet("cashDue", null);
-    setCashDue(null); setCash({}); setError(null);
+    setCashDue(null); setCash({}); setShiftExpenses([]); setError(null);
     setSaved("Your cash is saved. Your manager approves your end of shift before your next shift.");
   };
 
@@ -372,6 +399,7 @@ export default function Shift() {
           {Number(cash.credit) > 0 && (
             <label>Who was credited (company, vehicle)<input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="e.g. Zuva Petroleum, ABC 1234" /></label>
           )}
+          {expensesField}
           {expected != null && (
             <div className={`summary ${Math.abs(handedIn - expected) < 1 ? "ok" : "off"}`} aria-live="polite">
               <div>Expected <strong>{money(expected)}</strong></div><div>Handed in <strong>{money(handedIn)}</strong></div>
@@ -451,8 +479,8 @@ export default function Shift() {
       {askDips && (
         <section className="card form" aria-label="Tank dips">
           <h2>Tank dips</h2>
-          <p className="muted">Dip every tank before you hand over.</p>
-          {(station.tanks ?? []).map((t: any) => (
+          <p className="muted">Dip the tank{dipTanks.length > 1 ? "s" : ""} of the pumps you are on before you hand over.</p>
+          {dipTanks.map((t: any) => (
             <div key={t.id} className="row gap">
               <strong>{t.name} <span className="muted">· {t.fuel_code}</span></strong>
               <label>Dip (mm)<input inputMode="decimal" value={endDips[t.id]?.mm ?? ""} onChange={(e) => setEndDips({ ...endDips, [t.id]: { mm: e.target.value.replace(",", "."), litres: endDips[t.id]?.litres ?? "" } })} /></label>
@@ -474,6 +502,7 @@ export default function Shift() {
           {Number(cash.credit) > 0 && (
             <label>Who was credited (company, vehicle)<input value={creditNote} onChange={(e) => setCreditNote(e.target.value)} placeholder="e.g. Zuva Petroleum, ABC 1234" /></label>
           )}
+          {expensesField}
           {calc && (
             <div className={`summary ${Math.abs(calc.variance) < 1 ? "ok" : "off"}`} aria-live="polite">
               <div>Expected <strong>{money(calc.expected)}</strong></div><div>Handed in <strong>{money(calc.submitted)}</strong></div>

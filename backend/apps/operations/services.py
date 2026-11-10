@@ -985,7 +985,7 @@ def _close(shift):
     on_shift_closed(shift)
 
 
-def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close=None, who=None, request=None, cash_later=False, dips=()):
+def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close=None, who=None, request=None, cash_later=False, dips=(), expenses=()):
     """'End of my shift' from a phone. A business that dips at the end of a shift sends the tanks' dips with it, and may
     close the day at that shift change (dayclose.close_at_shift_change)."""
     from . import dayclose  # dayclose imports this module
@@ -993,7 +993,9 @@ def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close
     ended_at = ended_at or timezone.now()
     with db_tx.atomic():
         if dips:
-            _record_end_dips(user=user, shift=shift, dips=dips, at=ended_at)
+            _record_end_dips(user=user, shift=shift, dips=dips, at=ended_at, who=who)
+        if expenses:
+            record_shift_expenses(user=user, shift=shift, expenses=expenses, at=ended_at, who=who)
         result = _end_shift(user=user, shift=shift, readings=readings, cash=cash, ended_at=ended_at, strict=strict, close=close, who=who,
                             request=request, cash_later=cash_later)
     try:  # the end is saved whatever happens here; a close that cannot be made waits for the Dip screen
@@ -1006,8 +1008,18 @@ def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close
     return result
 
 
-def _record_end_dips(*, user, shift, dips, at):
-    """Dips taken by the outgoing attendant at the shift change (a business that dips at the end of a shift)."""
+def _dip_tanks(shift, person):
+    """The tanks an attendant ending their part dips: those feeding the pumps they are on (assigned pumps), or every
+    tank at the station (shared pumps)."""
+    if not is_assigned_station(shift.station):
+        return set(Tank.objects.filter(station=shift.station).values_list("pk", flat=True))
+    pumps = PumpAssignment.objects.filter(shift=shift, user=person, ended_at__isnull=True).values("pump_id")
+    return set(Nozzle.objects.filter(pump_id__in=pumps).values_list("tank_id", flat=True))
+
+
+def _record_end_dips(*, user, shift, dips, at, who=None):
+    """Dips taken by the outgoing attendant at the shift change (a business that dips at the end of a shift): the tanks
+    of the pumps they are on. A dip of another tank is left out (a manager may dip any tank)."""
     from apps.tenants.models import Tenant
 
     from .serializers import DayCloseDipInput
@@ -1016,9 +1028,12 @@ def _record_end_dips(*, user, shift, dips, at):
         raise PermissionDenied("Dips are recorded by a manager.")
     data = DayCloseDipInput(data=list(dips), many=True)
     data.is_valid(raise_exception=True)
+    mine = None if can(user, "tank_records") else _dip_tanks(shift, who or user)
     for d in data.validated_data:
         if d["tank"].station_id != shift.station_id:
             raise ValidationError({"dips": f"{d['tank'].name} is not at this station."})
+        if mine is not None and d["tank"].pk not in mine:
+            continue  # not a tank of their pumps
         if not TankReading.objects.filter(tank=d["tank"], shift=shift, recorded_by=user, reading_at=at).exists():  # a resend
             record_tank_dip(user=user, tank=d["tank"], litres=d.get("litres"), dip_mm=d.get("dip_mm"), at=at, shift=shift)
 
@@ -1239,6 +1254,24 @@ def record_tank_dip(*, user, tank, litres=None, dip_mm=None, at=None, shift=None
 
     on_tank_changed(tank)
     return row
+
+
+def record_shift_expenses(*, user, shift, expenses, at, who=None):
+    """Expenses an attendant paid on their shift, sent with their end of shift or their cash (name and cost). Recorded
+    only: the cash they hand in is unchanged. Each line is recorded once, however often the phone resends it."""
+    from .models import Expense
+    from .serializers import ShiftExpenseInput
+
+    person = who or user
+    data = ShiftExpenseInput(data=list(expenses), many=True)
+    data.is_valid(raise_exception=True)
+    rows = []
+    for e in data.validated_data:
+        if not e.get("client_id") and Expense.objects.filter(shift=shift, recorded_by=person, note=e["name"], amount=e["amount"]).exists():
+            continue  # an older resend without an id
+        rows.append(record_expense(user=person, station=shift.station, category="other", amount=e["amount"], note=e["name"], spent_at=at,
+                                   client_id=e.get("client_id")))
+    return rows
 
 
 def record_expense(*, user, station, category, amount, currency=None, note="", spent_at=None, client_id=None):

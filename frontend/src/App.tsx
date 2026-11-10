@@ -36,7 +36,7 @@ const NAV: Record<string, [string, string][]> = {
   attendant: [["/", "Shift"]],
 };
 
-/** A business with expenses: everyone working records what they paid out (before Reports, or last for attendants). */
+/** A business with expenses: the Expenses screen, before Reports. */
 function withExpenses(nav: [string, string][]): [string, string][] {
   const at = nav.findIndex(([to]) => to === "/reports");
   const item: [string, string] = ["/expenses", "Expenses"];
@@ -72,7 +72,8 @@ function Shell({ children }: { children: ReactNode }) {
   useEffect(() => (user && user.role !== "platform_admin" ? startAutoSync() : undefined), [user]);
   const name = branding?.display_name || tenant?.name || t("appName");
   const base = user ? NAV[user.role] : undefined;
-  const nav = base && tenant?.expenses_enabled ? withExpenses(base) : base;
+  // attendants add their expenses at the end of their shift; managers and owners record theirs on the Expenses screen
+  const nav = base && tenant?.expenses_enabled && user?.role !== "attendant" ? withExpenses(base) : base;
   const alertCount = useAlertCount(user?.role === "owner" || user?.role === "manager");
   const approvalCount = useApprovalCount(user?.role === "owner" || user?.role === "manager");
   const counts: Record<string, number> = { "/alerts": alertCount, "/approvals": approvalCount };

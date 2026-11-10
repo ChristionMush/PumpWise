@@ -146,8 +146,12 @@ def end_summary(row):
         checks.append(f"The cash is {difference} more than the meters say: an end number may be too low, or a start number too high."
                       if difference > 0 else
                       f"The cash is {-difference} short of what the meters say: check the cash count, then the start and end numbers.")
+    from .models import Expense
+
+    spent = [{"name": e.note or e.get_category_display(), "amount": str(e.amount), "currency": e.currency}
+             for e in Expense.objects.filter(shift=row.shift, recorded_by=row.user).order_by("spent_at")]
     return {
-        "person": row.user.full_name, "currency": currency, "meters": meters, "cash": cash,
+        "person": row.user.full_name, "currency": currency, "meters": meters, "cash": cash, "expenses": spent,
         "handed_in": str(handed.quantize(TWO)),
         "expected": str(expected.quantize(TWO)) if (mine and known) else None,
         "cash_difference": str(difference) if (mine and known) else None,

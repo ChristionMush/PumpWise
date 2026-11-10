@@ -124,7 +124,7 @@ def _do_shift_start(user, data, strict=False):
 
 def do_shift_end(user, shift, data, strict=False, request=None):
     return _conflict_as_400(
-        services.end_shift, user=user, shift=shift, readings=data["readings"], cash=data["cash"], ended_at=data.get("ended_at"), dips=data.get("dips") or (),
+        services.end_shift, user=user, shift=shift, readings=data["readings"], cash=data["cash"], ended_at=data.get("ended_at"), dips=data.get("dips") or (), expenses=data.get("expenses") or (),
         strict=strict, close=data.get("close"), who=_user(data.get("user"), user.tenant_id), request=request,
         cash_later=data.get("cash_later", False),
     )
@@ -193,7 +193,7 @@ class PrefillView(APIView):
                 for n in p.nozzles.all():
                     last = services.last_end_reading(n)
                     nozzles.append({"id": str(n.pk), "number": n.number, "label": str(n), "meter_max": str(n.meter_max), "last_reading": str(last.reading) if last else None,
-                                    "fuel_type": str(n.tank.fuel_type_id), "fuel_code": n.tank.fuel_type.code})
+                                    "fuel_type": str(n.tank.fuel_type_id), "fuel_code": n.tank.fuel_type.code, "tank": str(n.tank_id)})
                 pump = {"id": str(p.pk), "name": p.name, "data_source": p.data_source, "nozzles": nozzles}
                 if assigned:
                     pump.update(assigned_to=str(p.assigned_to_id) if p.assigned_to_id else None, assigned_to_name=p.assigned_to.full_name if p.assigned_to_id else None)
@@ -223,7 +223,7 @@ class PrefillView(APIView):
                 entry["staff"] = _station_staff(st)
             if picking:
                 entry["pick_pumps"] = True
-            if user.tenant.dip_at_shift_end:  # ending a shift asks for every tank's dip, unless one was just taken
+            if user.tenant.dip_at_shift_end:  # ending a shift asks for the dips of the attendant's tanks, unless just taken
                 entry["dip_at_end"] = True
                 last = TankReading.objects.filter(tank__station=st).order_by("-reading_at").first()
                 entry["last_dip_at"] = last.reading_at if last else None
@@ -234,8 +234,11 @@ class PrefillView(APIView):
                     tanks.append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres), "has_calibration": t.calibration.count() >= 2, "last_litres": str(last.litres) if last else None})
                 entry["tanks"] = tanks
             elif user.tenant.dip_at_shift_end:  # an attendant who dips at the end of a shift: which tanks, never their levels
-                entry["tanks"] = [{"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "has_calibration": t.calibration.count() >= 2}
-                                  for t in Tank.objects.filter(station=st).select_related("fuel_type")]
+                entry["tanks"] = []
+                for t in Tank.objects.filter(station=st).select_related("fuel_type"):
+                    last = TankReading.objects.filter(tank=t).order_by("-reading_at").first()
+                    entry["tanks"].append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "has_calibration": t.calibration.count() >= 2,
+                                           "last_dip_at": last.reading_at if last else None})
             out.append(entry)
         return Response({"stations": out, "server_time": timezone.now()})
 
@@ -359,7 +362,10 @@ class ShiftCashView(APIView):
         if not _cash_due_here(request.user, shift):
             services.require_on_shift(request.user, shift)
         who = _user(data.validated_data.get("user"), request.user.tenant_id)
-        _conflict_as_400(services.submit_cash, user=request.user, shift=shift, cash=data.validated_data["cash"], who=who, request=request)
+        with transaction.atomic():
+            _conflict_as_400(services.submit_cash, user=request.user, shift=shift, cash=data.validated_data["cash"], who=who, request=request)
+            if data.validated_data["expenses"]:
+                services.record_shift_expenses(user=request.user, shift=shift, expenses=data.validated_data["expenses"], at=timezone.now(), who=who)
         shift.refresh_from_db()
         return Response(shift_detail(shift, request.user))
 
@@ -592,7 +598,10 @@ def _apply(user, kind, p):
         d = _valid(CashInputOnly, p)
         if not _cash_due_here(user, shift):  # meters closed first: the cash is handed in after leaving the pumps
             services.require_on_shift(user, shift)
-        _conflict_as_400(services.submit_cash, user=user, shift=shift, cash=d["cash"], who=_user(d.get("user"), user.tenant_id), at=d.get("at"))
+        who = _user(d.get("user"), user.tenant_id)
+        _conflict_as_400(services.submit_cash, user=user, shift=shift, cash=d["cash"], who=who, at=d.get("at"))
+        if d["expenses"]:
+            services.record_shift_expenses(user=user, shift=shift, expenses=d["expenses"], at=d.get("at") or timezone.now(), who=who)
     elif kind == "shift_close":
         d = _valid(PersonInput, p)
         _conflict_as_400(services.request_close, user=user, shift=shift, at=d.get("at"))
