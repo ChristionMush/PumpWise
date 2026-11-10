@@ -2,34 +2,27 @@
 
 from django.db import migrations
 
+from apps.core.rls import enable_rls, tenant_isolation
+
+TABLES = ("operations_pumprotaholder", "operations_pumprota")
+
 
 class Migration(migrations.Migration):
+    """Pesnat mode's weekly pump rotation is removed: its two tables go (they were empty everywhere). Deleting the
+    tables whole, holder first, keeps this reversible; going back also puts their Row-Level Security back."""
 
     dependencies = [
+        ('core', '0001_initial'),
         ('operations', '0015_expense'),
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='pumprotaholder',
-            name='rota',
-        ),
-        migrations.RemoveField(
-            model_name='pumprotaholder',
-            name='pump',
-        ),
-        migrations.RemoveField(
-            model_name='pumprotaholder',
-            name='tenant',
-        ),
-        migrations.RemoveField(
-            model_name='pumprotaholder',
-            name='user',
+        # runs last when going back, once both tables exist again
+        migrations.RunSQL(sql=migrations.RunSQL.noop, reverse_sql=[s for t in TABLES for s in enable_rls(t, tenant_isolation()).sql]),
+        migrations.DeleteModel(
+            name='PumpRotaHolder',
         ),
         migrations.DeleteModel(
             name='PumpRota',
-        ),
-        migrations.DeleteModel(
-            name='PumpRotaHolder',
         ),
     ]
