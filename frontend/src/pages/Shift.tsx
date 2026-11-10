@@ -251,12 +251,12 @@ export default function Shift() {
   };
   // A pump the manager swapped away mid-shift drops out of the prefill: its end number was taken at the swap.
   const rows = active ? nozzles.filter((n) => n.id in active.starts) : [];
-  // a business that dips at the end of a shift: the tanks feeding the pumps this attendant is on, unless one was dipped
-  // in the last hour (of two attendants on the same tank, the first to end dips)
-  const myTanks = new Set(rows.map((n) => n.tank).filter(Boolean));
+  // a business that dips at the end of a shift: every tank of the fuels this attendant's pumps sell (a pump can draw
+  // from any tank of its fuel, e.g. both petrol tanks), unless one was dipped in the last hour (the first to end dips)
+  const myFuels = new Set(rows.map((n) => n.fuel_code));
   const recent = (at?: string | null) => Boolean(at && Date.now() - new Date(at).getTime() < 60 * 60 * 1000);
   const dipTanks = active && !active.member && station?.dip_at_end
-    ? (station.tanks ?? []).filter((t: any) => (!myTanks.size || myTanks.has(t.id)) && !recent(t.last_dip_at ?? station.last_dip_at)) : [];
+    ? (station.tanks ?? []).filter((t: any) => (!myFuels.size || myFuels.has(t.fuel_code)) && !recent(t.last_dip_at ?? station.last_dip_at)) : [];
   const askDips = dipTanks.length > 0;
   const dipsWrong = () => {
     const missing = dipTanks.filter((t: any) => !endDips[t.id]?.mm || (!t.has_calibration && !endDips[t.id]?.litres));
@@ -506,7 +506,7 @@ export default function Shift() {
       {askDips && (
         <section className="card form" aria-label="Tank dips">
           <h2>Tank dips</h2>
-          <p className="muted">Dip the tank{dipTanks.length > 1 ? "s" : ""} of the pumps you are on before you hand over.</p>
+          <p className="muted">Dip every tank of your pumps' fuel before you hand over.</p>
           {dipTanks.map((t: any) => (
             <div key={t.id} className="row gap">
               <strong>{t.name} <span className="muted">· {t.fuel_code}</span></strong>

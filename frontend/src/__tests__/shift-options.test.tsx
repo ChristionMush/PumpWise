@@ -9,12 +9,13 @@ import { mockApi, renderApp, signedIn } from "./helpers";
 const attendant = { user: { id: "a", role: "attendant", full_name: "Tendai", must_change_password: false, tenant_id: "t" }, tenant: { id: "t", name: "Pesnat", slug: "p", status: "active" } };
 const nozzle = (id: string, tank: string) => ({ id, number: 1, label: "Petrol", meter_max: "99999999.99", last_reading: "1000.00", fuel_type: "p", fuel_code: "PETROL", tank });
 const pumpA = { id: "pa", name: "Pump A", nozzles: [nozzle("na", "tk1")] };
-const pumpB = { id: "pb", name: "Pump B", nozzles: [nozzle("nb", "tk2")], in_use_by: "Rudo" };
+const pumpB = { id: "pb", name: "Pump B", nozzles: [{ ...nozzle("nb", "tk2"), label: "Diesel", fuel_type: "d", fuel_code: "DIESEL" }], in_use_by: "Rudo" };
 const station = {
   id: "st1", name: "Mverechena", pricing_currency: "USD", open_shift_id: null, attendants_mode: "multiple", assignment_mode: "assigned",
   prices: [{ fuel_type: "p", currency: "USD", price: "1.50", from: "2026-01-01T00:00:00Z", to: null }],
   pumps: [pumpA, pumpB], pick_pumps: true, dip_at_end: true, last_dip_at: null,
-  tanks: [{ id: "tk1", name: "Tank 1", fuel_code: "PETROL", has_calibration: true, last_dip_at: null }, { id: "tk2", name: "Tank 2", fuel_code: "PETROL", has_calibration: true, last_dip_at: null }],
+  tanks: [{ id: "tk1", name: "Tank 1", fuel_code: "PETROL", has_calibration: true, last_dip_at: null }, { id: "tk2", name: "Diesel Tank", fuel_code: "DIESEL", has_calibration: true, last_dip_at: null },
+    { id: "tk4", name: "Petrol Tank 2", fuel_code: "PETROL", has_calibration: true, last_dip_at: null }],
 };
 const applyAll = (body: any) => ({ body: { results: body.ops.map((o: any) => ({ op_id: o.op_id, status: "applied" })) } });
 const ops = (calls: any[]) => calls.filter((c) => c.path === "/api/sync/").flatMap((c) => c.body.ops);
@@ -44,7 +45,7 @@ describe("attendants pick their pumps", () => {
 describe("dip at the end of a shift", () => {
   const onShift = async () => kvSet("activeShift", { id: "s1", station_id: "st1", started_at: "2026-11-10T05:00:00Z", starts: { na: 1000 } });
 
-  it("asks the outgoing attendant to dip only the tank of the pump they are on, and sends it with the end", async () => {
+  it("asks the outgoing attendant to dip every tank of their pump's fuel (both petrol tanks), and sends them with the end", async () => {
     await onShift();
     const { calls } = mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [station] } }, "POST /api/sync/": applyAll });
     renderApp("/");
@@ -52,17 +53,20 @@ describe("dip at the end of a shift", () => {
     await user.type(await screen.findByPlaceholderText("Meter number now"), "1100");
     await user.type(screen.getByLabelText("Cash"), "150");
     await user.click(screen.getByRole("button", { name: "End shift" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Dip Tank 1 before you end");
-    expect(screen.getByRole("region", { name: "Tank dips" })).not.toHaveTextContent("Tank 2"); // Pump B's tank: not theirs
-    await user.type(screen.getByLabelText("Dip (mm)"), "1200");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Dip Tank 1, Petrol Tank 2 before you end");
+    expect(screen.getByRole("region", { name: "Tank dips" })).not.toHaveTextContent("Diesel Tank"); // Pump B's diesel tank: not theirs
+    const [first, second] = screen.getAllByLabelText("Dip (mm)");
+    await user.type(first, "1200");
+    await user.type(second, "900");
     await user.click(screen.getByRole("button", { name: "End shift" }));
     await waitFor(() => expect(ops(calls).some((o: any) => o.kind === "shift_end")).toBe(true));
-    expect(ops(calls).find((o: any) => o.kind === "shift_end").payload.dips).toEqual([{ tank: "tk1", dip_mm: "1200" }]);
+    expect(ops(calls).find((o: any) => o.kind === "shift_end").payload.dips).toEqual([{ tank: "tk1", dip_mm: "1200" }, { tank: "tk4", dip_mm: "900" }]);
   });
 
   it("does not ask again when their tank was dipped in the last hour (the first to end dips)", async () => {
     await onShift();
-    const justDipped = { ...station, tanks: station.tanks.map((t) => (t.id === "tk1" ? { ...t, last_dip_at: new Date(Date.now() - 5 * 60 * 1000).toISOString() } : t)) };
+    const just = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const justDipped = { ...station, tanks: station.tanks.map((t) => (t.fuel_code === "PETROL" ? { ...t, last_dip_at: just } : t)) };
     const { calls } = mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [justDipped] } }, "POST /api/sync/": applyAll });
     renderApp("/");
     const user = userEvent.setup();

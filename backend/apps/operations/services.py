@@ -1009,12 +1009,13 @@ def end_shift(*, user, shift, readings, cash, ended_at=None, strict=False, close
 
 
 def _dip_tanks(shift, person):
-    """The tanks an attendant ending their part dips: those feeding the pumps they are on (assigned pumps), or every
-    tank at the station (shared pumps)."""
+    """The tanks an attendant ending their part dips: every tank of the fuels their pumps sell (assigned pumps), as a
+    pump can draw from any tank of its fuel (a backup, when one runs dry); or every tank at the station (shared pumps)."""
     if not is_assigned_station(shift.station):
         return set(Tank.objects.filter(station=shift.station).values_list("pk", flat=True))
     pumps = PumpAssignment.objects.filter(shift=shift, user=person, ended_at__isnull=True).values("pump_id")
-    return set(Nozzle.objects.filter(pump_id__in=pumps).values_list("tank_id", flat=True))
+    fuels = Nozzle.objects.filter(pump_id__in=pumps).values("tank__fuel_type_id")
+    return set(Tank.objects.filter(station=shift.station, fuel_type_id__in=fuels).values_list("pk", flat=True))
 
 
 def _record_end_dips(*, user, shift, dips, at, who=None):

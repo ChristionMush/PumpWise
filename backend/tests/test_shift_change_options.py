@@ -144,3 +144,21 @@ def test_an_attendant_adds_expenses_to_their_end_of_shift_and_their_cash_is_unch
     end = next(e for e in mgr.get("/api/shift-ends/").json() if e["person"] == att_a.full_name)
     detail = mgr.get(f"/api/shift-ends/{end['id']}/").json()
     assert [(e["name"], e["amount"]) for e in detail["expenses"]] == [("Lunch", "5.00"), ("Generator fuel, 10 L", "14.50")]
+
+
+def test_an_attendant_dips_every_tank_of_their_pumps_fuel_both_petrol_tanks():
+    from .helpers import second_tank
+
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    backup = second_tank(fc, code="PETROL", name="Petrol Tank 2")  # the pumps may draw from either petrol tank
+    diesel = second_tank(fc, code="DIESEL", name="Diesel Tank")
+    options(a, dip_at_shift_end=True)
+    ca = client_for(att_a)
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    dips = [{"tank": str(fc.tank.pk), "dip_mm": "500"}, {"tank": str(backup.pk), "dip_mm": "300", "litres": "2500"},
+            {"tank": str(diesel.pk), "dip_mm": "300", "litres": "4000"}]
+    ended = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": A_ENDS, "readings": readings(fc.nozzles, [100, 0]), "cash": cash("150"), "dips": dips}, format="json")
+    assert ended.status_code == 200, ended.content
+    with db_context(tenant_id=a["tenant"].id):
+        dipped = set(TankReading.objects.filter(recorded_by=att_a).values_list("tank__name", flat=True))
+    assert dipped == {fc.tank.name, "Petrol Tank 2"}  # both petrol tanks; the diesel tank is not on their pump
