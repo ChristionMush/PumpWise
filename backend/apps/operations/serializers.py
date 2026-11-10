@@ -156,16 +156,6 @@ class TankDipInput(serializers.Serializer):
     shift = serializers.PrimaryKeyRelatedField(queryset=Shift.objects.all(), required=False, allow_null=True)
 
 
-class TankSwitchInput(serializers.Serializer):
-    """A nozzle switched to another tank (its tank ran dry), at the meter number then."""
-
-    client_id = serializers.UUIDField(required=False, allow_null=True)
-    nozzle = serializers.PrimaryKeyRelatedField(queryset=Nozzle.objects.select_related("pump__station", "tank__fuel_type"))
-    tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.select_related("fuel_type"))
-    reading = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0"))
-    at = serializers.DateTimeField(required=False)
-
-
 class DeliveryInput(serializers.Serializer):
     client_id = serializers.UUIDField(required=False, allow_null=True)
     tank = serializers.PrimaryKeyRelatedField(queryset=Tank.objects.all())

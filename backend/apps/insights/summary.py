@@ -5,6 +5,7 @@ from apps.operations import tradingday
 from apps.reports.reconciliation import tank_range
 from apps.reports.sales import daily_sales
 from apps.stations.models import Station, Tank
+from apps.stations.pools import pools_for
 from apps.tenants.models import Tenant
 from apps.tenants.services import get_settings
 
@@ -29,7 +30,7 @@ def build_daily_summary(tenant_id, day: date | None = None):
     lines.insert(1, f"Sold {total_l:,.0f} L" + "".join(f" / {c} {a:,.2f}" for c, a in totals.items()))
     problems = []
     tanks = list(Tank.objects.select_related("fuel_type", "station"))
-    for t in tanks:
+    for t in pools_for(tanks):  # stock per fuel pool
         f = forecast_tank(t, cfg)
         if f["status"] == "ok" and f["low"]:
             problems.append(f"LOW {t.station.name} {t.name}: {f['days_to_empty'] if f['days_to_empty'] is not None else '?'} days left, order by {f['refill_by'] or 'now'}")

@@ -13,6 +13,7 @@ from apps.audit import services as audit
 from apps.operations.services import pump_gaps
 from apps.stations.access import scope
 from apps.stations.models import Station, Tank
+from apps.stations.pools import pools_for
 
 from . import alert_actions
 from .alerts import evaluate_tenant
@@ -54,7 +55,7 @@ class ForecastView(APIView):
         tanks = scope(Tank.objects.select_related("fuel_type", "station"), request.user, "station_id")
         if request.query_params.get("station"):
             tanks = tanks.filter(station_id=request.query_params["station"])
-        return Response({"tanks": [forecast_tank(t) for t in tanks]})
+        return Response({"tanks": [forecast_tank(p) for p in pools_for(tanks)]})  # per fuel pool
 
 
 class AlertListView(ListAPIView):

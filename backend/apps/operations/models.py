@@ -286,25 +286,6 @@ class Expense(TenantOwnedModel):
         ]
 
 
-class TankSwitch(TenantOwnedModel):
-    """A nozzle switched to another tank of the same fuel when its tank ran dry, at a meter number: litres before it
-    count against the tank it was drawing from, litres after it against the new one (services.switch_tank)."""
-
-    client_id = models.UUIDField(null=True, blank=True)  # made on the phone, so a retry never records it twice
-    nozzle = models.ForeignKey("stations.Nozzle", on_delete=models.PROTECT, related_name="+")
-    from_tank = models.ForeignKey("stations.Tank", on_delete=models.PROTECT, related_name="+")
-    to_tank = models.ForeignKey("stations.Tank", on_delete=models.PROTECT, related_name="+")
-    at = models.DateTimeField()
-    reading = models.DecimalField(max_digits=14, decimal_places=2)  # the nozzle's meter at the switch
-    shift = models.ForeignKey(Shift, null=True, blank=True, on_delete=models.PROTECT, related_name="+")
-    recorded_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="+")
-
-    class Meta:
-        ordering = ["at"]
-        indexes = [models.Index(fields=["nozzle", "at"])]
-        constraints = [models.UniqueConstraint(F("tenant"), "client_id", condition=Q(client_id__isnull=False), name="tankswitch_client_id_unique")]
-
-
 class Transaction(TenantOwnedModel):
     """Litres sold through one nozzle between two meter readings, priced at the price in force when the period began."""
 
@@ -313,8 +294,6 @@ class Transaction(TenantOwnedModel):
     # Assigned-pump stations only: the attendant who held the pump for this whole period (expected cash per person).
     attendant = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
     nozzle = models.ForeignKey("stations.Nozzle", on_delete=models.PROTECT, related_name="+")
-    # the tank the nozzle drew from in this period (a nozzle switches to another tank when its tank runs dry: TankSwitch)
-    tank = models.ForeignKey("stations.Tank", null=True, on_delete=models.PROTECT, related_name="+")
     fuel_type = models.ForeignKey("stations.FuelType", on_delete=models.PROTECT, related_name="+")
     litres = models.DecimalField(max_digits=12, decimal_places=3)
     price_per_litre = models.DecimalField(max_digits=12, decimal_places=4)

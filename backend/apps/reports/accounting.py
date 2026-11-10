@@ -20,6 +20,7 @@ from openpyxl.utils import get_column_letter
 from apps.operations import tradingday
 from apps.operations.models import CashSubmission, Delivery, Expense, Shift, Transaction
 from apps.stations.models import FuelPrice, Tank
+from apps.stations.pools import pools_for
 from apps.stations.services import rate_at
 from apps.tenants.services import get_settings
 
@@ -198,7 +199,7 @@ def build_pack(station, year, month):
 
     # Stock: per tank and day, between the actual dips (the same as the Fuel check report)
     rows, fills, checks = [], [], []
-    for tank in Tank.objects.filter(station=station).select_related("fuel_type").order_by("name"):
+    for tank in pools_for(Tank.objects.filter(station=station).select_related("fuel_type", "station").order_by("name")):  # per fuel pool
         day = first
         while day <= min(last, cal.today()):
             r = reconcile_tank_day(tank, day, cfg)

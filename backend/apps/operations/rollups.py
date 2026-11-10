@@ -170,10 +170,13 @@ def _json_safe(data):
 def refresh_tank(tank, now=None, bump=True):
     from apps.insights.forecast import forecast_tank
     from apps.reports.reconciliation import tank_range
+    from apps.stations.pools import pool_of
 
     now = now or timezone.now()
     today = timezone.localtime(now).date()
-    data = forecast_tank(tank, now=now)
+    pool = pool_of(tank)  # one status per fuel pool (every tank of the fuel at the station), kept on its first tank
+    tank = pool.lead
+    data = forecast_tank(pool, now=now)
     losses = [r for r in tank_range([tank], today - timedelta(days=6), today) if r["status"] == "loss"]
     data["loss_7d"] = str(sum((Decimal(r["loss"]) for r in losses), Decimal(0)))
     data = _json_safe(data)
@@ -191,6 +194,7 @@ def refresh_tank(tank, now=None, bump=True):
 def refresh_tenant_tanks(tenant_id=None):
     """Hourly: forecasts move with time even when nothing is recorded."""
     from apps.stations.models import Tank
+    from apps.stations.pools import pools_for
 
-    for tank in Tank.objects.select_related("fuel_type"):
-        refresh_tank(tank)
+    for pool in pools_for(Tank.objects.select_related("fuel_type", "station")):
+        refresh_tank(pool.lead)

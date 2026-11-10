@@ -4,13 +4,14 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db.models import Q, Sum
+from django.db.models import Q
 from django.utils import timezone
 
-from apps.operations.models import DayCloseReading, Delivery, PumpMeterReading, Shift, ShiftAttendant, TankReading, Transaction
+from apps.operations.models import DayCloseReading, PumpMeterReading, Shift, ShiftAttendant, TankReading
 from apps.operations.services import people_names, went_round
 from apps.reports.reconciliation import cash_summary
 from apps.stations.models import Nozzle, Station, Tank
+from apps.stations.pools import pools_for
 from apps.tenants.services import get_settings
 
 from .alert_actions import AUTO, AWAITING, OPEN, REOPEN_WITHIN, apply_patterns, log_event
@@ -91,23 +92,22 @@ def delivery_problems(since):
     """Between two dips of a tank: fuel came in (the dips rose more than was sold) with no delivery recorded, or a
     delivery that does not match what the dips show. Returns ({key: alert kwargs}, every key looked at)."""
     found, looked = {}, set()
-    for t in Tank.objects.select_related("station"):
-        dips = list(TankReading.objects.filter(tank=t, reading_at__gte=since).order_by("reading_at"))
-        prev = TankReading.objects.filter(tank=t, reading_at__lt=since).order_by("-reading_at").first()
-        seq = ([prev] if prev else []) + dips
+    for t in pools_for(Tank.objects.select_related("station", "fuel_type")):  # per fuel pool: its tanks are one stock
+        prev = t.dip_before(since)
+        seq = ([prev] if prev else []) + t.dips_since(since)
         for a, b in zip(seq, seq[1:], strict=False):
             key = f"delivery:{t.pk}:{b.pk}"
             looked.add(key)
-            delivered = Delivery.objects.filter(tank=t, delivered_at__gt=a.reading_at, delivered_at__lte=b.reading_at).aggregate(s=Sum("litres_received"))["s"] or Decimal(0)
-            sold = Transaction.objects.filter(tank=t, occurred_at__gt=a.reading_at, occurred_at__lte=b.reading_at).aggregate(s=Sum("litres"))["s"] or Decimal(0)
+            delivered = t.delivered(a.reading_at, b.reading_at)
+            sold = t.sold(a.reading_at, b.reading_at)
             came_in = b.litres - a.litres + sold
             between = f"between the dips at {_hhmm(a.reading_at)} and {_hhmm(b.reading_at)}"
             data = {"delivered": str(delivered), "came_in": str(came_in.quantize(Decimal(1))), "from": a.reading_at, "to": b.reading_at}
             if delivered == 0 and came_in > MISSING_DELIVERY_LITRES:
-                found[key] = dict(kind="delivery", severity="warning", station=t.station, tank=t, data=data,
+                found[key] = dict(kind="delivery", severity="warning", station=t.station, tank=t.lead, data=data,
                                   message=f"{t.station.name} {t.name}: about {came_in:,.0f} L came in {between}, but no delivery is recorded. Record the delivery.")
             elif delivered > 0 and abs(came_in - delivered) > max(DELIVERY_TOLERANCE[0], delivered * DELIVERY_TOLERANCE[1] / 100):
-                found[key] = dict(kind="delivery", severity="warning", station=t.station, tank=t, data=data,
+                found[key] = dict(kind="delivery", severity="warning", station=t.station, tank=t.lead, data=data,
                                   message=f"{t.station.name} {t.name}: {delivered:,.0f} L delivered {between}, but the dips show about {came_in:,.0f} L came in. "
                                           "Check the delivery note and the dips.")
     return found, looked
@@ -123,13 +123,14 @@ def evaluate_tenant(tenant_id, now=None):
         wanted[key] = kw
 
     tanks = list(Tank.objects.select_related("fuel_type", "station"))
-    for t in tanks:
-        f = forecast_tank(t, cfg, now)
+    for p in pools_for(tanks):  # stock per fuel pool: every tank of the fuel at the station
+        f = forecast_tank(p, cfg, now)
         if f["status"] == "ok":
-            if float(f["current_litres"]) <= float(t.reserve_litres):
-                want(f"low:{t.pk}", kind="low_stock", severity="critical", station=t.station, tank=t, message=f"{t.station.name} {t.name}: at or below the reserve ({f['current_litres']} L left).", data=f)
+            if float(f["current_litres"]) <= float(p.reserve_litres):
+                want(f"low:{p.pk}", kind="low_stock", severity="critical", station=p.station, tank=p.lead, message=f"{p.station.name} {p.name}: at or below the reserve ({f['current_litres']} L left).", data=f)
             elif f["days_to_empty"] is not None and f["days_to_empty"] <= cfg.low_stock_days:
-                want(f"low:{t.pk}", kind="low_stock", severity="warning", station=t.station, tank=t, message=f"{t.station.name} {t.name}: about {f['days_to_empty']} days of fuel left. Order by {f['refill_by']}.", data=f)
+                want(f"low:{p.pk}", kind="low_stock", severity="warning", station=p.station, tank=p.lead, message=f"{p.station.name} {p.name}: about {f['days_to_empty']} days of fuel left. Order by {f['refill_by']}.", data=f)
+    for t in tanks:  # every tank is dipped
         last = TankReading.objects.filter(tank=t).order_by("-reading_at").first()
         if last is None or now - last.reading_at > timedelta(hours=MISSED_DIP_HOURS):
             hours = "ever" if last is None else f"for {int((now - last.reading_at).total_seconds() // 3600)} hours"

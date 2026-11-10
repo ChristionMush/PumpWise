@@ -7,11 +7,10 @@ from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Sum
 from django.utils import timezone
 
-from apps.operations.models import Delivery, TankReading, Transaction
 from apps.reports.sales import tank_daily_litres
+from apps.stations.pools import pool_of
 from apps.tenants.services import get_settings
 
 HISTORY_DAYS = 28
@@ -20,18 +19,20 @@ HISTORY_DAYS = 28
 def estimated_level(tank, now=None):
     """Last dip, plus deliveries since, minus litres sold since. None if the tank was never dipped."""
     now = now or timezone.now()
-    last = TankReading.objects.filter(tank=tank, reading_at__lte=now).order_by("-reading_at").first()
+    tank = pool_of(tank)  # every tank of the fuel at the station: one stock
+    last = tank.dip_at(now)
     if last is None:
         return None, None
-    delivered = Delivery.objects.filter(tank=tank, delivered_at__gt=last.reading_at, delivered_at__lte=now).aggregate(s=Sum("litres_received"))["s"] or Decimal(0)
-    sold = Transaction.objects.filter(tank=tank, occurred_at__gt=last.reading_at, occurred_at__lte=now).aggregate(s=Sum("litres"))["s"] or Decimal(0)
+    delivered = tank.delivered(last.reading_at, now)
+    sold = tank.sold(last.reading_at, now)
     return max(last.litres + delivered - sold, Decimal(0)), last.reading_at
 
 
 def usage_profile(tank, today):
     """(average litres/day, {weekday: average}) over recent history, counting quiet days but not days before the tank was in use."""
+    tank = pool_of(tank)
     history = tank_daily_litres(tank, days=HISTORY_DAYS, until=today - timedelta(days=1))
-    first = Transaction.objects.filter(tank=tank).order_by("occurred_at").values_list("occurred_at", flat=True).first()
+    first = tank.sales().order_by("occurred_at").values_list("occurred_at", flat=True).first()
     if first is None:
         return Decimal(0), {}
     start = timezone.localtime(first).date()
@@ -46,6 +47,7 @@ def usage_profile(tank, today):
 
 
 def forecast_tank(tank, cfg=None, now=None):
+    tank = pool_of(tank)  # per fuel pool: its name, capacity and reserve are its tanks' together
     cfg = cfg or get_settings(tank.tenant_id)
     now = now or timezone.now()
     today = timezone.localtime(now).date()

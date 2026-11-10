@@ -17,6 +17,7 @@ from apps.operations.models import DailySalesRollup, Shift, ShiftAttendant, Shif
 from apps.operations.rollups import dashboard_version, refresh_tank
 from apps.stations.access import scope, visible_station_ids
 from apps.stations.models import Station, Tank
+from apps.stations.pools import pools_for
 
 from .models import Alert
 
@@ -48,7 +49,8 @@ def _build(user):
     station_ids = [s.pk for s in stations]
     today_of = {s.pk: Calendar(s.pk).today() for s in stations}  # each station's trading day (closes about 21:00)
     today = max(today_of.values(), default=Calendar().today())
-    tanks = list(Tank.objects.filter(station_id__in=station_ids).select_related("fuel_type"))
+    # one row per fuel pool (every tank of the fuel at the station is one stock), named by its tanks
+    tanks = [p.lead for p in pools_for(Tank.objects.filter(station_id__in=station_ids).select_related("fuel_type", "station"))]
     statuses = {s.tank_id: s for s in TankStatus.objects.filter(tank__in=tanks)}
     for t in tanks:
         if t.pk not in statuses:  # a tank set up since the last write: build its row now (write path, once)

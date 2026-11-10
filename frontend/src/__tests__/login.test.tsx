@@ -50,7 +50,7 @@ describe("login", () => {
     expect(await screen.findByRole("heading", { name: "Businesses" })).toBeInTheDocument();
     expect(calls.find((c) => c.path === "/api/auth/login/")?.body).toEqual({ identifier: "t@x.com", password: "secret-pass" });
     expect(localStorage.getItem("fs_access")).toBe("a");
-    expect(screen.getByText("No businesses yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No businesses yet.")).toBeInTheDocument(); // the list loads after the heading
   });
 
   it("shows a plain message and stays on the form for wrong details", async () => {

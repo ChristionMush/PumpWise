@@ -14,8 +14,8 @@ from types import SimpleNamespace
 
 from django.db.models import Q, Sum
 
-from apps.operations.models import Delivery, TankReading, Transaction
 from apps.stations.models import Tank
+from apps.stations.pools import pool_of, pools_for
 from apps.stations.services import rate_at
 from apps.tenants.services import get_settings
 
@@ -124,18 +124,16 @@ def cash_summary(shift):
     }
 
 
-def _latest_dip(tank, at):
-    return TankReading.objects.filter(tank=tank, reading_at__lte=at).order_by("-reading_at").first()
-
-
 def reconcile_window(tank, opening, closing, cfg=None):
-    """Reconcile between two actual dips (so the window matches what was really measured)."""
+    """Reconcile between two actual dips (so the window matches what was really measured). Per fuel pool: every tank of
+    the fuel at the station, as every pump of the fuel draws from all of them (stations.pools)."""
+    tank = pool_of(tank)
     cfg = cfg or get_settings(tank.tenant_id)
     base = {"tank_id": str(tank.pk), "tank": tank.name, "fuel_code": tank.fuel_type.code}
     if opening is None or closing is None or closing.reading_at <= opening.reading_at:
         return {**base, "status": "insufficient_data", "flagged": False}
-    deliveries = Delivery.objects.filter(tank=tank, delivered_at__gt=opening.reading_at, delivered_at__lte=closing.reading_at).aggregate(s=Sum("litres_received"))["s"] or Decimal(0)
-    dispensed = Transaction.objects.filter(tank=tank, occurred_at__gt=opening.reading_at, occurred_at__lte=closing.reading_at).aggregate(s=Sum("litres"))["s"] or Decimal(0)
+    deliveries = tank.delivered(opening.reading_at, closing.reading_at)
+    dispensed = tank.sold(opening.reading_at, closing.reading_at)
     loss = opening.litres + deliveries - dispensed - closing.litres
     limit = max(cfg.loss_threshold_litres, dispensed * cfg.loss_threshold_pct / 100)
     status = "loss" if loss > limit else "gain" if loss < -limit else "ok"
@@ -150,11 +148,12 @@ def reconcile_window(tank, opening, closing, cfg=None):
 def reconcile_tank_day(tank, day: date, cfg=None):
     from apps.operations.tradingday import Calendar
 
+    tank = pool_of(tank)
     start, end = Calendar(tank.station_id).bounds(day)
-    opening = _latest_dip(tank, start)
-    if opening is None:  # the tank's first-ever dip is today: open from the earliest dip of the day
-        opening = TankReading.objects.filter(tank=tank, reading_at__gt=start, reading_at__lte=end).order_by("reading_at").first()
-    return {"date": day.isoformat(), **reconcile_window(tank, opening, _latest_dip(tank, end), cfg)}
+    opening = tank.dip_at(start)
+    if opening is None:  # the tanks' first dips are today: open from when every tank of the fuel has been dipped
+        opening = tank.first_dip_in(start, end)
+    return {"date": day.isoformat(), **reconcile_window(tank, opening, tank.dip_at(end), cfg)}
 
 
 def tank_range(tanks, date_from: date, date_to: date):
@@ -162,7 +161,7 @@ def tank_range(tanks, date_from: date, date_to: date):
 
     out, n = [], date_from
     while n <= date_to:
-        for t in tanks:
+        for t in pools_for(tanks):
             row = reconcile_tank_day(t, n)
             if row["status"] != "insufficient_data":
                 out.append(row)

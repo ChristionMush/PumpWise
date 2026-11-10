@@ -26,8 +26,8 @@ def daily_sales(*, station_ids=None, date_from: date, date_to: date, tank=None):
     qs = Transaction.objects.filter(occurred_at__gte=start, occurred_at__lt=end)
     if station_ids is not None:
         qs = qs.filter(station_id__in=station_ids)
-    if tank is not None:
-        qs = qs.filter(tank=tank)
+    if tank is not None:  # a tank (or fuel pool): every sale of its fuel at its station, as each pump of it draws from all its tanks
+        qs = qs.filter(station_id=tank.station_id, fuel_type_id=tank.fuel_type_id)
     calendars, rows = {}, []
     for t in qs.values("station_id", "occurred_at", "fuel_type__code", "nozzle__pump_id", "nozzle__pump__name", "currency", "litres", "amount"):
         cal = calendars.setdefault(t["station_id"], tradingday.Calendar(t["station_id"]))

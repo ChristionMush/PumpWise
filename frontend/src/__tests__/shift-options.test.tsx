@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { kvSet, resetOffline } from "../offline";
@@ -76,24 +76,5 @@ describe("dip at the end of a shift", () => {
     await user.click(screen.getByRole("button", { name: "End shift" }));
     await waitFor(() => expect(ops(calls).some((o: any) => o.kind === "shift_end")).toBe(true));
     expect(ops(calls).find((o: any) => o.kind === "shift_end").payload.dips).toBeUndefined();
-  });
-});
-
-describe("a tank runs dry", () => {
-  it("switches the nozzle to another tank of the same fuel at the meter number now, saved on the phone first", async () => {
-    await kvSet("activeShift", { id: "s1", station_id: "st1", started_at: "2026-11-10T05:00:00Z", starts: { na: 1000 } });
-    const withBackup = { ...station, dip_at_end: false, pumps: [{ ...pumpA, nozzles: [{ ...pumpA.nozzles[0], switch_to: [{ id: "tk3", name: "Tank 3" }] }] }] };
-    const { calls } = mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [withBackup] } }, "POST /api/sync/": applyAll });
-    renderApp("/");
-    const user = userEvent.setup();
-    await user.click(await screen.findByText(/Tank ran dry\? Switch Pump A Petrol/));
-    const group = screen.getByRole("group", { name: "Switch Pump A Petrol to another tank" });
-    await user.click(within(group).getByRole("button", { name: "Switch tank" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("meter number at the switch");
-    await user.type(within(group).getByLabelText("Meter number at the switch"), "1060");
-    await user.click(within(group).getByRole("button", { name: "Switch tank" }));
-    expect(await screen.findByText(/now draws from Tank 3/)).toBeInTheDocument();
-    await waitFor(() => expect(ops(calls).some((o: any) => o.kind === "tank_switch")).toBe(true));
-    expect(ops(calls).find((o: any) => o.kind === "tank_switch").payload).toMatchObject({ nozzle: "na", tank: "tk3", reading: "1060" });
   });
 });

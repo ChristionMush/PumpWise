@@ -32,7 +32,6 @@ urlpatterns = [
     path("tank-readings/", views.TankDipView.as_view()),
     path("deliveries/", views.DeliveryView.as_view()),
     path("expenses/", views.ExpenseView.as_view()),
-    path("tank-switches/", views.TankSwitchView.as_view()),
     path("day-close/", views.DayCloseView.as_view()),
     path("day-close/<uuid:pk>/", views.DayCloseCorrectView.as_view()),
     path("readings/<str:kind>/<str:pk>/photo/", views.ReadingPhotoView.as_view()),
