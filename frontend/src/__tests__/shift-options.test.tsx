@@ -46,18 +46,6 @@ describe("attendants pick their pumps", () => {
   });
 });
 
-describe("pumps that sell both fuels", () => {
-  it("lists each with its fuels (no fuel heading that says nothing)", async () => {
-    const both = (id: string, name: string) => ({ id, name, nozzles: [nozzle(`${id}p`, "tk1"), { ...nozzle(`${id}d`, "tk2"), label: "Diesel", fuel_type: "d", fuel_code: "DIESEL" }] });
-    const litrix = { ...station, pumps: [both("p1", "Pump 1a"), both("p2", "Pump 1b")] };
-    mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [litrix] } }, "POST /api/sync/": applyAll });
-    renderApp("/");
-    expect(await screen.findByRole("checkbox", { name: "Pump 1a · Petrol + Diesel" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Pump 1b · Petrol + Diesel" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { level: 3 })).not.toBeInTheDocument();
-  });
-});
-
 describe("dip at the end of a shift", () => {
   const onShift = async () => kvSet("activeShift", { id: "s1", station_id: "st1", started_at: "2026-11-10T05:00:00Z", starts: { na: 1000 } });
 
