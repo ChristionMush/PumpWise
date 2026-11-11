@@ -45,6 +45,7 @@ class TenantCreateSerializer(serializers.Serializer):
     expenses_enabled = serializers.BooleanField(required=False, default=False)  # attendants and managers record what they paid out
     attendants_pick_pumps = serializers.BooleanField(required=False, default=False)
     dip_at_shift_end = serializers.BooleanField(required=False, default=False)
+    attendants_see_dip_litres = serializers.BooleanField(required=False, default=False)
     close_day_at_change = serializers.ChoiceField(choices=["", "07:00", "18:00"], required=False, default="")
 
     def validate_business_name(self, value):
@@ -106,6 +107,7 @@ class FeaturesSerializer(serializers.Serializer):
     expenses_enabled = serializers.BooleanField(required=False)
     attendants_pick_pumps = serializers.BooleanField(required=False)
     dip_at_shift_end = serializers.BooleanField(required=False)
+    attendants_see_dip_litres = serializers.BooleanField(required=False)
     close_day_at_change = serializers.ChoiceField(choices=["", "07:00", "18:00"], required=False)
 
 

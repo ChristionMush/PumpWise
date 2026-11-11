@@ -1,6 +1,6 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { litresFromChart } from "../pages/Dip";
+import { litresFromChart } from "../dipChart";
 import { mockApi, renderApp, signedIn } from "./helpers";
 
 const manager = { id: "m", role: "manager", full_name: "Tatenda", email: null, phone: null, must_change_password: false, tenant_id: "t" };

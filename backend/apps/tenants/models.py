@@ -40,6 +40,9 @@ class Tenant(UUIDModel, SoftDeleteModel):
     attendants_pick_pumps = models.BooleanField(default=False)
     # Ending a shift asks the outgoing attendant to dip every tank (unless someone did in the last hour).
     dip_at_shift_end = models.BooleanField(default=False)
+    # With dips at the end of a shift: the attendant's phone gets each tank's dip chart and shows the litres as the mm is
+    # typed (PESNAT: no site manager, the attendants dip). Off: attendants never see tank litres (rule 11).
+    attendants_see_dip_litres = models.BooleanField(default=False)
     # "07:00" or "18:00": the day closes by itself at that shift change, once everyone from the outgoing shift has ended
     # and every tank was dipped (dayclose.close_at_shift_change). "": closed on the Dip screen as before.
     close_day_at_change = models.CharField(max_length=5, blank=True, default="", choices=[("", "No"), ("07:00", "07:00"), ("18:00", "18:00")])

@@ -67,6 +67,32 @@ describe("dip at the end of a shift", () => {
     expect(ops(calls).find((o: any) => o.kind === "shift_end").payload.dips).toEqual([{ tank: "tk1", dip_mm: "1200" }, { tank: "tk4", dip_mm: "900" }]);
   });
 
+  it("with the litres switched on, shows the litres from each tank's chart, stops an off-chart dip, and still sends only the mm", async () => {
+    await onShift();
+    const chart = [["0", "0"], ["1000", "10000"], ["2000", "21000"]];
+    const withCharts = { ...station, tanks: station.tanks.map((t) => ({ ...t, calibration: chart })) };
+    const { calls } = mockApi({ "GET /api/auth/me/": { body: attendant }, "GET /api/shifts/prefill/": { body: { stations: [withCharts] } }, "POST /api/sync/": applyAll });
+    renderApp("/");
+    const user = userEvent.setup();
+    await user.type(await screen.findByPlaceholderText("Meter number now"), "1100");
+    await user.type(screen.getByLabelText("Cash"), "150");
+    const dips = await screen.findByRole("region", { name: "Tank dips" });
+    const [first, second] = within(dips).getAllByLabelText("Dip (mm)");
+    await user.type(first, "1500");
+    expect(dips).toHaveTextContent(/Litres: 15\D?500/);
+    await user.type(second, "2500");
+    expect(dips).toHaveTextContent("Off the dip chart: dip again");
+    await user.click(screen.getByRole("button", { name: "End shift" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Petrol Tank 2: 2500 mm is off the dip chart. Dip again.");
+    expect(ops(calls).some((o: any) => o.kind === "shift_end")).toBe(false);
+    await user.clear(second);
+    await user.type(second, "900");
+    await user.click(screen.getByRole("button", { name: "End shift" }));
+    await waitFor(() => expect(ops(calls).some((o: any) => o.kind === "shift_end")).toBe(true));
+    // the server reads the litres off the chart itself: the phone sends the mm only, as before
+    expect(ops(calls).find((o: any) => o.kind === "shift_end").payload.dips).toEqual([{ tank: "tk1", dip_mm: "1500" }, { tank: "tk4", dip_mm: "900" }]);
+  });
+
   it("still asks for a tank never dipped, though another tank was just dipped (the station's last dip is not theirs)", async () => {
     await onShift();
     const dieselJustDipped = { ...station, last_dip_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),

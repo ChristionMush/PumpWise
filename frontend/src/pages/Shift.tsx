@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
+import { chartOf, litresFromChart, offChart } from "../dipChart";
 import { enqueue, expectedVsHanded, kvGet, kvSet, myOps, uuid, type PriceRow } from "../offline";
 import HeldEnd, { type HeldStage } from "./HeldEnd";
 import { CashField, hasCents } from "../components";
@@ -273,7 +274,10 @@ export default function Shift() {
   const askDips = dipTanks.length > 0;
   const dipsWrong = () => {
     const missing = dipTanks.filter((t: any) => !endDips[t.id]?.mm || (!t.has_calibration && !endDips[t.id]?.litres));
-    return missing.length ? `Dip ${missing.map((t: any) => t.name).join(", ")} before you end.` : null;
+    if (missing.length) return `Dip ${missing.map((t: any) => t.name).join(", ")} before you end.`;
+    // a business whose attendants see the litres: a height off the tank's chart is caught here, not after the handover
+    const off = dipTanks.find((t: any) => offChart(t, endDips[t.id]?.mm ?? ""));
+    return off ? `${off.name}: ${endDips[off.id].mm} mm is off the dip chart. Dip again.` : null;
   };
   const dipLines = () => dipTanks.map((t: any) => ({ tank: t.id, dip_mm: endDips[t.id].mm, ...(endDips[t.id].litres ? { litres: endDips[t.id].litres } : {}) }));
   // a business with expenses: what the attendant paid out on the shift goes with their cash (a name and a cost each)
@@ -513,6 +517,9 @@ export default function Shift() {
             <div key={t.id} className="row gap">
               <strong>{t.name} <span className="muted">· {t.fuel_code}</span></strong>
               <label>Dip (mm)<input inputMode="decimal" value={endDips[t.id]?.mm ?? ""} onChange={(e) => setEndDips({ ...endDips, [t.id]: { mm: e.target.value.replace(",", "."), litres: endDips[t.id]?.litres ?? "" } })} /></label>
+              {chartOf(t) && <p className="muted" aria-live="polite">{offChart(t, endDips[t.id]?.mm ?? "")
+                ? <span className="warn">Off the dip chart: dip again</span>
+                : `Litres: ${endDips[t.id]?.mm ? Number(litresFromChart(chartOf(t), endDips[t.id].mm)).toLocaleString() : "-"}`}</p>}
               {!t.has_calibration && <label>Litres<input inputMode="decimal" value={endDips[t.id]?.litres ?? ""} onChange={(e) => setEndDips({ ...endDips, [t.id]: { mm: endDips[t.id]?.mm ?? "", litres: e.target.value.replace(",", ".") } })} /></label>}
             </div>
           ))}

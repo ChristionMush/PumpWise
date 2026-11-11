@@ -9,7 +9,7 @@ export type AttendantsMode = "single" | "multiple";
 export type AssignmentMode = "shared" | "assigned";
 export interface Station { id: string; name: string; address: string; status: string; attendants_mode?: AttendantsMode; assignment_mode?: AssignmentMode; }
 export interface Features { multi_attendant_enabled: boolean; pump_assignment_enabled: boolean; expenses_enabled?: boolean;
-  attendants_pick_pumps?: boolean; dip_at_shift_end?: boolean; close_day_at_change?: "" | "07:00" | "18:00"; }
+  attendants_pick_pumps?: boolean; dip_at_shift_end?: boolean; attendants_see_dip_litres?: boolean; close_day_at_change?: "" | "07:00" | "18:00"; }
 /** Chosen by the platform when it creates a business: shared pumps with one or several attendants, or each attendant works their own assigned pumps. */
 export type PumpSystem = "shared" | "shared_multi" | "assigned";
 export interface TenantSummary {

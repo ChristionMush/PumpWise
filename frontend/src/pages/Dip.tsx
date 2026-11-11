@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { ErrorNote } from "../components";
 import { enqueue, uuid } from "../offline";
+import { chartOf, litresFromChart, offChart, type Chart } from "../dipChart";
 import { loadPrefill, type StationInfo } from "./Shift";
 
 interface CloseCard { id: string; day: string; closed_at: string; closed_by: string | null }
@@ -16,30 +17,6 @@ const dayName = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(
 const fuelName = (code: string) => code.charAt(0) + code.slice(1).toLowerCase();
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-/** The litres for a dip height, read off the tank's dip chart ([mm, litres] rows, lowest first) the same way the
- * server does: straight line between the two rows either side. "" when there is no chart, no number, or the height
- * is off the chart. */
-type Chart = [string, string][];
-export function litresFromChart(chart: Chart | undefined, mmText: string): string {
-  if (!chart || chart.length < 2 || !mmText.trim()) return "";
-  const mm = Number(mmText.replace(",", "."));
-  if (!Number.isFinite(mm)) return "";
-  const rows = chart.map(([d, l]) => [Number(d), Number(l)]);
-  for (let i = 1; i < rows.length; i++) {
-    const [d0, l0] = rows[i - 1], [d1, l1] = rows[i];
-    if (mm >= d0 && mm <= d1) {
-      const litres = d1 === d0 ? l0 : l0 + ((l1 - l0) * (mm - d0)) / (d1 - d0);
-      return String(Math.round(litres * 1000) / 1000);
-    }
-  }
-  return "";
-}
-/** The tank's dip chart when it has a usable one (a phone with station data saved before charts were sent has none). */
-const chartOf = (tank: { calibration?: Chart } | undefined): Chart | undefined =>
-  tank?.calibration && tank.calibration.length >= 2 ? tank.calibration : undefined;
-/** A height typed for a tank with a chart, but outside it: the litres cannot be read off the chart. */
-const offChart = (tank: { calibration?: Chart } | undefined, mmText: string) =>
-  !!chartOf(tank) && !!mmText.trim() && !litresFromChart(chartOf(tank), mmText);
 const OffChartNote = () => <span className="warn"> · this height is off the chart</span>;
 
 /** Managers: close the trading day with the day's dip, once a day at the time the business dips (every tank's dip and

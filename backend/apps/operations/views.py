@@ -242,9 +242,7 @@ class PrefillView(APIView):
                 for t in Tank.objects.filter(station=st).select_related("fuel_type"):
                     last = TankReading.objects.filter(tank=t).first()
                     # the dip chart (mm -> litres) goes with the tank, so the dip screen fills the litres as the mm is typed
-                    chart = [[str(mm), str(litres)] for mm, litres in t.calibration.order_by("dip_mm").values_list("dip_mm", "litres")]
-                    if len(chart) < 2:  # one row is not a chart (the server will not read litres from it either)
-                        chart = []
+                    chart = _dip_chart(t)
                     tanks.append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres),
                                   "has_calibration": bool(chart), "calibration": chart, "last_litres": str(last.litres) if last else None})
                 entry["tanks"] = tanks
@@ -254,8 +252,17 @@ class PrefillView(APIView):
                     last = TankReading.objects.filter(tank=t).order_by("-reading_at").first()
                     entry["tanks"].append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "has_calibration": t.calibration.count() >= 2,
                                            "last_dip_at": last.reading_at if last else None})
+                    if user.tenant.attendants_see_dip_litres:  # switched on per business: the phone shows the litres from the mm
+                        entry["tanks"][-1]["calibration"] = _dip_chart(t)
             out.append(entry)
         return Response({"stations": out, "server_time": timezone.now()})
+
+
+def _dip_chart(tank):
+    """The tank's dip chart as [mm, litres] rows, lowest first, so a phone fills the litres as the mm is typed.
+    Empty when there is no usable chart (one row is not a chart: the server will not read litres from it either)."""
+    chart = [[str(mm), str(litres)] for mm, litres in tank.calibration.order_by("dip_mm").values_list("dip_mm", "litres")]
+    return chart if len(chart) >= 2 else []
 
 
 def _my_shifts(user, qs):

@@ -19,7 +19,7 @@ def test_a_business_created_with_assigned_pumps_gets_them_on_every_station():
     body = res.json()
     assert body["pump_system"] == "assigned"
     assert body["features"] == {"multi_attendant_enabled": True, "pump_assignment_enabled": True, "expenses_enabled": False,
-                                 "attendants_pick_pumps": False, "dip_at_shift_end": False, "close_day_at_change": ""}
+                                 "attendants_pick_pumps": False, "dip_at_shift_end": False, "attendants_see_dip_litres": False, "close_day_at_change": ""}
     assert {(s["attendants_mode"], s["assignment_mode"]) for s in body["stations"]} == {("multiple", "assigned")}
     # the owner cannot add a station; one the platform adds later follows the same system
     assert owner_of(body["id"]).post("/api/stations/", {"name": "Avondale"}, format="json").status_code == 403
@@ -54,7 +54,7 @@ def test_shared_pumps_with_several_attendants():
     body = res.json()
     assert body["pump_system"] == "shared_multi"
     assert body["features"] == {"multi_attendant_enabled": True, "pump_assignment_enabled": False, "expenses_enabled": False,
-                                 "attendants_pick_pumps": False, "dip_at_shift_end": False, "close_day_at_change": ""}
+                                 "attendants_pick_pumps": False, "dip_at_shift_end": False, "attendants_see_dip_litres": False, "close_day_at_change": ""}
     assert {(s["attendants_mode"], s["assignment_mode"]) for s in body["stations"]} == {("multiple", "shared")}
     # stations the platform adds later follow it
     added = c.post(f"/api/platform/tenants/{body['id']}/stations/", {"name": "Mabelreign"}, format="json")

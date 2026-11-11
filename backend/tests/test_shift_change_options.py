@@ -227,3 +227,18 @@ def test_an_offline_end_with_a_dip_that_cannot_be_right_is_kept_and_the_dip_set_
     end = next(e for e in mgr.get("/api/shift-ends/").json() if e["shift_id"] == sid)
     assert "Petrol Tank 2: the dip (1700 mm, 20000 L) was set aside: That is more than the tank can hold. Check the number. Dip it again." in end["checks"], end["checks"]
 
+
+
+def test_attendants_get_the_dip_chart_only_when_the_business_switches_it_on():
+    """Rule 11 by default: an attendant who dips at the end of a shift is told which tanks, never their litres. With
+    'attendants see the litres' on (PESNAT, no site manager), their phone gets each tank's chart to show the litres."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    tanks = lambda: client_for(att_a).get("/api/shifts/prefill/").json()["stations"][0]["tanks"]  # noqa: E731
+    options(a, dip_at_shift_end=True)
+    assert tanks() and not any("calibration" in t for t in tanks())
+    options(a, attendants_see_dip_litres=True)
+    charted = [t for t in tanks() if t["has_calibration"]]
+    assert charted and all(len(t["calibration"]) >= 2 for t in charted)
+    assert not any(k in t for t in tanks() for k in ("last_litres", "capacity_litres"))  # still no tank levels
+    options(a, attendants_see_dip_litres=False)
+    assert not any("calibration" in t for t in tanks())
