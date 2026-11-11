@@ -2,12 +2,13 @@
 
 const ACCESS = "fs_access";
 const REFRESH = "fs_refresh";
+export const SIGNED_IN_AS = "fs_user"; // whose sign-in the tokens are: every tab of the browser shares them
 
 export const tokens = {
   get access() { return localStorage.getItem(ACCESS); },
   get refresh() { return localStorage.getItem(REFRESH); },
   set(access: string, refresh: string) { localStorage.setItem(ACCESS, access); localStorage.setItem(REFRESH, refresh); },
-  clear() { localStorage.removeItem(ACCESS); localStorage.removeItem(REFRESH); },
+  clear() { localStorage.removeItem(ACCESS); localStorage.removeItem(REFRESH); localStorage.removeItem(SIGNED_IN_AS); },
 };
 
 export class ApiError extends Error {

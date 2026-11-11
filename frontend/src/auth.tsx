@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, tokens } from "./api";
+import { api, SIGNED_IN_AS, tokens } from "./api";
 import { setPhoneUser } from "./offline";
 import type { TenantInfo, User } from "./types";
 
@@ -31,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const reload = useCallback(async () => {
     try {
       const me = await api<{ user: User; tenant: TenantInfo | null; billing?: AuthState["billing"]; branding?: AuthState["branding"] }>("/api/auth/me/");
+      try { localStorage.setItem(SIGNED_IN_AS, me.user.id); } catch { /* storage blocked: one tab only */ }
       setUser(me.user);
       setTenant(me.tenant);
       setBilling(me.billing ?? null);
@@ -45,6 +46,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // a shared phone: entries saved on it are sent only while the person who made them is signed in
   useEffect(() => { void setPhoneUser(user); }, [user]);
+
+  // Another tab signed in as someone else, or signed out: this tab's screens hold the old account's data and its next
+  // request would go out with the new sign-in, so start afresh rather than show one account's page with another's numbers.
+  useEffect(() => {
+    if (!user) return;
+    const changed = (e: StorageEvent) => {
+      if (e.key === SIGNED_IN_AS && e.newValue !== null && e.newValue !== user.id) window.location.reload();
+      if (e.key === null || (e.key === "fs_access" && e.newValue === null)) window.location.reload();
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  }, [user]);
 
   useEffect(() => {
     if (tokens.access) void reload();
