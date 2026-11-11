@@ -16,6 +16,26 @@ const dayName = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(
 const fuelName = (code: string) => code.charAt(0) + code.slice(1).toLowerCase();
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+/** The litres for a dip height, read off the tank's dip chart ([mm, litres] rows, lowest first) the same way the
+ * server does: straight line between the two rows either side. "" when there is no chart, no number, or the height
+ * is off the chart. */
+export function litresFromChart(chart: [string, string][] | undefined, mmText: string): string {
+  if (!chart || chart.length < 2 || !mmText.trim()) return "";
+  const mm = Number(mmText.replace(",", "."));
+  if (!Number.isFinite(mm)) return "";
+  const rows = chart.map(([d, l]) => [Number(d), Number(l)]);
+  for (let i = 1; i < rows.length; i++) {
+    const [d0, l0] = rows[i - 1], [d1, l1] = rows[i];
+    if (mm >= d0 && mm <= d1) {
+      const litres = d1 === d0 ? l0 : l0 + ((l1 - l0) * (mm - d0)) / (d1 - d0);
+      return String(Math.round(litres * 1000) / 1000);
+    }
+  }
+  return "";
+}
+const offChart = (chart: [string, string][] | undefined, mmText: string) =>
+  !!chart && chart.length >= 2 && !!mmText.trim() && !litresFromChart(chart, mmText);
+
 /** Managers: close the trading day with the day's dip, once a day at the time the business dips (every tank's dip and
  * every pump's meter in one go), record fuel
  * deliveries, and take a spot dip if needed. The day close is what the daily figures and the daily report run on. */
@@ -144,8 +164,8 @@ export default function Dip() {
           {stationTanks.map((t) => (
             <div key={t.id} className="row gap">
               <strong>{t.name} <span className="muted">· {t.fuel_code}</span></strong>
-              <label>Dip (mm)<input inputMode="decimal" value={dips[t.id]?.mm ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: e.target.value, litres: dips[t.id]?.litres ?? "" } })} /></label>
-              <label>{t.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={dips[t.id]?.litres ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: dips[t.id]?.mm ?? "", litres: e.target.value } })} /></label>
+              <label>Dip (mm)<input inputMode="decimal" value={dips[t.id]?.mm ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: e.target.value, litres: t.calibration?.length >= 2 ? litresFromChart(t.calibration, e.target.value) : dips[t.id]?.litres ?? "" } })} /></label>
+              <label>{t.has_calibration ? "Litres (from the dip chart)" : "Litres"}{offChart(t.calibration, dips[t.id]?.mm ?? "") && <span className="warn"> · this height is off the chart</span>}<input inputMode="decimal" value={dips[t.id]?.litres ?? ""} onChange={(e) => setDips({ ...dips, [t.id]: { mm: dips[t.id]?.mm ?? "", litres: e.target.value } })} /></label>
             </div>
           ))}
           <h3>Pump meters</h3>
@@ -184,9 +204,9 @@ export default function Dip() {
 
       <details className="card form"><summary><strong>Spot dip</strong> <span className="muted">· a dip outside the day close</span></summary>
         <form onSubmit={saveDip} className="form">
-          <label>Tank<select value={tankId} onChange={(e) => setTankId(e.target.value)}>{tanks.map((t) => <option key={t.id} value={t.id}>{t.station} · {t.name} ({t.fuel_code})</option>)}</select></label>
-          <label>Dip height (mm)<input inputMode="decimal" value={dipMm} onChange={(e) => setDipMm(e.target.value)} /></label>
-          <label>{tank?.has_calibration ? "Litres (blank: from the chart)" : "Litres"}<input inputMode="decimal" value={litres} onChange={(e) => setLitres(e.target.value)} /></label>
+          <label>Tank<select value={tankId} onChange={(e) => { setTankId(e.target.value); const next = tanks.find((t) => t.id === e.target.value); if (next?.calibration?.length >= 2) setLitres(litresFromChart(next.calibration, dipMm)); }}>{tanks.map((t) => <option key={t.id} value={t.id}>{t.station} · {t.name} ({t.fuel_code})</option>)}</select></label>
+          <label>Dip height (mm)<input inputMode="decimal" value={dipMm} onChange={(e) => { setDipMm(e.target.value); if (tank?.calibration?.length >= 2) setLitres(litresFromChart(tank.calibration, e.target.value)); }} /></label>
+          <label>{tank?.has_calibration ? "Litres (from the dip chart)" : "Litres"}{offChart(tank?.calibration, dipMm) && <span className="warn"> · this height is off the chart</span>}<input inputMode="decimal" value={litres} onChange={(e) => setLitres(e.target.value)} /></label>
           <button className="btn">Save dip</button></form>
       </details>
       <ErrorNote message={error} />{msg && <p role="status" className="ok-note">{msg}</p>}

@@ -115,6 +115,15 @@ def test_attendant_responses_never_carry_tank_fields(site):
         assert not leaked, f"{url} leaked {leaked}"
     # the manager's prefill does include tanks, so the check above is not vacuous
     assert "tanks" in client_for(site["a"][Role.MANAGER]).get("/api/shifts/prefill/").json()["stations"][0]
+    assert "calibration" not in str(att.get("/api/shifts/prefill/").json())
+
+
+def test_manager_prefill_carries_each_tanks_dip_chart(site):
+    """The dip screen fills the litres from the mm as it is typed, so the chart travels with the tank."""
+    tank = client_for(site["a"][Role.MANAGER]).get("/api/shifts/prefill/").json()["stations"][0]["tanks"][0]
+    assert tank["has_calibration"] and len(tank["calibration"]) >= 2
+    mms = [float(mm) for mm, _ in tank["calibration"]]
+    assert mms == sorted(mms)
 
 
 def test_dips_and_deliveries_record_who_did_it_and_are_idempotent(site):
