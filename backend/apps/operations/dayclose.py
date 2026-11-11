@@ -136,13 +136,13 @@ def held_by(station, change, at):
 
 
 def unclosed_change(station, change, now=None):
-    """A business that closes at a shift change: once 2 hours past today's change (else yesterday's) and the day it
-    ends is still not closed, that day and what holds it up; else None."""
+    """A business that closes at a shift change: from 2 hours past a change until the next handover begins, if the day
+    it ends is still not closed, that day and what holds it up; else None."""
     now = now or timezone.now()
     today = timezone.localtime(now).date()
     for day in (today, today - timedelta(days=1)):
         moment = _change_moment(change, day)
-        if moment + AFTER_CHANGE <= now:
+        if moment + AFTER_CHANGE <= now < moment + timedelta(days=1) - BEFORE_CHANGE:
             closes = tradingday.day_of_close(moment)
             if DayClose.objects.filter(station=station, day=closes).exists():
                 return None

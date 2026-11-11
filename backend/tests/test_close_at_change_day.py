@@ -43,7 +43,7 @@ def test_the_day_runs_handover_to_handover_and_money_handed_in_after_it_stays_on
         assert DayClose.objects.get().closed_at == _local(2026, 10, 1, 14, 29)
 
     day = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-01"}).json()[0]
-    assert day["to"].startswith("2026-10-01T16:29")
+    assert datetime.fromisoformat(day["to"]) == _local(2026, 10, 1, 14, 29)
     assert [(b["key"], b["label"]) for b in day["balance"] if b["key"] != "short"] == [("unsent", "Not handed in yet")]
     assert [w["name"] for s in day["shifts"] for w in s["waiting"]] == [att_a.full_name]
 
@@ -56,7 +56,7 @@ def test_the_day_runs_handover_to_handover_and_money_handed_in_after_it_stays_on
     assert [b["key"] for b in day["balance"] if b["key"] != "short"] == []
     assert sorted(p["name"] for s in day["shifts"] for p in s["people"]) == sorted([att_a.full_name, att_b.full_name])
     nxt = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-02"}).json()[0]
-    assert nxt["from"].startswith("2026-10-01T16:29") and all(h["amount"] == "0.00" for h in nxt["handed_in"]) and nxt["shifts"] == []
+    assert datetime.fromisoformat(nxt["from"]) == _local(2026, 10, 1, 14, 29) and all(h["amount"] == "0.00" for h in nxt["handed_in"]) and nxt["shifts"] == []
 
 
 def test_the_dashboard_says_what_holds_up_a_day_not_closed_at_the_change():
