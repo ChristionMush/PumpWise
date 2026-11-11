@@ -201,8 +201,6 @@ def day_money(station, start, end, sold_value, at_change=False):
             rows[EXPENSES] += e.amount
         ended_here = at_change and t.left_at is not None and start < t.left_at <= end
         if start < t.cash_submitted_at <= end or ended_here:  # handed in today: all of it, less what settles the fuel of another day
-            if t.cash_submitted_at > end:
-                settled_at = max(settled_at or t.cash_submitted_at, t.cash_submitted_at)
             taken = _settle(rows, total - inside)
             for k, v in rows.items():
                 split[k] += v - taken.get(k, Decimal(0))

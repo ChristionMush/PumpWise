@@ -53,7 +53,7 @@ def test_the_day_runs_handover_to_handover_and_money_handed_in_after_it_stays_on
     day = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-01"}).json()[0]
     handed = {h["payment_type"]: h["amount"] for h in day["handed_in"]}
     assert handed["credit"] == "50.00" and handed["cash"] == "160.00"
-    assert [b["key"] for b in day["balance"] if b["key"] != "short"] == []
+    assert [b["key"] for b in day["balance"] if b["key"] != "short"] == [] and day["settled_at"] is None  # no night-shift split
     assert sorted(p["name"] for s in day["shifts"] for p in s["people"]) == sorted([att_a.full_name, att_b.full_name])
     nxt = mgr.get("/api/reports/daily/", {"station": str(fc.station.pk), "day": "2026-10-02"}).json()[0]
     assert datetime.fromisoformat(nxt["from"]) == _local(2026, 10, 1, 14, 29) and all(h["amount"] == "0.00" for h in nxt["handed_in"]) and nxt["shifts"] == []
