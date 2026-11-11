@@ -17,7 +17,7 @@ from .tank_history import tank_history
 def _dates(request, default_days=30):
     q = request.query_params
     try:
-        to = date.fromisoformat(q["date_to"]) if q.get("date_to") else tradingday.today()
+        to = date.fromisoformat(q["date_to"]) if q.get("date_to") else tradingday.latest_today(visible_station_ids(request.user))
         frm = date.fromisoformat(q["date_from"]) if q.get("date_from") else to - timedelta(days=default_days - 1)
     except ValueError:
         raise ValidationError({"detail": "Dates must look like 2026-10-31."})
@@ -170,9 +170,9 @@ class DaysReportView(APIView):
         from .daily import daily_report
 
         frm, to = _dates(request, default_days=14)
-        to = min(to, tradingday.today())  # no empty days ahead
-        frm = max(frm, to - timedelta(days=30))
         ids = _stations(request)
+        to = min(to, tradingday.latest_today(ids))  # no empty days ahead
+        frm = max(frm, to - timedelta(days=30))
         stations = Station.objects.filter(status="active")
         if ids is not None:
             stations = stations.filter(pk__in=ids)

@@ -6,6 +6,14 @@ import { DayReport, n, shortDay } from "./DayReport";
 
 const amt = (o: Record<string, string>) => Object.entries(o).map(([c, a]) => `${c} ${Number(a).toLocaleString(undefined, { minimumFractionDigits: 2 })}`).join(" · ") || "—";
 
+/** A business that closes the day at a shift change: the day is still open 2 hours after it, and why. */
+function DayNotClosed({ held }: { held: { day: string; change: string; people: string[]; tanks: string[] } }) {
+  const why = [held.people.length ? `${held.people.join(", ")} still on` : "", held.tanks.length ? `not dipped: ${held.tanks.join(", ")}` : ""].filter(Boolean);
+  return (
+    <p className="warn" role="alert">{shortDay(held.day)} is not closed: {why.length ? why.join("; ") : "nobody ended a shift at the change"}. Close it on the Dip screen.</p>
+  );
+}
+
 export default function Dashboard() {
   const [d, setD] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +49,7 @@ export default function Dashboard() {
               <TankParts parts={k.parts} /></div>
           ) : <div key={k.tank_id}><p className="muted">{k.tank}: no dip recorded yet</p><TankParts parts={k.parts} /></div>)}
           {s.open_shifts.map((o: any) => <p key={o.id} className="muted">Shift open: {(o.attendants?.length ? o.attendants : [o.attendant]).filter(Boolean).join(", ") || "no one yet"} for {o.hours_open} h</p>)}
+          {s.day_not_closed && <DayNotClosed held={s.day_not_closed} />}
         </section>
       ))}
     </>

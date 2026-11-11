@@ -115,25 +115,55 @@ def close_day(*, user, station, dips, meters, at=None, note="", request=None):
 BEFORE_CHANGE, AFTER_CHANGE = timedelta(hours=3), timedelta(hours=2)
 
 
+def _change_moment(change, day):
+    from datetime import datetime, time
+
+    hh, mm = map(int, change.split(":"))
+    return timezone.make_aware(datetime.combine(day, time(hh, mm)), timezone.get_current_timezone())
+
+
+def held_by(station, change, at):
+    """What keeps the day from closing at this shift change (a moment): the outgoing people still on, and the tanks
+    not dipped since 3 hours before it, up to `at`."""
+    from .models import ShiftAttendant
+
+    since = change - BEFORE_CHANGE
+    on = (ShiftAttendant.objects.filter(shift__station=station, left_at__isnull=True, joined_at__lt=since, joined_at__gt=since - timedelta(hours=16))
+          .select_related("user").order_by("joined_at"))  # a part left open for days does not hold the close up
+    tanks = [t for t in Tank.objects.filter(station=station).order_by("name")
+             if not TankReading.objects.filter(tank=t, reading_at__gt=since, reading_at__lte=at).exists()]
+    return {"people": list(dict.fromkeys(a.user.full_name for a in on)), "tanks": [t.name for t in tanks]}
+
+
+def unclosed_change(station, change, now=None):
+    """A business that closes at a shift change: once 2 hours past today's change (else yesterday's) and the day it
+    ends is still not closed, that day and what holds it up; else None."""
+    now = now or timezone.now()
+    today = timezone.localtime(now).date()
+    for day in (today, today - timedelta(days=1)):
+        moment = _change_moment(change, day)
+        if moment + AFTER_CHANGE <= now:
+            closes = tradingday.day_of_close(moment)
+            if DayClose.objects.filter(station=station, day=closes).exists():
+                return None
+            return {"day": closes.isoformat(), "change": change, **held_by(station, moment, moment + AFTER_CHANGE)}
+    return None
+
+
 def close_at_shift_change(*, station, user, at, request=None):
     """A business that closes the day at a shift change (Tenant.close_day_at_change, "07:00" or "18:00"): once everyone
     who was on before the change has ended, and every tank was dipped at the change, the day closes at the last end,
     with the latest dip of each tank and every pump's latest meter number. Returns the close, or None (not yet, or the
     business does not close this way; the Dip screen still can)."""
-    from datetime import datetime, time
-
     from apps.tenants.models import Tenant
-
-    from .models import ShiftAttendant
 
     tenant = Tenant.objects.filter(pk=station.tenant_id).first()
     if tenant is None or not tenant.close_day_at_change:
         return None
     local = timezone.localtime(at)
-    hh, mm = map(int, tenant.close_day_at_change.split(":"))
     change = None
     for day in (local.date() - timedelta(days=1), local.date(), local.date() + timedelta(days=1)):
-        moment = timezone.make_aware(datetime.combine(day, time(hh, mm)), timezone.get_current_timezone())
+        moment = _change_moment(tenant.close_day_at_change, day)
         if moment - BEFORE_CHANGE <= at <= moment + AFTER_CHANGE:
             change = moment
     if change is None:
@@ -142,12 +172,13 @@ def close_at_shift_change(*, station, user, at, request=None):
     day = tradingday.day_of_close(at)
     if DayClose.objects.filter(station=station, day=day).exists():
         return None
-    if ShiftAttendant.objects.filter(shift__station=station, left_at__isnull=True, joined_at__lt=since, joined_at__gt=since - timedelta(hours=16)).exists():
-        return None  # someone from the outgoing shift is still on (a part left open for days does not hold the close up)
+    held = held_by(station, change, at)
+    if held["people"] or held["tanks"]:
+        return None  # someone from the outgoing shift is still on, or a tank was not dipped at this change
     tanks = list(Tank.objects.filter(station=station))
     dips = {t.pk: TankReading.objects.filter(tank=t, reading_at__gt=since, reading_at__lte=at).order_by("-reading_at").first() for t in tanks}
-    if not tanks or any(d is None for d in dips.values()):
-        return None  # a tank was not dipped at this change
+    if not tanks:
+        return None
     nozzles = list(Nozzle.objects.filter(pump__station=station))
     meters = {n.pk: PumpMeterReading.objects.filter(nozzle=n, reading_at__lte=at).order_by("-reading_at", "-created_at").first() for n in nozzles}
     if not nozzles or any(m is None for m in meters.values()):

@@ -48,15 +48,17 @@ def _s(v, q):
     return str((v or Decimal(0)).quantize(q))
 
 
-def shift_checks(station, start, end):
+def shift_checks(station, start, end, at_change=False):
     """The day's drill-down, built from each attendant's own turn (their meters, what they owe and what they handed
     in), not the whole shift: on assigned pumps a shift can stay open for days while people come and go. A turn
     belongs to the day it was handed in; one whose meters were closed in the day but whose cash is not in yet is
     listed as still to hand in. Grouped by the shift they were worked in: day (07:00-18:00) or night (18:00-07:00),
-    from the middle of each turn, so a shift record that stays open across shifts still shows each shift apart."""
-    parts = (ShiftAttendant.objects.filter(shift__station=station)
-             .filter(Q(cash_submitted_at__gt=start, cash_submitted_at__lte=end) | Q(cash_submitted_at__isnull=True, left_at__gt=start, left_at__lte=end))
-             .select_related("shift__station", "user").order_by("joined_at"))
+    from the middle of each turn, so a shift record that stays open across shifts still shows each shift apart.
+    at_change: the day closes as the outgoing shift ends, so a turn belongs to the day it ended in (as in day_money)."""
+    in_day = Q(left_at__gt=start, left_at__lte=end)
+    if not at_change:
+        in_day = Q(cash_submitted_at__gt=start, cash_submitted_at__lte=end) | (Q(cash_submitted_at__isnull=True) & in_day)
+    parts = ShiftAttendant.objects.filter(shift__station=station).filter(in_day).select_related("shift__station", "user").order_by("joined_at")
     by_shift, now = {}, timezone.now()
     for part in parts:
         e = end_summary(part)
@@ -168,7 +170,7 @@ def _settle(rows, value):
     return taken
 
 
-def day_money(station, start, end, sold_value):
+def day_money(station, start, end, sold_value, at_change=False):
     """The money for the day's fuel, by payment type, so the Grand Total always equals the fuel sold.
 
     Each attendant's hand-in covers their whole turn, and the night shift's turn runs across the 9 pm close
@@ -176,7 +178,10 @@ def day_money(station, start, end, sold_value):
     When they hand in in the morning, that part is settled as cash, in whole dollars: the value of their fuel before
     the close, taken from their cash (then EcoCash, then swipe, if their cash is not enough; never intercompany
     credit). Everything else of their hand-in, the rest of the cash and all swipe, EcoCash and intercompany credit,
-    stays whole on the day it was handed in. What is left is the attendants' cash differences (and rounding)."""
+    stays whole on the day it was handed in. What is left is the attendants' cash differences (and rounding).
+
+    at_change: a business that closes the day at the shift change. The day ends as the outgoing shift ends, so a turn
+    that ended in the day belongs to it whole, however late its money comes in; until then it is "Not handed in yet"."""
     turns = (ShiftAttendant.objects.filter(shift__station=station, joined_at__lte=end).filter(Q(left_at__isnull=True) | Q(left_at__gt=start))
              .prefetch_related("cash"))
     split, pending, settled_at = defaultdict(Decimal), Decimal(0), None
@@ -194,7 +199,10 @@ def day_money(station, start, end, sold_value):
             rows[c.payment_type] += c.amount
         for e in part_expenses(t):  # paid out of the turn's money: accounted for, on their own line
             rows[EXPENSES] += e.amount
-        if start < t.cash_submitted_at <= end:  # handed in today: all of it, less what settles the fuel of another day
+        ended_here = at_change and t.left_at is not None and start < t.left_at <= end
+        if start < t.cash_submitted_at <= end or ended_here:  # handed in today: all of it, less what settles the fuel of another day
+            if t.cash_submitted_at > end:
+                settled_at = max(settled_at or t.cash_submitted_at, t.cash_submitted_at)
             taken = _settle(rows, total - inside)
             for k, v in rows.items():
                 split[k] += v - taken.get(k, Decimal(0))
@@ -206,8 +214,9 @@ def day_money(station, start, end, sold_value):
     short = sold_value - paid - pending  # the day's share of the cash differences (and any fuel no attendant was on)
     handed = [{"payment_type": k, "label": label, "amount": _s(split.get(k), Q2)} for k, label in PAYMENT.items()]
     handed += [{"payment_type": k, "label": OTHER_LINES.get(k, k), "amount": _s(v, Q2)} for k, v in split.items() if k not in PAYMENT and v.quantize(Q2)]
+    waiting = ("unsent", "Not handed in yet") if at_change else ("evening", "Night sales before the close")
     balance = [{"key": k, "label": label, "amount": _s(v, Q2)} for k, label, v in (
-        ("evening", "Night sales before the close", pending), ("short", "Short (+) / over (−)", short)) if v.quantize(Q2)]
+        (*waiting, pending), ("short", "Short (+) / over (−)", short)) if v.quantize(Q2)]
     return handed, balance, split, paid, (settled_at if not pending.quantize(Q2) else None)
 
 
@@ -277,7 +286,7 @@ def daily_report(station, day):
 
     # the money for the day's fuel: hand-ins shared between the days by the fuel each turn pumped on each side of the close
     sold_value = totals["amount"] or Decimal(0)
-    handed, balance, cash, paid, settled_at = day_money(station, start, end, sold_value)
+    handed, balance, cash, paid, settled_at = day_money(station, start, end, sold_value, bool(cal.closes_at_change))
     received = sum((v for k, v in cash.items() if k != "credit"), Decimal(0))
 
     # deep dive: each person's litres and money within the day, by shift
@@ -286,7 +295,7 @@ def daily_report(station, day):
               for r in sales.values("attendant__full_name", "shift_id", "shift__started_at").annotate(litres=Sum("litres"), amount=Sum("amount"))
               .order_by("shift__started_at", "attendant__full_name")]
 
-    checks = shift_checks(station, start, end)
+    checks = shift_checks(station, start, end, bool(cal.closes_at_change))
     return {
         "station": str(station.pk), "station_name": station.name, "day": day.isoformat(), "currency": station.pricing_currency,
         "from": start, "to": end, "closed": bool(close), "closed_at": close.closed_at if close else None,

@@ -20,9 +20,9 @@ def _dec(v, q):
 
 
 def daily_sales(*, station_ids=None, date_from: date, date_to: date, tank=None):
-    # a little wider than the nominal 21:00 bounds: a station's day ends when its manager closes it
-    start = local_day_bounds(date_from)[0] - timedelta(hours=6)
-    end = local_day_bounds(date_to)[1] + timedelta(hours=6)
+    # wider than the nominal 21:00 bounds: a station's day ends when its manager closes it, or at a shift change
+    start = local_day_bounds(date_from)[0] - timedelta(hours=12)
+    end = local_day_bounds(date_to)[1] + timedelta(hours=12)
     qs = Transaction.objects.filter(occurred_at__gte=start, occurred_at__lt=end)
     if station_ids is not None:
         qs = qs.filter(station_id__in=station_ids)
@@ -45,7 +45,7 @@ def daily_sales(*, station_ids=None, date_from: date, date_to: date, tank=None):
         p[0] += r["litres"]; p[1] += r["amount"]; p[2] = r["nozzle__pump__name"]
 
     # include quiet days so averages are honest
-    last = min(date_to, tradingday.today())
+    last = min(date_to, tradingday.latest_today(station_ids if tank is None else [tank.station_id]))
     out, total_litres, total_amount = [], Decimal(0), defaultdict(Decimal)
     litres_by_day, litres_by_fuel_day = {}, defaultdict(dict)
     n = date_from

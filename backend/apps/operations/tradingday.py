@@ -1,8 +1,9 @@
 """The trading day: 21:00 to 21:00, named by the day it closes (21:00 on 21 Oct to 21:00 on 22 Oct is 22 Oct).
 
 Each station's day ends when its manager closes it (DayClose): the pumps pause, every tank is dipped and every pump's
-meter is read, a little after 21:00 as people take time. Until a day is closed, 21:00 stands in. Every daily figure in
-the system (sales, the fuel check, the dashboard's "today", reports, the accounting pack) uses these bounds.
+meter is read, a little after 21:00 as people take time. Until a day is closed, 21:00 stands in; a business that closes
+the day at a shift change (Tenant.close_day_at_change) has that change stand in instead. Every daily figure in the
+system (sales, the fuel check, the dashboard's "today", reports, the accounting pack) uses these bounds.
 """
 from datetime import date, datetime, time, timedelta
 
@@ -11,9 +12,14 @@ from django.utils import timezone
 CLOSES_AT = time(21, 0)
 
 
-def nominal_close(day: date):
-    """21:00 local on the day: when a trading day ends if nobody closed it."""
-    return timezone.make_aware(datetime.combine(day, CLOSES_AT), timezone.get_current_timezone())
+def nominal_close(day: date, change=""):
+    """When a trading day ends if nobody closed it: 21:00 local on the day, or the business's closing shift change
+    ("18:00" on the day; a morning change, "07:00", the morning after, as a close then still ends this day)."""
+    if not change:
+        return timezone.make_aware(datetime.combine(day, CLOSES_AT), timezone.get_current_timezone())
+    hh, mm = map(int, change.split(":"))
+    on = day if hh >= 12 else day + timedelta(days=1)
+    return timezone.make_aware(datetime.combine(on, time(hh, mm)), timezone.get_current_timezone())
 
 
 def day_of_close(at):
@@ -28,16 +34,27 @@ class Calendar:
     def __init__(self, station_id=None):
         self.station_id = station_id
         self._closes = None
+        self._change = ""
 
     def _load(self):
         if self._closes is None:
+            from apps.stations.models import Station
+
             from .models import DayClose
 
             self._closes = {} if self.station_id is None else dict(DayClose.objects.filter(station_id=self.station_id).values_list("day", "closed_at"))
+            if self.station_id is not None:
+                self._change = Station.all_objects.filter(pk=self.station_id).values_list("tenant__close_day_at_change", flat=True).first() or ""
         return self._closes
 
+    @property
+    def closes_at_change(self):
+        """The business's closing shift change ("18:00", "07:00"), or "" (closed on the Dip screen, about 21:00)."""
+        self._load()
+        return self._change
+
     def close_of(self, day: date):
-        return self._load().get(day) or nominal_close(day)
+        return self._load().get(day) or nominal_close(day, self._change)
 
     def bounds(self, day: date):
         """(start, end] of a trading day: after the previous day's close, up to and including this day's close (sales
@@ -65,3 +82,14 @@ def day_of(station_id, at):
 
 def today(station_id=None):
     return Calendar(station_id).today()
+
+
+def latest_today(station_ids=None):
+    """Today for a choice of dates: 21:00 to 21:00, or later where a business that closes at a shift change has
+    already closed (from its handover on, its next day is today)."""
+    from apps.stations.models import Station
+
+    stations = Station.objects.exclude(tenant__close_day_at_change="")
+    if station_ids is not None:
+        stations = stations.filter(pk__in=station_ids)
+    return max([today(), *(today(pk) for pk in stations.values_list("pk", flat=True))])

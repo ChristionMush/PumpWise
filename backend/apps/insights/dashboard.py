@@ -43,12 +43,14 @@ def build_dashboard(user):
 
 
 def _build(user):
+    from apps.operations.dayclose import unclosed_change
     from apps.operations.tradingday import Calendar
 
     now = timezone.now()
     stations = list(scope(Station.objects.filter(status="active"), user, "id"))
     station_ids = [s.pk for s in stations]
-    today_of = {s.pk: Calendar(s.pk).today() for s in stations}  # each station's trading day (closes about 21:00)
+    calendars = {s.pk: Calendar(s.pk) for s in stations}
+    today_of = {pk: c.today() for pk, c in calendars.items()}  # each station's trading day (closes about 21:00, or at a shift change)
     today = max(today_of.values(), default=Calendar().today())
     # one row per fuel pool (every tank of the fuel at the station is one stock), named by its tanks
     tanks = [p.lead for p in pools_for(Tank.objects.filter(station_id__in=station_ids).select_related("fuel_type", "station"))]
@@ -92,6 +94,8 @@ def _build(user):
                 "attendant": next((a.user.full_name for a in people.get(s.pk, []) if a.is_lead), None),
             } for s in open_shifts if s.station_id == st.pk],
             "unexplained_loss_7d": str(loss),
+            # a business that closes at a shift change: the day still open 2 hours after it, and what holds it up
+            "day_not_closed": unclosed_change(st, calendars[st.pk].closes_at_change, now) if calendars[st.pk].closes_at_change else None,
         })
     refills = sorted((d for d in (s.data for s in statuses.values()) if d.get("refill_by")), key=lambda d: d["refill_by"])
     open_alerts = Alert.objects.filter(status="open")
