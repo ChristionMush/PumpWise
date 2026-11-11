@@ -115,7 +115,8 @@ def test_attendant_responses_never_carry_tank_fields(site):
         assert not leaked, f"{url} leaked {leaked}"
     # the manager's prefill does include tanks, so the check above is not vacuous
     assert "tanks" in client_for(site["a"][Role.MANAGER]).get("/api/shifts/prefill/").json()["stations"][0]
-    assert "calibration" not in str(att.get("/api/shifts/prefill/").json())
+    # nor the dip charts (an attendant who dips at the end of a shift is told which tanks, never their chart)
+    assert not any("calibration" in t for s in att.get("/api/shifts/prefill/").json()["stations"] for t in s.get("tanks", []))
 
 
 def test_manager_prefill_carries_each_tanks_dip_chart(site):

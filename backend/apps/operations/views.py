@@ -243,8 +243,10 @@ class PrefillView(APIView):
                     last = TankReading.objects.filter(tank=t).first()
                     # the dip chart (mm -> litres) goes with the tank, so the dip screen fills the litres as the mm is typed
                     chart = [[str(mm), str(litres)] for mm, litres in t.calibration.order_by("dip_mm").values_list("dip_mm", "litres")]
-                    tanks.append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres), "has_calibration": len(chart) >= 2,
-                                  "calibration": chart if len(chart) >= 2 else [], "last_litres": str(last.litres) if last else None})
+                    if len(chart) < 2:  # one row is not a chart (the server will not read litres from it either)
+                        chart = []
+                    tanks.append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres),
+                                  "has_calibration": bool(chart), "calibration": chart, "last_litres": str(last.litres) if last else None})
                 entry["tanks"] = tanks
             elif user.tenant.dip_at_shift_end:  # an attendant who dips at the end of a shift: which tanks, never their levels
                 entry["tanks"] = []
