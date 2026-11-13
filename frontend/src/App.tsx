@@ -82,7 +82,7 @@ function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="app">
       <header className="header">
-        <img className="logo" src={branding?.logo_url || "/icon.svg"} alt="" />
+        <img className="logo" src={branding?.logo_url || "/icon-192.png"} alt="" />
         <Link to="/" className="brand">{name}</Link>
         {user && user.role !== "platform_admin" && <SyncBadge />}
         <span className="who">{user?.full_name}</span>

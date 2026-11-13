@@ -19,7 +19,7 @@ describe("login", () => {
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(screen.getByText("Powered by ELICHIE")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "PumpWise" })).toBeInTheDocument();
-    expect(screen.getByAltText("PumpWise logo")).toHaveAttribute("src", "/icon.svg");
+    expect(screen.getByAltText("PumpWise: know every litre")).toHaveAttribute("src", "/logo.png");
   });
 
   it("lets people show the password they typed, and hide it again, before signing in", async () => {
