@@ -15,8 +15,12 @@ Marks live in the database (`tenants_mark`, platform only; migration 0019 adds M
 business to its closest Mark). Each business keeps its own modules, so editing a Mark never changes a business on it.
 "Duplicate" copies a Mark to change into a new one, and the original stays as it was. The platform API:
 `/api/platform/modules/`, `/api/platform/marks/` (list; POST to create, or `duplicate_of`), `/api/platform/marks/<id>/`
-(PATCH name, description, modules), `/api/platform/tenants/<id>/mark/` (link a business). A business's summary shows
-its `mark`, `modules` and `mark_differences`.
+(PATCH name, description, modules), `/api/platform/tenants/<id>/mark/` (link a business), `/api/platform/tenants/<id>/modules/`
+(PATCH the modules that change; each goes through its own setter in features.py). A new business is created with `mark`
+and `modules`. A business's summary shows its `mark`, `modules` and `mark_differences`.
+
+Screens (platform only): New business (choose a Mark, its modules come ticked, the other Marks' under "Also available"),
+the business page (Mark and modules, saved after confirmation), and Marks (list, change, duplicate).
 
 ## Core (every client, cannot be unticked)
 
@@ -33,7 +37,7 @@ Shifts with meter numbers and cash hand-in · shift-end approval and undo reques
 | 5 | **Day close** | pick one | Manager closes from 21:00 · At the 07:00 change · At the 18:00 change | Manager from 21:00 | At the evening handover (18:00 setting) | | `close_day_at_change` |
 
 Notes:
-- Module 1 is the only one that has to be settled before the first shift. Changing it is refused while a shift is open, and every other module will get the same guard.
+- Module 1 is the only one that has to be settled before the first shift. Changing it is refused while a shift is open, because it moves the stations. The others take effect straight away: a station open day and night nearly always has a shift open, so the same guard would block them for good.
 - Pump allocation is chosen for the business and puts every station on it (a new station follows it). Each station keeps
   its own setting (assigned pumps, several attendants), and the shift code reads the station's, which is correct. Only
   "attendants pick" is read from the business.

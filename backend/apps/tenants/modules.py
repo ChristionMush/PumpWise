@@ -11,8 +11,8 @@ Each module reads the switches already on the Tenant row, so asking costs no dat
 exactly as it did before modules. Saving a change still goes through apps/tenants/features.py, which guards open shifts
 and writes the audit log.
 
-To add a module: add a Module to MODULES (and its starting value to each Mark), then write its code to ask
-`modules.of(tenant).<key>`. A new way of doing something an existing module does is a new choice on that module.
+To add a module: add a Module to MODULES (how it is read and stored, and its starting value in modules.MARKS), then
+write its code to ask `modules.of(tenant).<key>`. A new way of doing something an existing module does is a new choice on that module.
 """
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -24,6 +24,7 @@ class Module:
     label: str
     help: str
     read: object  # tenant -> the module's value, from the Tenant's own columns
+    store: object  # value -> {Tenant column: value} that gives it (saved through apps/tenants/features.apply_modules)
     choices: tuple = ()  # ((value, label), ...) for a pick-one module; empty for on/off
     needs: tuple = ()  # on/off modules that must be on for this one to count (off otherwise)
     default: object = None  # a new business with no Mark: the system as it always was
@@ -44,19 +45,21 @@ def _pump_allocation(t):
 MODULES = (
     Module(
         "pump_allocation", "Pump allocation", "Who works which pump.", _pump_allocation,
+        lambda v: {"pump_system": "assigned" if v == "pick" else v, "attendants_pick_pumps": v == "pick"},
         choices=(("shared", "Shared pumps, one attendant per shift"), ("shared_multi", "Shared pumps, several attendants"),
                  ("assigned", "Assigned pumps, the manager gives them out"), ("pick", "Assigned pumps, attendants pick theirs when they start")),
         default="shared",
     ),
     Module("expenses", "Expenses", "Attendants and managers record what they paid out; it comes off the cash to hand in.",
-           lambda t: t.expenses_enabled, default=False),
+           lambda t: t.expenses_enabled, lambda v: {"expenses_enabled": v}, default=False),
     Module("dip_at_shift_end", "Attendants dip at the end of a shift", "The outgoing attendant dips the tanks of their pumps.",
-           lambda t: t.dip_at_shift_end, default=False),
+           lambda t: t.dip_at_shift_end, lambda v: {"dip_at_shift_end": v}, default=False),
     Module("attendants_see_dip_litres", "Attendants see the dip litres",
            "The attendant's phone shows the litres from the tank's chart as the mm is typed (an exception to rule 11).",
-           lambda t: t.attendants_see_dip_litres, needs=("dip_at_shift_end",), default=False),
+           lambda t: t.attendants_see_dip_litres, lambda v: {"attendants_see_dip_litres": v}, needs=("dip_at_shift_end",), default=False),
     Module(
         "day_close", "Day close", "When the trading day ends.", lambda t: t.close_day_at_change or "manager",
+        lambda v: {"close_day_at_change": "" if v == "manager" else v},
         choices=(("manager", "The manager closes it on the Dip screen, from 21:00"), ("07:00", "At the 07:00 handover (04:00 to 09:00)"),
                  ("18:00", "At the 18:00 handover (15:00 to 20:00)")),
         default="manager",
@@ -119,6 +122,22 @@ def closing_at_a_handover(through=""):
     from django.db.models import Q
 
     return ~Q(**{f"{through}close_day_at_change": ""})
+
+
+def complete(values):
+    """Every module's value from a full set (a Mark, a new business), or a ValueError listing what is wrong or missing."""
+    wrong = problems(values) + [f"{m.label}: choose a value." for m in MODULES if m.key not in values]
+    if wrong:
+        raise ValueError(wrong)
+    return {m.key: values[m.key] for m in MODULES}
+
+
+def to_settings(values):
+    """The Tenant columns that give these module values (only the modules named)."""
+    out = {}
+    for key, value in values.items():
+        out.update(BY_KEY[key].store(value))
+    return out
 
 
 def problems(values):

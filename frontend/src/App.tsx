@@ -23,6 +23,7 @@ import Shift from "./pages/Shift";
 import { t } from "./i18n";
 import ChangePassword from "./pages/ChangePassword";
 import CreateTenant from "./pages/CreateTenant";
+import PlatformMarks from "./pages/PlatformMarks";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import PlatformTenants from "./pages/PlatformTenants";
@@ -130,6 +131,7 @@ export default function App() {
       <Route path="/import" element={<Private><Import /></Private>} />
       <Route path="/platform" element={<Private platform><PlatformTenants /></Private>} />
       <Route path="/platform/new" element={<Private platform><CreateTenant /></Private>} />
+      <Route path="/platform/marks" element={<Private platform><PlatformMarks /></Private>} />
       <Route path="/platform/tenants/:id" element={<Private platform><TenantDetail /></Private>} />
       <Route
         path="/"

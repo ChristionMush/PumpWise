@@ -100,3 +100,26 @@ def test_the_database_filter_finds_exactly_the_businesses_that_close_at_a_handov
         found = set(Tenant.objects.filter(modules.closing_at_a_handover()).values_list("pk", flat=True))
         assert found == {t.pk for t in Tenant.objects.all() if modules.handover(modules.of(t))}
     assert found == {sites["pesnat"].pk, sites["litrix"].pk}
+
+
+def every_valid_set():
+    keys = [m.key for m in modules.MODULES]
+    options = [[v for v, _ in m.choices] if m.choices else [False, True] for m in modules.MODULES]
+    return [v for v in (dict(zip(keys, combo, strict=True)) for combo in itertools.product(*options)) if not modules.problems(v)]
+
+
+def test_every_valid_set_of_modules_is_stored_and_read_back_the_same():
+    sets = every_valid_set()
+    assert len(sets) == 4 * 2 * 3 * 3  # dips off: litres off; dips on: litres either way
+    for values in sets:
+        settings = modules.to_settings(values)
+        system = settings["pump_system"]  # set_pump_system grants what the system needs
+        t = tenant(**settings, multi_attendant_enabled=system != "shared", pump_assignment_enabled=system == "assigned")
+        assert modules.of(t).as_dict() == values, values
+
+
+def test_a_complete_set_is_needed_where_a_business_or_mark_starts():
+    assert modules.complete(dict(modules.MARKS["mark_1"])) == dict(modules.MARKS["mark_1"])
+    with pytest.raises(ValueError) as e:
+        modules.complete({"expenses": True})
+    assert "Day close: choose a value." in e.value.args[0]

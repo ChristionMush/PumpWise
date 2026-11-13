@@ -61,7 +61,7 @@ export default function PlatformTenants() {
     <>
       <div className="row between">
         <h1>{t("platform.title")}</h1>
-        <Link to="/platform/new" className="btn primary">{t("platform.new")}</Link>
+        <span className="row gap"><Link to="/platform/marks" className="btn">Marks</Link><Link to="/platform/new" className="btn primary">{t("platform.new")}</Link></span>
       </div>
       <form onSubmit={createTrial} className="row gap">
         <input aria-label="Prospect name" placeholder="Prospect's business name" value={prospect} onChange={(e) => setProspect(e.target.value)} required />
@@ -79,7 +79,7 @@ export default function PlatformTenants() {
         <Link key={r.id} to={`/platform/tenants/${r.id}`} className="card tenant">
           <div className="row between">
             <strong>{r.name}</strong>
-            <span className="row gap">{r.is_demo && <Badge kind="past_due">{r.trial_expires_at ? "trial" : "demo"}</Badge>}<Badge kind={r.status}>{r.status}</Badge></span>
+            <span className="row gap">{r.mark && <Badge kind="">{r.mark.name}</Badge>}{r.is_demo && <Badge kind="past_due">{r.trial_expires_at ? "trial" : "demo"}</Badge>}<Badge kind={r.status}>{r.status}</Badge></span>
           </div>
           <div className="row gap muted">
             {r.subscription && <Badge kind={r.subscription.status}>{`sub: ${r.subscription.status}`}</Badge>}

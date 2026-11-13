@@ -104,6 +104,23 @@ class PlatformTenantMarkView(APIView):
         return Response(summarize(_get_tenant(pk), with_stations=True))
 
 
+class PlatformTenantModulesView(APIView):
+    """Change some of a business's modules ({"modules": {key: value}}). Each goes through its own setter: the pump
+    allocation is refused while a shift is open, and every change is audited."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def patch(self, request, pk):
+        from .features import apply_modules
+        from .views import _get_tenant, summarize
+
+        values = request.data.get("modules")
+        if not isinstance(values, dict) or not values:
+            raise serializers.ValidationError({"modules": "Send the modules to change."})
+        apply_modules(tenant=_get_tenant(pk), values=values, actor=request.user, request=request)
+        return Response(summarize(_get_tenant(pk), with_stations=True))
+
+
 def mark_summary(tenant):
     """The business's Mark, modules, and where they differ from the Mark (for the platform's business screens)."""
     return {"mark": {"id": str(tenant.mark_id), "name": tenant.mark.name} if tenant.mark_id else None,

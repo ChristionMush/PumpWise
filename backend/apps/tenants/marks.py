@@ -16,10 +16,10 @@ from .models import Mark
 
 def _check(values):
     """A complete, valid set of module values, or a ValidationError naming what is wrong."""
-    wrong = modules.problems(values) + [f"{m.label}: choose a value." for m in modules.MODULES if m.key not in values]
-    if wrong:
-        raise ValidationError({"modules": wrong})
-    return {m.key: values[m.key] for m in modules.MODULES}
+    try:
+        return modules.complete(values)
+    except ValueError as e:
+        raise ValidationError({"modules": e.args[0]}) from None
 
 
 def _clean_name(name, *, exclude=None):

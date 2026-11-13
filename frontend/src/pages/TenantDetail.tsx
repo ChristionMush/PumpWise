@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { api, errorMessage } from "../api";
 import { Badge, CredentialsCard, ErrorNote } from "../components";
-import type { AssignmentMode, AttendantsMode, Credentials, PumpSystem, Subscription, TenantSummary } from "../types";
+import type { AssignmentMode, AttendantsMode, Credentials, Modules, Subscription, TenantSummary } from "../types";
+import ModulePicker, { changedModules, useCatalog } from "./ModulePicker";
 
 const SUB_STATUSES = ["active", "past_due", "suspended", "cancelled"] as const;
 
@@ -14,12 +15,15 @@ export default function TenantDetail() {
   const [stationName, setStationName] = useState("");
   const [stationAddress, setStationAddress] = useState("");
   const [sub, setSub] = useState<Subscription | null>(null);
+  const catalog = useCatalog();
+  const [draft, setDraft] = useState<Modules | null>(null); // the modules as ticked, until saved
 
   const load = useCallback(async () => {
     try {
       const data = await api<TenantSummary>(`/api/platform/tenants/${id}/`);
       setTenant(data);
       setSub(data.subscription);
+      setDraft(data.modules ?? null);
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -54,17 +58,19 @@ export default function TenantDetail() {
     });
   };
 
-  // The pump system for the whole business (chosen when it was created).
-  const setPumpSystem = (pump_system: PumpSystem) => {
-    const label = { shared: "shared pumps with one attendant", shared_multi: "shared pumps with several attendants", assigned: "assigned pumps" }[pump_system];
-    if (!window.confirm(`Move every station of ${tenant?.name} to ${label}?`)) return;
-    void run(async () => { await api(`/api/platform/tenants/${id}/pump-system/`, { method: "PATCH", body: { pump_system } }); });
-  };
-
-  // Paid features (platform only): several attendants per shift, and pump assignment (which needs the first).
-  const setFeature = (body: Record<string, boolean | string>) => void run(async () => {
-    await api(`/api/platform/tenants/${id}/features/`, { method: "PATCH", body });
+  // The business's Mark is its label and starting point: changing it leaves the modules as they are.
+  const setMark = (mark: string) => void run(async () => {
+    await api(`/api/platform/tenants/${id}/mark/`, { method: "PATCH", body: { mark: mark || null } });
   });
+  // Only the modules that changed are sent; the pump allocation waits until no shift is open.
+  const saveModules = () => {
+    if (!tenant?.modules || !draft || !catalog.modules) return;
+    const changed = changedModules(catalog.modules, tenant.modules, draft);
+    if (!window.confirm(`Change ${changed.map((m) => m.label).join(", ")} for ${tenant.name}? It takes effect straight away.`)) return;
+    void run(async () => {
+      await api(`/api/platform/tenants/${id}/modules/`, { method: "PATCH", body: { modules: Object.fromEntries(changed.map((m) => [m.key, draft[m.key]])) } });
+    });
+  };
   const setPolicy = (stationId: string, body: { attendants_mode?: AttendantsMode; assignment_mode?: AssignmentMode }) => void run(async () => {
     await api(`/api/platform/tenants/${id}/stations/${stationId}/policy/`, { method: "PATCH", body });
   });
@@ -133,43 +139,26 @@ export default function TenantDetail() {
         )}
       </section>
 
-      {tenant.pump_system && (
-        <section className="card">
-          <h2>Pump system</h2>
-          <label>How the pumps are worked
-            <select aria-label="Pump system" value={tenant.pump_system} onChange={(e) => setPumpSystem(e.target.value as PumpSystem)}>
-              <option value="shared">Shared pumps, one attendant per shift</option>
-              <option value="shared_multi">Shared pumps, several attendants: everyone on the shift uses every pump</option>
-              <option value="assigned">Assigned pumps: each attendant works their own pumps</option>
+      {tenant.modules && draft && catalog.modules && catalog.marks && (
+        <section className="card form">
+          <h2>Mark and modules</h2>
+          <label>Mark
+            <select value={tenant.mark?.id ?? ""} onChange={(e) => setMark(e.target.value)}>
+              <option value="">None</option>
+              {catalog.marks.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
             </select>
           </label>
-          <p className="muted">New stations follow this. Not possible while a shift is open.</p>
+          <p className="muted">The Mark is the way this business started. Changing it leaves the modules below as they are.</p>
+          <ModulePicker modules={catalog.modules} marks={catalog.marks} values={draft} onChange={setDraft}
+            base={catalog.marks.find((k) => k.id === tenant.mark?.id)} />
+          <div className="row gap">
+            <button className="btn primary" disabled={!changedModules(catalog.modules, tenant.modules, draft).length} onClick={saveModules}>Save modules</button>
+            {changedModules(catalog.modules, tenant.modules, draft).length > 0 && <button className="btn" onClick={() => setDraft(tenant.modules!)}>Undo changes</button>}
+          </div>
+          <p className="muted">Pump allocation can change only while no shift is open (new stations follow it). Turning a module off hides its screens and keeps what was recorded. Every change goes in the audit log.</p>
         </section>
       )}
-
-      {tenant.features && (
-        <section className="card">
-          <h2>Paid features</h2>
-          <label className="row gap"><input type="checkbox" checked={tenant.features.multi_attendant_enabled}
-            onChange={(e) => setFeature({ multi_attendant_enabled: e.target.checked })} /> Several attendants per shift</label>
-          <label className="row gap"><input type="checkbox" checked={tenant.features.pump_assignment_enabled} disabled={!tenant.features.multi_attendant_enabled}
-            onChange={(e) => setFeature({ pump_assignment_enabled: e.target.checked })} /> Pump assignment (cash checked per attendant)</label>
-          <p className="muted">Removing a feature moves every station back to one attendant and shared pumps. Nothing is deleted. Not possible while a shift is open.</p>
-          <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.expenses_enabled)}
-            onChange={(e) => setFeature({ expenses_enabled: e.target.checked })} /> Expenses</label>
-          <p className="muted">Attendants and managers record what they pay out (lunch, generator fuel...). Recorded only; off hides the screens and keeps what was recorded.</p>
-          <h3>Shift change</h3>
-          <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.attendants_pick_pumps)}
-            onChange={(e) => setFeature({ attendants_pick_pumps: e.target.checked })} /> Attendants pick their pumps</label>
-          <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.dip_at_shift_end)}
-            onChange={(e) => setFeature({ dip_at_shift_end: e.target.checked })} /> Dip at the end of a shift</label>
-          <label className="row gap"><input type="checkbox" checked={Boolean(tenant.features.attendants_see_dip_litres)} disabled={!tenant.features.dip_at_shift_end}
-            onChange={(e) => setFeature({ attendants_see_dip_litres: e.target.checked })} /> Attendants see the litres from the dip chart</label>
-          <label>Close the day at a shift change<select value={tenant.features.close_day_at_change ?? ""} onChange={(e) => setFeature({ close_day_at_change: e.target.value })}>
-            <option value="">No (closed on the Dip screen)</option><option value="07:00">07:00 change</option><option value="18:00">18:00 change (handover 15:00-20:00)</option></select></label>
-          <p className="muted">The dip at the change is taken a few minutes before the last attendant ends, so each day's fuel check can be a few litres off, evened out the next day.</p>
-        </section>
-      )}
+      <ErrorNote message={catalog.error} />
 
       <section className="card">
         <h2>Stations ({tenant.station_count})</h2>

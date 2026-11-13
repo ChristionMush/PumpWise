@@ -3,7 +3,27 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { mockApi, platformUser, renderApp, signedIn } from "./helpers";
 
-const me = { "GET /api/auth/me/": { body: { user: platformUser, tenant: null } } };
+const MODULES = [
+  { key: "pump_allocation", label: "Pump allocation", help: "Who works which pump.", kind: "choice", needs: [], default: "shared",
+    choices: [{ value: "shared", label: "Shared pumps, one attendant per shift" }, { value: "shared_multi", label: "Shared pumps, several attendants" },
+      { value: "assigned", label: "Assigned pumps, the manager gives them out" }, { value: "pick", label: "Assigned pumps, attendants pick theirs when they start" }] },
+  { key: "expenses", label: "Expenses", help: "Record what was paid out.", kind: "on_off", choices: [], needs: [], default: false },
+  { key: "dip_at_shift_end", label: "Attendants dip at the end of a shift", help: "The outgoing attendant dips.", kind: "on_off", choices: [], needs: [], default: false },
+  { key: "attendants_see_dip_litres", label: "Attendants see the dip litres", help: "Litres from the chart.", kind: "on_off", choices: [], needs: ["dip_at_shift_end"], default: false },
+  { key: "day_close", label: "Day close", help: "When the trading day ends.", kind: "choice", needs: [], default: "manager",
+    choices: [{ value: "manager", label: "The manager closes it on the Dip screen, from 21:00" }, { value: "07:00", label: "At the 07:00 handover" }, { value: "18:00", label: "At the 18:00 handover" }] },
+];
+const MARK_1 = { pump_allocation: "assigned", expenses: false, dip_at_shift_end: false, attendants_see_dip_litres: false, day_close: "manager" };
+const MARK_2 = { pump_allocation: "pick", expenses: true, dip_at_shift_end: true, attendants_see_dip_litres: true, day_close: "18:00" };
+const MARKS = [
+  { id: "m1", name: "Mark 1", description: "The Fuel Zone way.", modules: MARK_1, based_on: null, tenants: [{ id: "t9", name: "Msasa Fuel Services" }] },
+  { id: "m2", name: "Mark 2", description: "The PESNAT way.", modules: MARK_2, based_on: null, tenants: [] },
+];
+const me = {
+  "GET /api/auth/me/": { body: { user: platformUser, tenant: null } },
+  "GET /api/platform/modules/": { body: { modules: MODULES } },
+  "GET /api/platform/marks/": { body: { marks: MARKS } },
+};
 const summary = {
   id: "t9", name: "Msasa Fuel Services", slug: "msasa-fuel-services", status: "active", created_at: "2026-10-03T10:00:00Z",
   subscription: { status: "active", plan: "standard", paid_through: null }, station_count: 2,
@@ -46,7 +66,7 @@ describe("platform: create business", () => {
     await user.type(screen.getAllByLabelText("Station name")[0], "Msasa Road");
     await user.click(screen.getByRole("button", { name: "+ Add another station" }));
     await user.type(screen.getAllByLabelText("Station name")[1], "Borrowdale");
-    await user.click(screen.getByLabelText(/Assigned pumps/));
+    await user.click(await screen.findByLabelText(/^Mark 1/));
   }
 
   it("sends the right payload and shows the temporary password once, with copy", async () => {
@@ -67,8 +87,7 @@ describe("platform: create business", () => {
     expect(screen.getByText(/shown only once/i)).toBeInTheDocument();
     expect(calls.find((c) => c.method === "POST" && c.path === "/api/platform/tenants/")?.body).toEqual({
       business_name: "Msasa Fuel Services", owner_name: "Rudo Chikwanha", owner_phone: "0772123456", owner_email: null,
-      plan: "", paid_through: null, stations: [{ name: "Msasa Road", address: "" }, { name: "Borrowdale", address: "" }], pump_system: "assigned",
-      expenses_enabled: false, attendants_pick_pumps: false, dip_at_shift_end: false, close_day_at_change: "",
+      plan: "", paid_through: null, stations: [{ name: "Msasa Road", address: "" }, { name: "Borrowdale", address: "" }], mark: "m1", modules: MARK_1,
     });
 
     await user.click(screen.getByRole("button", { name: "Copy" }));
@@ -77,7 +96,7 @@ describe("platform: create business", () => {
     expect(screen.getByRole("link", { name: "Open business" })).toHaveAttribute("href", "/platform/tenants/t9");
   });
 
-  it("turns on expenses for a new business when ticked", async () => {
+  it("starts from the Mark's modules and plugs in one from the other Mark", async () => {
     const user = userEvent.setup();
     signedIn();
     const { calls } = mockApi({
@@ -87,10 +106,17 @@ describe("platform: create business", () => {
     renderApp("/platform/new");
     await screen.findByRole("heading", { name: "New business" });
     await fill(user);
-    await user.click(screen.getByLabelText("Expenses"));
+    expect(screen.getByRole("heading", { name: "Also available" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Attendants see the dip litres" })).not.toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "Expenses" })); // Mark 2's, plugged into Mark 1
+    expect(screen.getByText("Mark 1: off")).toBeInTheDocument(); // shown as a change from the Mark
+    await user.click(screen.getByRole("checkbox", { name: "Attendants see the dip litres" }));
+    expect(screen.getByRole("checkbox", { name: "Attendants dip at the end of a shift" })).toBeChecked(); // what it needs comes with it
     await user.click(screen.getByRole("button", { name: "Create business" }));
     await screen.findByTestId("temp-password");
-    expect(calls.find((c) => c.method === "POST" && c.path === "/api/platform/tenants/")?.body.expenses_enabled).toBe(true);
+    expect(calls.find((c) => c.method === "POST" && c.path === "/api/platform/tenants/")?.body.modules).toEqual({
+      ...MARK_1, expenses: true, dip_at_shift_end: true, attendants_see_dip_litres: true,
+    });
   });
 
   it("keeps what was typed and explains a duplicate owner", async () => {
@@ -120,9 +146,9 @@ describe("platform: create business", () => {
     await user.click(screen.getAllByRole("button", { name: "Remove station" })[1]);
     expect(screen.getAllByLabelText("Station name")).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "Create business" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("shared or assigned"); // the pump system is asked up front
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a Mark"); // the way the business works is asked up front
     expect(calls.some((c) => c.method === "POST")).toBe(false);
-    await user.click(screen.getByLabelText(/Shared pumps, one attendant/));
+    await user.click(screen.getByLabelText(/^Mark 2/));
     await user.click(screen.getByRole("button", { name: "Create business" }));
     await vi.waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     expect(calls.find((c) => c.method === "POST")?.body.stations).toEqual([]);
@@ -186,20 +212,29 @@ describe("platform: business detail", () => {
     expect(calls.find((c) => c.method === "PATCH" && c.path.endsWith("/nozzles/n1/tank/"))!.body).toEqual({ tank: "t2" });
   });
 
-  it("switches expenses on a business's page", async () => {
+  it("ticks a business's modules and saves only what changed, after confirmation", async () => {
     const user = userEvent.setup();
     signedIn();
-    const features = { multi_attendant_enabled: true, pump_assignment_enabled: true, expenses_enabled: false };
+    const onMark1 = { ...summary, mark: { id: "m1", name: "Mark 1" }, modules: MARK_1, mark_differences: {} };
     const { calls } = mockApi({
       ...me,
-      "GET /api/platform/tenants/t9/": { body: { ...summary, features } },
-      "PATCH /api/platform/tenants/t9/features/": { body: { ...summary, features: { ...features, expenses_enabled: true } } },
+      "GET /api/platform/tenants/t9/": { body: onMark1 },
+      "PATCH /api/platform/tenants/t9/modules/": { body: onMark1 },
+      "PATCH /api/platform/tenants/t9/mark/": { body: onMark1 },
     });
     renderApp("/platform/tenants/t9");
-    const box = await screen.findByLabelText("Expenses");
+    const box = await screen.findByRole("checkbox", { name: "Expenses" });
     expect(box).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Save modules" })).toBeDisabled();
     await user.click(box);
-    expect(calls.find((c) => c.path.endsWith("/features/"))?.body).toEqual({ expenses_enabled: true });
+    await user.selectOptions(screen.getByLabelText("Day close"), "18:00");
+    vi.spyOn(window, "confirm").mockReturnValueOnce(true);
+    await user.click(screen.getByRole("button", { name: "Save modules" }));
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Expenses, Day close"));
+    await vi.waitFor(() => expect(calls.find((c) => c.method === "PATCH" && c.path.endsWith("/modules/"))?.body).toEqual({ modules: { expenses: true, day_close: "18:00" } }));
+
+    await user.selectOptions(screen.getByLabelText("Mark"), "m2");
+    await vi.waitFor(() => expect(calls.find((c) => c.path.endsWith("/mark/"))?.body).toEqual({ mark: "m2" }));
   });
 
   it("saves subscription changes and adds a station", async () => {
@@ -220,5 +255,29 @@ describe("platform: business detail", () => {
     await user.type(screen.getAllByLabelText("Station name")[0], "Chitungwiza");
     await user.click(screen.getByRole("button", { name: "+ Add station" }));
     expect(calls.find((c) => c.path.endsWith("/stations/"))?.body).toEqual({ name: "Chitungwiza", address: "" });
+  });
+});
+
+describe("platform: Marks", () => {
+  it("lists each Mark with its businesses, duplicates one, and saves only the changed modules", async () => {
+    const user = userEvent.setup();
+    signedIn();
+    const { calls } = mockApi({
+      ...me,
+      "POST /api/platform/marks/": { status: 201, body: { ...MARKS[1], id: "m3", name: "Mark 3" } },
+      "PATCH /api/platform/marks/m2/": { body: MARKS[1] },
+    });
+    renderApp("/platform/marks");
+    const mark1 = await screen.findByRole("region", { name: "Mark 1" });
+    expect(within(mark1).getByText("Businesses on it: Msasa Fuel Services.")).toBeInTheDocument();
+    const mark2 = screen.getByRole("region", { name: "Mark 2" });
+    await user.type(within(mark2).getByLabelText("New Mark from Mark 2"), "Mark 3");
+    await user.click(within(mark2).getByRole("button", { name: "Duplicate" }));
+    await vi.waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ duplicate_of: "m2", name: "Mark 3" }));
+
+    await user.click(within(mark2).getByText("Change Mark 2"));
+    await user.click(within(mark2).getByRole("checkbox", { name: "Expenses" }));
+    await user.click(within(mark2).getByRole("button", { name: "Save Mark 2" }));
+    await vi.waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ name: "Mark 2", description: "The PESNAT way.", modules: { expenses: false } }));
   });
 });

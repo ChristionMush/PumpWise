@@ -131,3 +131,68 @@ def test_linking_a_business_to_another_mark_changes_only_the_label():
     assert res.json()["modules"] == dict(modules.MARKS["mark_2"])  # still works the PESNAT way
     with db_context(tenant_id=a["tenant"].id):  # the business's own audit log shows it
         assert AuditLog.objects.filter(action="tenant_mark_set").first().changes == {"mark": ["Mark 2", "Mark 1"]}  # newest first
+
+
+def new_business(**body):
+    from .helpers import NEW_TENANT
+
+    return {**NEW_TENANT, "owner_phone": None, "owner_email": f"{body['business_name'].split()[0].lower()}@example.com", **body}
+
+
+def test_a_new_business_starts_from_its_mark():
+    m = starting_marks()
+    res = platform_client().post("/api/platform/tenants/", new_business(business_name="Domboshava Fuel", mark=str(m["Mark 2"].pk)), format="json")
+    assert res.status_code == 201, res.content
+    body = res.json()
+    assert body["mark"]["name"] == "Mark 2" and body["modules"] == dict(modules.MARKS["mark_2"]) and body["mark_differences"] == {}
+    assert {(s["attendants_mode"], s["assignment_mode"]) for s in body["stations"]} == {("multiple", "assigned")}
+
+
+def test_a_new_business_takes_its_marks_modules_with_one_borrowed_from_the_other_mark():
+    m = starting_marks()
+    ticks = {**modules.MARKS["mark_1"], "expenses": True}  # Mark 1, plus Mark 2's expenses
+    res = platform_client().post("/api/platform/tenants/", new_business(business_name="Kwekwe Fuel", mark=str(m["Mark 1"].pk), modules=ticks), format="json")
+    assert res.status_code == 201, res.content
+    body = res.json()
+    assert body["modules"] == ticks and body["mark_differences"] == {"expenses": [False, True]}
+    assert body["pump_system"] == "assigned" and body["features"]["expenses_enabled"] is True
+
+
+def test_a_new_business_with_modules_that_do_not_fit_is_refused_and_nothing_is_made():
+    m = starting_marks()
+    ticks = {**modules.MARKS["mark_1"], "attendants_see_dip_litres": True}  # litres without the dip
+    res = platform_client().post("/api/platform/tenants/", new_business(business_name="Gweru Fuel", mark=str(m["Mark 1"].pk), modules=ticks), format="json")
+    assert res.status_code == 400 and "modules" in res.json()
+    with db_context(platform_admin=True):
+        assert not Tenant.objects.filter(name="Gweru Fuel").exists()
+
+
+def test_the_platform_changes_a_businesss_modules_each_through_its_own_setter():
+    m = starting_marks()
+    a = on_mark(FUEL_ZONE, m["Mark 1"])
+    p = platform_client()
+    res = p.patch(f"/api/platform/tenants/{a['tenant'].id}/modules/", {"modules": {"expenses": True, "day_close": "18:00"}}, format="json")
+    assert res.status_code == 200, res.content
+    assert res.json()["modules"]["expenses"] is True and res.json()["modules"]["day_close"] == "18:00"
+    assert res.json()["mark_differences"] == {"expenses": [False, True], "day_close": ["manager", "18:00"]}
+    with db_context(tenant_id=a["tenant"].id):
+        assert set(AuditLog.objects.values_list("action", flat=True)) >= {"tenant_expenses_set", "tenant_shift_options_set"}
+    refused = p.patch(f"/api/platform/tenants/{a['tenant'].id}/modules/", {"modules": {"attendants_see_dip_litres": True}}, format="json")
+    assert refused.status_code == 400 and "modules" in refused.json()
+
+
+def test_the_pump_allocation_waits_for_open_shifts_but_other_modules_do_not():
+    from .test_client_profiles import DAY_START
+    from .test_multi_attendant import readings
+
+    m = starting_marks()
+    a, fc, att_a, *_ = site(FUEL_ZONE)
+    platform_client().patch(f"/api/platform/tenants/{a['tenant'].id}/mark/", {"mark": str(m["Mark 1"].pk)}, format="json")
+    assert client_for(att_a).post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": DAY_START,
+                                                         "readings": readings(fc.nozzles, [0, 0])}, format="json").status_code == 201
+    p = platform_client()
+    busy = p.patch(f"/api/platform/tenants/{a['tenant'].id}/modules/", {"modules": {"pump_allocation": "shared"}}, format="json")
+    assert busy.status_code == 400 and "A shift is open" in str(busy.json())
+    # pick keeps the stations on assigned pumps, so it is not held up; nor is a module left as it is
+    ok = p.patch(f"/api/platform/tenants/{a['tenant'].id}/modules/", {"modules": {"pump_allocation": "pick", "expenses": True}}, format="json")
+    assert ok.status_code == 200 and ok.json()["modules"]["pump_allocation"] == "pick"

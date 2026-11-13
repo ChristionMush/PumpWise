@@ -25,6 +25,17 @@ export interface TenantSummary {
   id: string; name: string; slug: string; status: TenantInfo["status"]; created_at: string;
   subscription: Subscription | null; station_count: number; owner: Owner | null; stations?: Station[];
   features?: Features; pump_system?: PumpSystem; is_demo?: boolean; trial_expires_at?: string | null;
+  mark?: { id: string; name: string } | null; modules?: Modules; mark_differences?: Partial<Record<keyof Modules, [unknown, unknown]>>;
+}
+/** One module as the platform lists it to tick (GET /api/platform/modules/). */
+export interface ModuleInfo {
+  key: keyof Modules; label: string; help: string; kind: "on_off" | "choice";
+  choices: { value: string; label: string }[]; needs: (keyof Modules)[]; default: string | boolean;
+}
+/** A Mark: a named set of modules a new business starts from (GET /api/platform/marks/). */
+export interface MarkInfo {
+  id: string; name: string; description: string; modules: Modules; based_on: { id: string; name: string } | null;
+  tenants?: { id: string; name: string }[];
 }
 export interface Credentials { login: string; temporary_password: string; }
 export interface Page<T> { count: number; next: string | null; results: T[]; }

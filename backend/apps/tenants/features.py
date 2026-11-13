@@ -150,3 +150,25 @@ def set_station_policy(*, station, attendants_mode=None, assignment_mode=None, a
         audit.log("station_policy_set", actor=actor, tenant_id=station.tenant_id, obj=station, request=request,
                   changes=audit.diff(before, {"attendants_mode": mode, "assignment_mode": assignment}))
     return station
+
+
+def apply_modules(*, tenant, values, actor=None, request=None):
+    """Set some of a business's modules (apps/tenants/modules.py), each through its own setter above, so the same guards
+    hold (the pump allocation is refused while a shift is open) and each change is audited. Only the modules that
+    change are touched: one left as it is never moves a station. All or nothing."""
+    from . import modules
+
+    current = modules.of(tenant).as_dict()
+    if wrong := modules.problems({**current, **values}):
+        raise ValidationError({"modules": wrong})
+    changed = {k: v for k, v in values.items() if current[k] != v}
+    if not changed:
+        return
+    target = modules.to_settings(changed)
+    with transaction.atomic():
+        if "pump_system" in target and target["pump_system"] != tenant.pump_system:
+            set_pump_system(tenant=tenant, system=target["pump_system"], actor=actor, request=request)
+            tenant.refresh_from_db()
+        if "expenses_enabled" in target:
+            set_expenses(tenant=tenant, on=target["expenses_enabled"], actor=actor, request=request)
+        set_shift_options(tenant=tenant, changes={k: target[k] for k in SHIFT_OPTIONS if k in target}, actor=actor, request=request)

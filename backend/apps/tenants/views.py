@@ -96,6 +96,22 @@ def summarize(tenant, *, with_stations=False):
     return data
 
 
+def _mark_and_settings(d):
+    """A new business's Mark and the Tenant columns to create it with: from its ticked modules, else its Mark's,
+    else the switches sent one by one (as before Marks)."""
+    from . import modules
+    from .mark_views import _get_mark
+
+    mark = _get_mark(d["mark"]) if d.get("mark") else None
+    values = d.get("modules") or (mark.values() if mark else None)
+    if values is None:
+        return None, {"pump_system": d["pump_system"], "expenses_enabled": d["expenses_enabled"], **{k: d[k] for k in SHIFT_OPTIONS}}
+    try:
+        return mark, modules.to_settings(modules.complete(values))
+    except ValueError as e:
+        raise ValidationError({"modules": e.args[0]}) from None
+
+
 class PlatformTenantListCreateView(APIView):
     permission_classes = [IsPlatformAdmin]
 
@@ -119,11 +135,12 @@ class PlatformTenantListCreateView(APIView):
         data = TenantCreateSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         d = data.validated_data
+        mark, settings = _mark_and_settings(d)
         try:
             tenant, owner, temporary_password = create_tenant_with_owner(
                 business_name=d["business_name"], owner_name=d["owner_name"], owner_email=d.get("owner_email"), owner_phone=d.get("owner_phone"),
-                plan=d["plan"], paid_through=d["paid_through"], stations=d["stations"], actor=request.user, request=request, pump_system=d["pump_system"],
-                expenses_enabled=d["expenses_enabled"], shift_options={k: d[k] for k in SHIFT_OPTIONS},
+                plan=d["plan"], paid_through=d["paid_through"], stations=d["stations"], actor=request.user, request=request,
+                pump_system=settings.pop("pump_system"), expenses_enabled=settings.pop("expenses_enabled"), shift_options=settings, mark=mark,
             )  # atomic: any failure (e.g. duplicate owner email) leaves nothing half-created
         except IntegrityError:
             raise ValidationError({"detail": DUPLICATE})
