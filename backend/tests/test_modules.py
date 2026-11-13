@@ -41,12 +41,14 @@ def test_a_new_business_reads_as_the_system_always_was():
     assert modules.of(tenant()).as_dict() == {m.key: m.default for m in modules.MODULES}
 
 
-@pytest.mark.parametrize("system, pick, expected", [
-    ("shared", False, "shared"), ("shared", True, "shared"),  # picking only counts at assigned pumps
-    ("shared_multi", True, "shared_multi"), ("assigned", False, "assigned"), ("assigned", True, "pick"),
+@pytest.mark.parametrize("system, grant, pick, expected", [
+    ("shared", False, False, "shared"), ("shared", False, True, "shared"),  # picking only counts at assigned pumps
+    ("shared_multi", False, True, "shared_multi"), ("assigned", True, False, "assigned"), ("assigned", True, True, "pick"),
+    ("shared_multi", True, True, "pick"),  # stations put on assigned pumps one by one: their attendants pick
 ])
-def test_pump_allocation_reads_the_pump_system_and_the_pick_switch(system, pick, expected):
-    assert modules.of(tenant(pump_system=system, attendants_pick_pumps=pick)).pump_allocation == expected
+def test_pump_allocation_reads_the_pump_system_and_the_pick_switch(system, grant, pick, expected):
+    t = tenant(pump_system=system, multi_attendant_enabled=system != "shared", pump_assignment_enabled=grant, attendants_pick_pumps=pick)
+    assert modules.of(t).pump_allocation == expected
 
 
 @pytest.mark.parametrize("dip, see", itertools.product([False, True], repeat=2))

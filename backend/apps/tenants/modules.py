@@ -34,9 +34,10 @@ class Module:
 
 
 def _pump_allocation(t):
-    # "Attendants pick" only counts where the manager would otherwise give out the pumps (services.attendants_pick).
-    if t.pump_system == "assigned":
-        return "pick" if t.attendants_pick_pumps else "assigned"
+    # "Attendants pick" counts at every assigned-pumps station (services.picks_pumps), and a station can only have
+    # assigned pumps when the business has the assignment grant (stations migration 0005).
+    if t.attendants_pick_pumps and t.pump_assignment_enabled:
+        return "pick"
     return t.pump_system
 
 

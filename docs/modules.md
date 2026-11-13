@@ -27,6 +27,9 @@ Shifts with meter numbers and cash hand-in · shift-end approval and undo reques
 
 Notes:
 - Module 1 is the only one that has to be settled before the first shift. Changing it is refused while a shift is open, and every other module will get the same guard.
+- Pump allocation is chosen for the business and puts every station on it (a new station follows it). Each station keeps
+  its own setting (assigned pumps, several attendants), and the shift code reads the station's, which is correct. Only
+  "attendants pick" is read from the business.
 - Today, "Attendants pick" is a separate tick on top of "Assigned". As a module, it becomes a fourth choice so the screen can't show a contradictory mix. The data stays where it is.
 - Module 5, "at a shift change": the handover time is human and varies. The 18:00 setting already counts a handover
   any time from 15:00 to 20:00 (3 hours before to 2 hours after), so PESNAT's 16:00, 18:00 and 20:00 handovers all close

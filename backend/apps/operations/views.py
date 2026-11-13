@@ -186,7 +186,7 @@ class PrefillView(APIView):
         for st in stations:
             assigned = services.is_assigned_station(st)
             qs = Pump.objects.filter(station=st).select_related("assigned_to").prefetch_related("nozzles__tank__fuel_type")
-            picking = assigned and services.picks_pumps(st)
+            picking = assigned and services.picks_pumps(st, mods)
             draws = {}  # tank id -> every tank joined to it (worked out once per group)
 
             def draws_from(tank):

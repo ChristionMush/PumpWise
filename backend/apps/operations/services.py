@@ -660,11 +660,15 @@ def start_shift(*, user, station, readings, shift_id=None, started_at=None, atte
     return shift
 
 
-def picks_pumps(station):
-    """A business where attendants pick their pumps when they start (no manager allocating them)."""
+def picks_pumps(station, mods=None):
+    """An assigned-pumps station of a business where attendants pick their pumps when they start (module
+    "pump_allocation" is "pick"), so no manager allocates them. `mods`: the business's modules when already read."""
+    from apps.tenants import modules
     from apps.tenants.models import Tenant
 
-    return is_assigned_station(station) and Tenant.objects.filter(pk=station.tenant_id, attendants_pick_pumps=True).exists()
+    if not is_assigned_station(station):
+        return False
+    return (mods or modules.of(Tenant.objects.get(pk=station.tenant_id))).pump_allocation == "pick"
 
 
 def _pick_pumps(*, user, person, station, picked, strict):
