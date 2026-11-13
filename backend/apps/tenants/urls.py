@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .mark_views import PlatformMarkDetailView, PlatformMarkListView, PlatformModulesView, PlatformTenantMarkView
 from .views import (
     MySubscriptionView,
     PlatformConvertTrialView,
@@ -20,6 +21,10 @@ from .views import (
 
 urlpatterns = [
     path("platform/tenants/", PlatformTenantListCreateView.as_view(), name="platform-tenants"),
+    path("platform/modules/", PlatformModulesView.as_view(), name="platform-modules"),
+    path("platform/marks/", PlatformMarkListView.as_view(), name="platform-marks"),
+    path("platform/marks/<str:pk>/", PlatformMarkDetailView.as_view(), name="platform-mark"),
+    path("platform/tenants/<str:pk>/mark/", PlatformTenantMarkView.as_view(), name="platform-tenant-mark"),
     path("platform/tenants/<str:pk>/", PlatformTenantDetailView.as_view(), name="platform-tenant"),
     path("platform/tenants/<str:pk>/stations/", PlatformStationView.as_view(), name="platform-tenant-stations"),
     path("platform/trials/", PlatformTrialView.as_view(), name="platform-trials"),

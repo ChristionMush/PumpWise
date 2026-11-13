@@ -11,6 +11,13 @@ Status: draft, nothing built. Every module below is read from what the code does
 
 A Mark is a starting set of ticks. The code only checks modules, never Mark names.
 
+Marks live in the database (`tenants_mark`, platform only; migration 0019 adds Mark 1 and Mark 2 and links each
+business to its closest Mark). Each business keeps its own modules, so editing a Mark never changes a business on it.
+"Duplicate" copies a Mark to change into a new one, and the original stays as it was. The platform API:
+`/api/platform/modules/`, `/api/platform/marks/` (list; POST to create, or `duplicate_of`), `/api/platform/marks/<id>/`
+(PATCH name, description, modules), `/api/platform/tenants/<id>/mark/` (link a business). A business's summary shows
+its `mark`, `modules` and `mark_differences`.
+
 ## Core (every client, cannot be unticked)
 
 Shifts with meter numbers and cash hand-in · shift-end approval and undo requests · dips and deliveries (managers/owners) · tank fuel check · prices and exchange rates · stations, tanks, pumps, nozzles and dip charts · "also draws from" tanks (set per nozzle in setup) · daily report and reports · dashboard · alerts · audit log · exports · daily summary message · offline recording.

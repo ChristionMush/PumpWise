@@ -29,6 +29,7 @@ from .features import (
     set_station_policy,
     set_tenant_features,
 )
+from .mark_views import mark_summary
 from .models import Subscription, Tenant
 from .serializers import (
     FeaturesSerializer,
@@ -53,7 +54,7 @@ class TenantPagination(LimitOffsetPagination):
 
 def _get_tenant(pk):
     try:
-        tenant = Tenant.objects.select_related("subscription").filter(pk=pk).first()
+        tenant = Tenant.objects.select_related("subscription", "mark").filter(pk=pk).first()
     except Exception:  # malformed UUID
         tenant = None
     if tenant is None:
@@ -88,6 +89,7 @@ def summarize(tenant, *, with_stations=False):
         "pump_system": tenant.pump_system,
         "is_demo": tenant.is_demo,
         "trial_expires_at": tenant.trial_expires_at,
+        **mark_summary(tenant),
     }
     if with_stations:
         data["stations"] = StationSerializer(stations, many=True).data
@@ -98,7 +100,7 @@ class PlatformTenantListCreateView(APIView):
     permission_classes = [IsPlatformAdmin]
 
     def get(self, request):
-        qs = Tenant.objects.select_related("subscription").order_by("name")
+        qs = Tenant.objects.select_related("subscription", "mark").order_by("name")
         wanted = request.query_params.get("status")
         if wanted in Tenant.Status.values:
             qs = qs.filter(status=wanted)

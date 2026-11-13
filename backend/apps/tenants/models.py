@@ -10,6 +10,31 @@ from apps.core.models import SoftDeleteModel, UUIDModel
 PUMP_SYSTEMS = [("shared", "Shared pumps, one attendant per shift"), ("shared_multi", "Shared pumps, several attendants"), ("assigned", "Assigned pumps")]
 
 
+class Mark(UUIDModel):
+    """A way of running PumpWise, sold to clients that work alike (Mark 1: the Fuel Zone way, Mark 2: the PESNAT way).
+    A named set of module values (apps/tenants/modules.py) that a new business starts from. Platform only.
+
+    A business keeps its own modules: editing a Mark never changes a business already on it. A new Mark is made by
+    duplicating one (based_on) and changing its modules, which leaves the original as it was."""
+
+    name = models.CharField(max_length=80, unique=True)
+    description = models.TextField(blank=True, default="")
+    based_on = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    modules = models.JSONField(default=dict, blank=True)  # {module key: value}; a module added later reads its default
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return self.name
+
+    def values(self):
+        """Every module's value on this Mark (a module added after the Mark was saved: its default)."""
+        from . import modules
+
+        return {m.key: self.modules.get(m.key, m.default) for m in modules.MODULES}
+
+
 class Tenant(UUIDModel, SoftDeleteModel):
     """A fuel-station business (customer). Root of the tenant hierarchy.
 
@@ -25,6 +50,9 @@ class Tenant(UUIDModel, SoftDeleteModel):
     name = models.CharField(max_length=200)
     slug = models.SlugField(max_length=80, unique=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    # The Mark the business was set up from (docs/modules.md). A label and a starting point: what the business does is
+    # its own modules, read from the switches below (apps/tenants/modules.py), which may differ from its Mark's.
+    mark = models.ForeignKey(Mark, null=True, blank=True, on_delete=models.PROTECT, related_name="tenants")
     # Paid feature grants, set only by the platform owner (apps/tenants/features.py). Removing one falls the
     # stations back to one attendant and shared pumps; no data is deleted.
     multi_attendant_enabled = models.BooleanField(default=False)
