@@ -27,12 +27,13 @@ def seed(apps, schema_editor):
     """Mark 1 and Mark 2, and every business linked to the Mark its modules match most closely (Mark 1 on a tie):
     Fuel Zone to Mark 1, PESNAT and Litrix to Mark 2. Nothing a business does changes."""
     schema_editor.execute("SELECT set_config('app.platform_admin', 'on', true)")  # the marks table is platform only
+    db = schema_editor.connection.alias  # the migration's own connection (app_owner), inside its transaction
     Mark, Tenant = apps.get_model("tenants", "Mark"), apps.get_model("tenants", "Tenant")
-    marks = [Mark.objects.create(name=name, description=text, modules=values) for name, text, values in MARKS]
-    for t in Tenant.objects.all():
+    marks = [Mark.objects.using(db).create(name=name, description=text, modules=values) for name, text, values in MARKS]
+    for t in Tenant.objects.using(db).all():
         mods = _modules(t)
         best = min(marks, key=lambda m: sum(mods[k] != v for k, v in m.modules.items()))
-        Tenant.objects.filter(pk=t.pk).update(mark=best)
+        Tenant.objects.using(db).filter(pk=t.pk).update(mark=best)
 
 
 class Migration(migrations.Migration):
