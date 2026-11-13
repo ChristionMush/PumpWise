@@ -151,19 +151,21 @@ def unclosed_change(station, change, now=None):
 
 
 def close_at_shift_change(*, station, user, at, request=None):
-    """A business that closes the day at a shift change (Tenant.close_day_at_change, "07:00" or "18:00"): once everyone
+    """A business that closes the day at a handover (module "day_close": "07:00" or "18:00"): once everyone
     who was on before the change has ended, and every tank was dipped at the change, the day closes at the last end,
     with the latest dip of each tank and every pump's latest meter number. Returns the close, or None (not yet, or the
     business does not close this way; the Dip screen still can)."""
+    from apps.tenants import modules
     from apps.tenants.models import Tenant
 
     tenant = Tenant.objects.filter(pk=station.tenant_id).first()
-    if tenant is None or not tenant.close_day_at_change:
+    handover = modules.handover(modules.of(tenant)) if tenant else ""
+    if not handover:
         return None
     local = timezone.localtime(at)
     change = None
     for day in (local.date() - timedelta(days=1), local.date(), local.date() + timedelta(days=1)):
-        moment = _change_moment(tenant.close_day_at_change, day)
+        moment = _change_moment(handover, day)
         if moment - BEFORE_CHANGE <= at <= moment + AFTER_CHANGE:
             change = moment
     if change is None:
@@ -185,7 +187,7 @@ def close_at_shift_change(*, station, user, at, request=None):
         return None
     with db_tx.atomic():
         close = DayClose.objects.create(tenant_id=station.tenant_id, station=station, day=day, closed_at=at, closed_by=user,
-                                        note=f"Closed at the {tenant.close_day_at_change} shift change")
+                                        note=f"Closed at the {handover} shift change")
         for d in dips.values():
             d.day_close = close
             d.save(update_fields=["day_close", "updated_at"])
@@ -196,7 +198,7 @@ def close_at_shift_change(*, station, user, at, request=None):
         for d in (day, day + timedelta(days=1)):
             refresh_daily(station, d)
         audit.log("day_closed", actor=user, obj=close, request=request, changes={
-            "station": station.name, "day": day.isoformat(), "at": at.isoformat(), "at_shift_change": tenant.close_day_at_change,
+            "station": station.name, "day": day.isoformat(), "at": at.isoformat(), "at_shift_change": handover,
             "dips": {t.name: str(dips[t.pk].litres) for t in tanks}, "meters": {f"{n.pump.name} {n}": str(meters[n.pk].reading) for n in nozzles}})
     return close
 

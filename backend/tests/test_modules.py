@@ -81,3 +81,20 @@ def test_the_phone_is_told_its_modules_when_it_signs_in(live, mark):
     tenant_info = client_for(a[Role.ATTENDANT]).get("/api/auth/me/").json()["tenant"]
     assert tenant_info["modules"] == dict(modules.MARKS[mark])
     assert tenant_info["expenses_enabled"] is live["expenses_enabled"]  # still there for phones on the older version
+
+
+@pytest.mark.parametrize("stored, handover", [("", ""), ("07:00", "07:00"), ("18:00", "18:00")])
+def test_the_handover_the_day_closes_at(stored, handover):
+    assert modules.handover(modules.of(tenant(close_day_at_change=stored))) == handover
+
+
+def test_the_database_filter_finds_exactly_the_businesses_that_close_at_a_handover():
+    from apps.core.db import db_context
+
+    from .test_client_profiles import site
+
+    sites = {name: site(live)[0]["tenant"] for name, live in (("fuel_zone", FUEL_ZONE), ("pesnat", PESNAT), ("litrix", LITRIX))}
+    with db_context(platform_admin=True):
+        found = set(Tenant.objects.filter(modules.closing_at_a_handover()).values_list("pk", flat=True))
+        assert found == {t.pk for t in Tenant.objects.all() if modules.handover(modules.of(t))}
+    assert found == {sites["pesnat"].pk, sites["litrix"].pk}

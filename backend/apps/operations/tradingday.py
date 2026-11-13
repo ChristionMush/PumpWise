@@ -2,7 +2,7 @@
 
 Each station's day ends when its manager closes it (DayClose): the pumps pause, every tank is dipped and every pump's
 meter is read, a little after 21:00 as people take time. Until a day is closed, 21:00 stands in; a business that closes
-the day at a shift change (Tenant.close_day_at_change) has that change stand in instead. Every daily figure in the
+the day at a handover (module "day_close") has that handover stand in instead. Every daily figure in the
 system (sales, the fuel check, the dashboard's "today", reports, the accounting pack) uses these bounds.
 """
 from datetime import date, datetime, time, timedelta
@@ -44,7 +44,10 @@ class Calendar:
 
             self._closes = {} if self.station_id is None else dict(DayClose.objects.filter(station_id=self.station_id).values_list("day", "closed_at"))
             if self.station_id is not None:
-                self._change = Station.all_objects.filter(pk=self.station_id).values_list("tenant__close_day_at_change", flat=True).first() or ""
+                from apps.tenants import modules
+
+                station = Station.all_objects.filter(pk=self.station_id).select_related("tenant").first()
+                self._change = modules.handover(modules.of(station.tenant)) if station else ""
         return self._closes
 
     @property
@@ -88,8 +91,9 @@ def latest_today(station_ids=None):
     """Today for a choice of dates: 21:00 to 21:00, or later where a business that closes at a shift change has
     already closed (from its handover on, its next day is today)."""
     from apps.stations.models import Station
+    from apps.tenants import modules
 
-    stations = Station.objects.exclude(tenant__close_day_at_change="")
+    stations = Station.objects.filter(modules.closing_at_a_handover("tenant__"))
     if station_ids is not None:
         stations = stations.filter(pk__in=station_ids)
     return max([today(), *(today(pk) for pk in stations.values_list("pk", flat=True))])

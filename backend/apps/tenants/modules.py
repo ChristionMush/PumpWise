@@ -107,6 +107,19 @@ def of(tenant):
     return Modules(resolve({m.key: m.read(tenant) for m in MODULES}))
 
 
+def handover(mods):
+    """The handover the day closes at ("07:00", "18:00"), or "" when the manager closes it from 21:00."""
+    return "" if mods.day_close == "manager" else mods.day_close
+
+
+def closing_at_a_handover(through=""):
+    """A database filter for businesses whose day closes at a handover (module "day_close"), for a query over many
+    stations at once; `through` is the path to the Tenant, e.g. "tenant__"."""
+    from django.db.models import Q
+
+    return ~Q(**{f"{through}close_day_at_change": ""})
+
+
 def problems(values):
     """What is wrong with a set of module values (unknown modules, choices that do not exist, needs not met); [] if fine."""
     out = [f"No module called {k!r}." for k in values if k not in BY_KEY]
