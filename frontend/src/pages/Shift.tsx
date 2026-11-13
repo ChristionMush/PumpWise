@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, errorMessage } from "../api";
-import { useAuth } from "../auth";
+import { useAuth, useModule } from "../auth";
 import { Badge, ErrorNote } from "../components";
 import { chartOf, litresFromChart, offChart } from "../dipChart";
 import { enqueue, expectedVsHanded, kvGet, kvSet, myOps, uuid, type PriceRow } from "../offline";
@@ -163,7 +163,8 @@ export default function Shift() {
   const [checking, setChecking] = useState<Record<string, boolean>>({});
   const [belowOk, setBelowOk] = useState(false); // "the pump really shows these numbers" (an end below the start)
   const [warned, setWarned] = useState<string | null>(null); // a big cash difference was pointed out for these numbers
-  const { user, tenant } = useAuth();
+  const { user } = useAuth();
+  const expenses = useModule("expenses");
   const canType = user?.role === "owner" || user?.role === "manager"; // attendants start from the last closing number
   const navigate = useNavigate();
 
@@ -286,7 +287,7 @@ export default function Shift() {
     return bad ? "Each expense needs what it was and what it cost (or remove the line)." : null;
   };
   const expenseLines = () => (shiftExpenses.length ? { expenses: shiftExpenses.map((e) => ({ client_id: e.id, name: e.name.trim(), amount: e.amount })) } : {});
-  const expensesField = tenant?.expenses_enabled ? (
+  const expensesField = expenses ? (
     <div className="form" aria-label="Expenses paid on this shift" role="group">
       <h3>Expenses paid on this shift</h3>
       {shiftExpenses.map((e, i) => (

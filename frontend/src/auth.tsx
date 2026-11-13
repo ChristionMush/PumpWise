@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, SIGNED_IN_AS, tokens } from "./api";
 import { setPhoneUser } from "./offline";
-import type { TenantInfo, User } from "./types";
+import type { Modules, TenantInfo, User } from "./types";
 
 interface AuthState {
   user: User | null;
@@ -20,6 +20,9 @@ export const useAuth = () => {
   if (!v) throw new Error("useAuth outside AuthProvider");
   return v;
 };
+
+/** One of the signed-in business's modules; undefined before sign-in (and for the platform). */
+export const useModule = <K extends keyof Modules>(key: K): Modules[K] | undefined => useAuth().tenant?.modules?.[key];
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);

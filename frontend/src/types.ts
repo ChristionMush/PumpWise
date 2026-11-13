@@ -1,7 +1,16 @@
 export type Role = "platform_admin" | "owner" | "manager" | "attendant";
 export interface User { id: string; role: Role; full_name: string; email: string | null; phone: string | null; must_change_password: boolean; tenant_id: string | null; }
 export interface TenantInfo { id: string; name: string; slug: string; status: "active" | "suspended" | "cancelled"; is_demo?: boolean; trial_expires_at?: string | null;
-  expenses_enabled?: boolean; // attendants and managers record what they paid out (recorded only)
+  expenses_enabled?: boolean; // the server still sends it for phones on the version before modules; read useModule("expenses")
+  modules?: Modules;
+}
+/** The business's modules (backend apps/tenants/modules.py). Screens ask useModule("expenses"), never a client or a Mark. */
+export interface Modules {
+  pump_allocation: "shared" | "shared_multi" | "assigned" | "pick";
+  expenses: boolean;
+  dip_at_shift_end: boolean;
+  attendants_see_dip_litres: boolean;
+  day_close: "manager" | "07:00" | "18:00";
 }
 export interface Subscription { status: "active" | "past_due" | "suspended" | "cancelled"; plan: string; paid_through: string | null; }
 export interface Owner { id: string; full_name: string; email: string | null; phone: string | null; }

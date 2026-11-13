@@ -1310,13 +1310,14 @@ def record_expense(*, user, station, category, amount, currency=None, note="", s
     shift: the shift it was paid on, when known (sent with an end of shift); else the part the person was on then."""
     from django.db.models import Q
 
+    from apps.tenants import modules
     from apps.tenants.models import Tenant
 
     from .models import Expense
 
     if client_id and (existing := Expense.objects.filter(client_id=client_id).first()):
         return existing
-    if not Tenant.objects.filter(pk=station.tenant_id, expenses_enabled=True).exists():
+    if not modules.of(Tenant.objects.get(pk=station.tenant_id)).expenses:
         raise ValidationError({"detail": "Expenses are not switched on for this business. Ask PumpWise to turn them on."})
     spent_at = spent_at or timezone.now()
     if shift is None:

@@ -68,3 +68,16 @@ def test_modules_are_read_only_and_a_typo_is_an_error():
         mods.expenses = True
     with pytest.raises(AttributeError, match="No module called 'expense'"):
         mods.expense  # noqa: B018
+
+
+@pytest.mark.parametrize("live, mark", [(FUEL_ZONE, "mark_1"), (PESNAT, "mark_2")], ids=["fuel_zone", "pesnat"])
+def test_the_phone_is_told_its_modules_when_it_signs_in(live, mark):
+    from apps.accounts.models import Role
+
+    from .helpers import client_for
+    from .test_client_profiles import site
+
+    a, *_ = site(live)
+    tenant_info = client_for(a[Role.ATTENDANT]).get("/api/auth/me/").json()["tenant"]
+    assert tenant_info["modules"] == dict(modules.MARKS[mark])
+    assert tenant_info["expenses_enabled"] is live["expenses_enabled"]  # still there for phones on the older version

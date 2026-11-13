@@ -22,6 +22,7 @@ from apps.operations.models import CashSubmission, Delivery, Expense, Shift, Tra
 from apps.stations.models import FuelPrice, Tank
 from apps.stations.pools import pools_for
 from apps.stations.services import rate_at
+from apps.tenants import modules
 from apps.tenants.services import get_settings
 
 from .reconciliation import cash_summary, reconcile_tank_day, tank_totals
@@ -83,7 +84,7 @@ def build_pack(station, year, month):
 
     fuels = list(dict.fromkeys(Tank.objects.filter(station=station).select_related("fuel_type").order_by("fuel_type__name")
                               .values_list("fuel_type__name", flat=True)))
-    spends = station.tenant.expenses_enabled  # attendants' expenses come off their cash: a column of their own
+    spends = modules.of(station.tenant).expenses  # attendants' expenses come off their cash: a column of their own
     rows, sums = [], {}
     day = first
     while day <= min(last, cal.today()):
@@ -164,7 +165,7 @@ def build_pack(station, year, month):
     # Expenses: what was paid out at the station (recorded only; the cash handed in is unchanged). Only for a business
     # that records expenses, or once any were recorded.
     spent = list(Expense.objects.filter(station=station, spent_at__gt=start, spent_at__lte=end).select_related("recorded_by").order_by("spent_at"))
-    if spent or station.tenant.expenses_enabled:
+    if spent or modules.of(station.tenant).expenses:
         rows, total = [], Decimal(0)
         for e in spent:
             day = cal.day_of(e.spent_at)

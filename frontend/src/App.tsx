@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { api } from "./api";
-import { useAuth } from "./auth";
+import { useAuth, useModule } from "./auth";
 import { Footer } from "./components";
 import { SyncBadge, Tutorial } from "./components2";
 import { startAutoSync } from "./offline";
@@ -68,12 +68,13 @@ function useApprovalCount(enabled: boolean) {
 
 function Shell({ children }: { children: ReactNode }) {
   const { user, tenant, branding, billing, logout } = useAuth();
+  const expenses = useModule("expenses");
   const [tutorial, setTutorial] = useState(() => user?.role === "attendant" && !localStorage.getItem("fs_tutorial_done"));
   useEffect(() => (user && user.role !== "platform_admin" ? startAutoSync() : undefined), [user]);
   const name = branding?.display_name || tenant?.name || t("appName");
   const base = user ? NAV[user.role] : undefined;
   // attendants add their expenses at the end of their shift; managers and owners record theirs on the Expenses screen
-  const nav = base && tenant?.expenses_enabled && user?.role !== "attendant" ? withExpenses(base) : base;
+  const nav = base && expenses && user?.role !== "attendant" ? withExpenses(base) : base;
   const alertCount = useAlertCount(user?.role === "owner" || user?.role === "manager");
   const approvalCount = useApprovalCount(user?.role === "owner" || user?.role === "manager");
   const counts: Record<string, number> = { "/alerts": alertCount, "/approvals": approvalCount };

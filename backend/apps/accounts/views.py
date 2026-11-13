@@ -105,9 +105,12 @@ class MeView(APIView):
         user = request.user
         tenant = None
         if user.tenant_id:
+            from apps.tenants import modules
+
             t = user.tenant
+            # expenses_enabled: still read by phones on the version before modules
             tenant = {"id": str(t.id), "name": t.name, "slug": t.slug, "status": t.status, "is_demo": t.is_demo,
-                      "trial_expires_at": t.trial_expires_at, "expenses_enabled": t.expenses_enabled}
+                      "trial_expires_at": t.trial_expires_at, "expenses_enabled": t.expenses_enabled, "modules": modules.of(t).as_dict()}
         branding = _branding()
         if user.tenant_id:
             from apps.tenants.models import TenantSettings

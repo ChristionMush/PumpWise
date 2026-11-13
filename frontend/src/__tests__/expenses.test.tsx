@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { kvSet, resetOffline } from "../offline";
 import { mockApi, renderApp, signedIn } from "./helpers";
 
-const tenant = { id: "t", name: "Pesnat", slug: "p", status: "active", expenses_enabled: true };
+const tenant = { id: "t", name: "Pesnat", slug: "p", status: "active", expenses_enabled: true, modules: { expenses: true } };
 const attendant = { id: "a", role: "attendant", full_name: "Tendai", must_change_password: false, tenant_id: "t" };
 const station = { id: "st1", name: "Main", pricing_currency: "USD", open_shift_id: null, pumps: [], prices: [] };
 const applyAll = (body: any) => ({ body: { results: body.ops.map((o: any) => ({ op_id: o.op_id, status: "applied" })) } });
@@ -79,7 +79,7 @@ describe("expenses", () => {
   });
 
   it("is not offered to a business without expenses", async () => {
-    mockApi({ "GET /api/auth/me/": { body: { user: attendant, tenant: { ...tenant, expenses_enabled: false } } }, "GET /api/shifts/prefill/": { body: { stations: [station] } } });
+    mockApi({ "GET /api/auth/me/": { body: { user: attendant, tenant: { ...tenant, expenses_enabled: false, modules: { expenses: false } } } }, "GET /api/shifts/prefill/": { body: { stations: [station] } } });
     renderApp("/");
     await screen.findByRole("link", { name: "Shift" });
     expect(screen.queryByRole("link", { name: "Expenses" })).not.toBeInTheDocument();
