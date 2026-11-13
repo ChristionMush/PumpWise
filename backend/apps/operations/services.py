@@ -1030,11 +1030,12 @@ def _plain_error(exc):
 def _record_end_dips(*, user, shift, dips, at, who=None, strict=True):
     """Dips taken by the outgoing attendant at the shift change (a business that dips at the end of a shift): the tanks
     of the pumps they are on. A dip of another tank is left out (a manager may dip any tank)."""
+    from apps.tenants import modules
     from apps.tenants.models import Tenant
 
     from .serializers import DayCloseDipInput
 
-    if not (can(user, "tank_records") or Tenant.objects.filter(pk=shift.tenant_id, dip_at_shift_end=True).exists()):
+    if not (can(user, "tank_records") or modules.of(Tenant.objects.get(pk=shift.tenant_id)).dip_at_shift_end):
         raise PermissionDenied("Dips are recorded by a manager.")
     data = DayCloseDipInput(data=list(dips), many=True)
     data.is_valid(raise_exception=True)

@@ -22,6 +22,7 @@ from apps.stations.access import scope, visible_station_ids
 from apps.stations.models import FuelPrice, Pump, Station, StationAssignment, Tank
 from apps.stations.pools import pool_of
 from apps.stations.views import validate_image
+from apps.tenants import modules
 
 from . import approvals, dayclose, imports, services
 from .models import (
@@ -179,6 +180,7 @@ class PrefillView(APIView):
         user = request.user
         stations = scope(Station.objects.filter(status="active"), user, "id")
         out = []
+        mods = modules.of(user.tenant)
         horizon = timezone.now() - timedelta(days=2)
         manager = can(user, "manage_shift")
         for st in stations:
@@ -233,7 +235,7 @@ class PrefillView(APIView):
                 entry["staff"] = _station_staff(st)
             if picking:
                 entry["pick_pumps"] = True
-            if user.tenant.dip_at_shift_end:  # ending a shift asks for the dips of the attendant's tanks, unless just taken
+            if mods.dip_at_shift_end:  # ending a shift asks for the dips of the attendant's tanks, unless just taken
                 entry["dip_at_end"] = True
                 last = TankReading.objects.filter(tank__station=st).order_by("-reading_at").first()
                 entry["last_dip_at"] = last.reading_at if last else None
@@ -246,13 +248,13 @@ class PrefillView(APIView):
                     tanks.append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "capacity_litres": str(t.capacity_litres),
                                   "has_calibration": bool(chart), "calibration": chart, "last_litres": str(last.litres) if last else None})
                 entry["tanks"] = tanks
-            elif user.tenant.dip_at_shift_end:  # an attendant who dips at the end of a shift: which tanks, never their levels
+            elif mods.dip_at_shift_end:  # an attendant who dips at the end of a shift: which tanks, never their levels
                 entry["tanks"] = []
                 for t in Tank.objects.filter(station=st).select_related("fuel_type"):
                     last = TankReading.objects.filter(tank=t).order_by("-reading_at").first()
                     entry["tanks"].append({"id": str(t.pk), "name": t.name, "fuel_code": t.fuel_type.code, "has_calibration": t.calibration.count() >= 2,
                                            "last_dip_at": last.reading_at if last else None})
-                    if user.tenant.attendants_see_dip_litres:  # switched on per business: the phone shows the litres from the mm
+                    if mods.attendants_see_dip_litres:  # switched on per business: the phone shows the litres from the mm
                         entry["tanks"][-1]["calibration"] = _dip_chart(t)
             out.append(entry)
         return Response({"stations": out, "server_time": timezone.now()})
