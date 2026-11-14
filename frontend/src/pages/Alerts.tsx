@@ -4,6 +4,8 @@ import { useAuth } from "../auth";
 import { Badge, ErrorNote } from "../components";
 
 interface Reason { code: string; label: string; write_off: boolean }
+/** A missing delivery's form, filled from the dips by the server. */
+interface DeliveryForm { tank: string; tanks: { id: string; name: string }[]; fuel: string; litres: string; from: string; to: string; delivered_at: string; currency: string }
 interface Summary { open: number; awaiting_approval: number; to_review: number; reasons: Record<string, Reason[]> }
 type Tab = "open" | "review" | "history";
 
@@ -95,7 +97,9 @@ function AlertCard({ a, tab, owner, reasons, act }: { a: any; tab: Tab; owner: b
           {a.reviewed_by_name && <span className="muted"> · accepted by {a.reviewed_by_name}</span>}</p>
       )}
 
-      {a.status === "open" && !resolving && <button className="btn primary" onClick={() => setResolving(true)}>Resolve</button>}
+      {a.delivery_form && !resolving && <RecordDelivery alertId={a.id} form={a.delivery_form} act={act} />}
+      {a.status === "open" && !resolving && <button className={a.delivery_form ? "link" : "btn primary"} onClick={() => setResolving(true)}>
+        {a.delivery_form ? "Not a delivery? Resolve another way" : "Resolve"}</button>}
       {a.status === "open" && resolving && (
         <div className="form">
           <label>How was it resolved?<select value={reason} onChange={(e) => setReason(e.target.value)}>
@@ -130,5 +134,41 @@ function AlertCard({ a, tab, owner, reasons, act }: { a: any; tab: Tab; owner: b
         </ol>
       )}
     </section>
+  );
+}
+
+/** "YYYY-MM-DDTHH:mm" in this phone's time, for a datetime-local box. */
+const localInput = (iso: string) => {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+/** The delivery the dips say came in, ready to save: litres, fuel and tank from the dips, a time between them.
+ *  Supplier, value and the delivery note number can be left blank and added later on the Dip screen. */
+function RecordDelivery({ alertId, form, act }: { alertId: string; form: DeliveryForm; act: (p: string, b: any, done: string) => Promise<void> }) {
+  const [d, setD] = useState({ tank: form.tank, litres: String(Number(form.litres)), at: localInput(form.delivered_at), supplier: "", value: "", note: "" });
+  const pending = [!d.supplier.trim() && "supplier", !d.value && "value", !d.note.trim() && "delivery note number"].filter(Boolean) as string[];
+  const save = () => void act(`/api/alerts/${alertId}/record-delivery/`, {
+    tank: d.tank, litres: d.litres, delivered_at: new Date(d.at).toISOString(), supplier: d.supplier.trim(), value: d.value || null, note_number: d.note.trim(),
+  }, pending.length ? `Delivery recorded. Add the ${pending.join(", ")} on the Dip screen when you have them.` : "Delivery recorded.");
+  return (
+    <form className="form" aria-label="Record the delivery" onSubmit={(e) => { e.preventDefault(); save(); }}>
+      <h3>Record the delivery</h3>
+      <p className="muted">Filled in from the dips. Check the litres against the delivery note if you have it.</p>
+      <p>Fuel: <strong>{form.fuel}</strong>{form.tanks.length === 1 ? <> · into {form.tanks[0].name}</> : null}</p>
+      {form.tanks.length > 1 && (
+        <label>Into tank<select value={d.tank} onChange={(e) => setD({ ...d, tank: e.target.value })}>
+          {form.tanks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+      )}
+      <label>Litres received<input inputMode="decimal" value={d.litres} onChange={(e) => setD({ ...d, litres: e.target.value.replace(",", ".") })} required /></label>
+      <label>Delivered at<input type="datetime-local" value={d.at} min={localInput(form.from)} max={localInput(form.to)} onChange={(e) => setD({ ...d, at: e.target.value })} required /></label>
+      <p className="muted">Between the two dips, so the fuel check balances.</p>
+      <label>Supplier<input value={d.supplier} placeholder="Pending" onChange={(e) => setD({ ...d, supplier: e.target.value })} /></label>
+      <label>{`Value (${form.currency})`}<input inputMode="decimal" value={d.value} placeholder="Pending" onChange={(e) => setD({ ...d, value: e.target.value.replace(",", ".") })} /></label>
+      <label>Delivery note no.<input value={d.note} placeholder="Pending" onChange={(e) => setD({ ...d, note: e.target.value })} /></label>
+      {pending.length > 0 && <p className="muted">{`Pending: ${pending.join(", ")}. You can save now and add them later.`}</p>}
+      <button className="btn primary" disabled={!d.litres || !(Number(d.litres) > 0) || !d.at}>Save delivery</button>
+    </form>
   );
 }

@@ -83,4 +83,35 @@ describe("alerts", () => {
     expect(calls.find((c) => c.path === "/api/alerts/a1/send-back/")!.body).toEqual({ note: "Show me the pump photo" });
     expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
   });
+
+  it("turns a missing delivery into a delivery form filled from the dips, saved with details left pending", async () => {
+    const user = userEvent.setup();
+    signedIn();
+    const delivery = { id: "a9", kind: "delivery", severity: "warning", status: "open", station_name: "Msasa Road", reopened_count: 0, pattern: null,
+      message: "Msasa Road Tank 1: about 6,000 L came in between the dips at 08:00 and 12:00, but no delivery is recorded. Record the delivery.",
+      created_at: new Date(Date.now() - 36e5).toISOString(),
+      delivery_form: { tank: "k1", tanks: [{ id: "k1", name: "Tank 1" }], fuel: "Petrol", litres: "6000", currency: "USD",
+        from: "2026-11-14T06:00:00Z", to: "2026-11-14T10:00:00Z", delivered_at: "2026-11-14T09:59:00Z" } };
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: manager, tenant } },
+      "GET /api/alerts/": { body: { count: 1, results: [delivery] } },
+      "GET /api/alerts/summary/": { body: { open: 1, awaiting_approval: 0, to_review: 0, reasons } },
+      "POST /api/alerts/a9/record-delivery/": { body: { ...delivery, status: "resolved", delivery_form: null } },
+    });
+    renderApp("/alerts");
+    const form = await screen.findByRole("form", { name: "Record the delivery" });
+    expect(form).toHaveTextContent("Petrol");
+    expect(screen.getByLabelText("Litres received")).toHaveValue("6000");
+    expect(screen.getByLabelText("Supplier")).toHaveAttribute("placeholder", "Pending");
+    expect(screen.getByLabelText("Value (USD)")).toHaveValue("");
+    expect(form).toHaveTextContent("Pending: supplier, value, delivery note number");
+    await user.type(screen.getByLabelText("Supplier"), "Kariba Fuel Supplies");
+    await user.click(screen.getByRole("button", { name: "Save delivery" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/alerts/a9/record-delivery/")).toBeTruthy());
+    const body = calls.find((c) => c.path === "/api/alerts/a9/record-delivery/")!.body;
+    expect(body).toMatchObject({ tank: "k1", litres: "6000", supplier: "Kariba Fuel Supplies", value: null, note_number: "" });
+    expect(new Date(body.delivered_at).getTime()).toBe(new Date("2026-11-14T09:59:00Z").getTime());
+    expect(await screen.findByText(/Add the value, delivery note number on the Dip screen/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Not a delivery? Resolve another way" })).toBeInTheDocument();
+  });
 });

@@ -44,6 +44,7 @@ from .serializers import (
     CheckpointInput,
     DayCloseCorrectInput,
     DayCloseInput,
+    DeliveryDetailsInput,
     DeliveryInput,
     DeliverySerializer,
     ExpenseInput,
@@ -510,9 +511,13 @@ class DeliveryView(APIView):
     permission_classes = [TankRecords]
 
     def get(self, request):
-        qs = scope(Delivery.objects.select_related("recorded_by"), request.user, "tank__station_id")
+        from .models import DELIVERY_DETAILS_PENDING
+
+        qs = scope(Delivery.objects.select_related("recorded_by", "tank__station"), request.user, "tank__station_id")
         if request.query_params.get("tank"):
             qs = qs.filter(tank_id=request.query_params["tank"])
+        if request.query_params.get("pending"):  # supplier, value or note number still to add
+            qs = qs.filter(DELIVERY_DETAILS_PENDING)
         return Response(DeliverySerializer(qs[:200], many=True).data)
 
     def post(self, request):
@@ -521,10 +526,30 @@ class DeliveryView(APIView):
         d = data.validated_data
         _check_station(request.user, d["tank"].station)
         existed = bool(d.get("client_id")) and Delivery.objects.filter(client_id=d["client_id"]).exists()
-        row = services.record_delivery(user=request.user, tank=d["tank"], litres=d["litres"], delivered_at=d.get("delivered_at"), supplier=d["supplier"], note_number=d["note_number"], client_id=d.get("client_id"))
+        row = services.record_delivery(user=request.user, tank=d["tank"], litres=d["litres"], delivered_at=d.get("delivered_at"), supplier=d["supplier"], note_number=d["note_number"], value=d.get("value"), client_id=d.get("client_id"))
         if not existed:
             audit.log("delivery_recorded", actor=request.user, obj=row, changes={"litres": str(row.litres_received), "tank": d["tank"].name}, request=request)
         return Response(DeliverySerializer(row).data, status=status.HTTP_200_OK if existed else status.HTTP_201_CREATED)
+
+
+class DeliveryDetailView(APIView):
+    """Add a delivery's supplier, value and note number later (managers and owners). Litres and time stay as recorded."""
+
+    permission_classes = [TankRecords]
+
+    def patch(self, request, pk):
+        try:
+            delivery = scope(Delivery.objects.select_related("tank__station"), request.user, "tank__station_id").filter(pk=uuid.UUID(str(pk))).first()
+        except ValueError:  # not an id
+            delivery = None
+        if delivery is None:
+            raise NotFound("Delivery not found.")
+        data = DeliveryDetailsInput(data=request.data)
+        data.is_valid(raise_exception=True)
+        d = data.validated_data
+        row = services.complete_delivery(user=request.user, delivery=delivery, supplier=d.get("supplier"), note_number=d.get("note_number"),
+                                         value=d.get("value"), request=request)
+        return Response(DeliverySerializer(row).data)
 
 
 # ---- private media (photos) ------------------------------------------------------------------------------------
@@ -599,7 +624,7 @@ def _apply(user, kind, p):
         else:
             d = _valid(DeliveryInput, p)
             _check_station(user, d["tank"].station)
-            row = services.record_delivery(user=user, tank=d["tank"], litres=d["litres"], delivered_at=d.get("delivered_at"), supplier=d["supplier"], note_number=d["note_number"], client_id=d.get("client_id"))
+            row = services.record_delivery(user=user, tank=d["tank"], litres=d["litres"], delivered_at=d.get("delivered_at"), supplier=d["supplier"], note_number=d["note_number"], value=d.get("value"), client_id=d.get("client_id"))
         return {"id": str(row.pk)}
 
     handlers = {"shift_end", "checkpoint", "shift_join", "shift_leave", "shift_cash", "shift_close", "pump_reassign"}

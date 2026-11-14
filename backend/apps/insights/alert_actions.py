@@ -243,3 +243,60 @@ def summary_lines(day):
         oldest = (timezone.now() - still[0].created_at).days
         lines.append(f"Still open: {still.count()}" + (f", the oldest {oldest} day{'s' if oldest != 1 else ''}" if oldest >= 1 else ""))
     return lines
+
+
+# ---- a delivery nobody recorded, recorded from its alert ----------------------------------------------------------
+
+def _missing_delivery(alert):
+    """A "Delivery check" alert for fuel that came in with no delivery recorded (not a delivery that does not match)."""
+    from decimal import Decimal
+
+    d = alert.data or {}
+    return alert.kind == "delivery" and alert.tank_id and d.get("from") and d.get("to") and Decimal(d.get("delivered") or "0") == 0
+
+
+def _window(alert):
+    from django.utils.dateparse import parse_datetime
+
+    return parse_datetime(alert.data["from"]), parse_datetime(alert.data["to"])
+
+
+def delivery_form(alert):
+    """What the delivery form on an open missing-delivery alert starts with: the litres the dips show came in, the
+    fuel, the tanks it can have gone into, and a time between the two dips. None for any other alert."""
+    if alert.status != OPEN or not _missing_delivery(alert):
+        return None
+    from apps.stations.pools import pool_of
+
+    pool = pool_of(alert.tank)
+    start, end = _window(alert)
+    return {"tank": str(alert.tank_id), "tanks": [{"id": str(t.pk), "name": t.name} for t in pool.tanks], "fuel": pool.fuel_type.name,
+            "litres": alert.data.get("came_in"), "from": start, "to": end, "delivered_at": max(start + timedelta(minutes=1), end - timedelta(minutes=1)),
+            "currency": pool.station.pricing_currency}
+
+
+@transaction.atomic
+def record_missing_delivery(*, user, alert, tank_id, litres, delivered_at, supplier="", note_number="", value=None, request=None):
+    """Record the delivery the alert found missing, and close the alert ("The delivery was recorded"). The time must
+    fall between the two dips, so the fuel check balances. Supplier, value and note number may be added later."""
+    from apps.audit import services as audit
+    from apps.operations import services
+    from apps.operations.models import delivery_details_pending
+    from apps.stations.pools import pool_of
+
+    if alert.status != OPEN or not _missing_delivery(alert):
+        raise ValidationError({"detail": "This alert is not waiting for a delivery."})
+    pool = pool_of(alert.tank)
+    tank = next((t for t in pool.tanks if str(t.pk) == str(tank_id)), None)
+    if tank is None:
+        raise ValidationError({"tank": "Choose a tank of this fuel at this station."})
+    start, end = _window(alert)
+    if not start < delivered_at <= end:
+        fmt = lambda t: timezone.localtime(t).strftime("%d %b %H:%M")  # noqa: E731
+        raise ValidationError({"delivered_at": f"The delivery came between the dips at {fmt(start)} and {fmt(end)}: choose a time in between."})
+    row = services.record_delivery(user=user, tank=tank, litres=litres, delivered_at=delivered_at, supplier=supplier, note_number=note_number, value=value)
+    audit.log("delivery_recorded", actor=user, obj=row, request=request,
+              changes={"litres": str(row.litres_received), "tank": tank.name, "from_alert": str(alert.pk)})
+    pending = " Supplier, value or note number to add." if delivery_details_pending(row) else ""
+    resolve(user=user, alert=alert, reason="delivery_added", note=f"{row.litres_received:,.0f} L recorded into {tank.name}.{pending}")
+    return alert, row

@@ -163,6 +163,7 @@ class DeliveryInput(serializers.Serializer):
     delivered_at = serializers.DateTimeField(required=False)
     supplier = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
     note_number = serializers.CharField(max_length=60, required=False, allow_blank=True, default="")
+    value = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"), required=False, allow_null=True, default=None)
     fuel_code = serializers.CharField(max_length=20, required=False, allow_blank=True)  # the fuel the manager says is arriving
 
     def validate(self, attrs):
@@ -248,13 +249,31 @@ class TankReadingSerializer(serializers.ModelSerializer):
         return f"/api/media/tankreading/{obj.pk}/photo/" if obj.photo else None
 
 
+class DeliveryDetailsInput(serializers.Serializer):
+    """A delivery's supplier, value and note number, added after it was recorded."""
+
+    supplier = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    note_number = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    value = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"), required=False)
+
+
 class DeliverySerializer(serializers.ModelSerializer):
     recorded_by_name = serializers.CharField(source="recorded_by.full_name", read_only=True, default=None)
     photo_url = serializers.SerializerMethodField()
+    tank_name = serializers.CharField(source="tank.name", read_only=True)
+    station_name = serializers.CharField(source="tank.station.name", read_only=True)
+    station_currency = serializers.CharField(source="tank.station.pricing_currency", read_only=True)  # what a value is entered in
+    details_pending = serializers.SerializerMethodField()
 
     class Meta:
         model = Delivery
-        fields = ["id", "client_id", "tank", "delivered_at", "litres_received", "supplier", "note_number", "recorded_by", "recorded_by_name", "photo_url"]
+        fields = ["id", "client_id", "tank", "tank_name", "station_name", "delivered_at", "litres_received", "supplier", "note_number", "value", "currency", "station_currency",
+                  "details_pending", "recorded_by", "recorded_by_name", "photo_url"]
+
+    def get_details_pending(self, obj):
+        from .models import delivery_details_pending
+
+        return delivery_details_pending(obj)
 
     def get_photo_url(self, obj):
         return f"/api/media/delivery/{obj.pk}/photo/" if obj.photo else None

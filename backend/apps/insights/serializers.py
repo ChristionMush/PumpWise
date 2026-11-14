@@ -11,15 +11,21 @@ class AlertSerializer(serializers.ModelSerializer):
     reviewed_by_name = serializers.CharField(source="reviewed_by.full_name", default=None, read_only=True)
     resolution_label = serializers.SerializerMethodField()
     gain = serializers.SerializerMethodField()  # a tank that gained fuel (shown green), not a loss
+    delivery_form = serializers.SerializerMethodField()  # a missing delivery: the form to record it, filled from the dips
 
     class Meta:
         model = Alert
         fields = ["id", "kind", "severity", "message", "station", "station_name", "tank", "status", "created_at", "resolved_at",
                   "resolution_reason", "resolution_label", "resolution_note", "resolved_by_name", "resolved_by_role",
-                  "reviewed_at", "reviewed_by_name", "reminded_at", "escalated_at", "reopened_count", "pattern", "gain"]
+                  "reviewed_at", "reviewed_by_name", "reminded_at", "escalated_at", "reopened_count", "pattern", "gain", "delivery_form"]
 
     def get_gain(self, obj):
         return obj.kind == "loss" and (obj.data or {}).get("status") == "gain"
+
+    def get_delivery_form(self, obj):
+        from .alert_actions import delivery_form
+
+        return delivery_form(obj)
 
     def get_resolution_label(self, obj):
         return reason_label(obj.kind, obj.resolution_reason) if obj.resolution_reason else None

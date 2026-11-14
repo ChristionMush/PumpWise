@@ -221,6 +221,10 @@ class Delivery(TenantOwnedModel):
     supplier = models.CharField(max_length=120, blank=True, default="")
     note_number = models.CharField(max_length=60, blank=True, default="")
     photo = models.FileField(upload_to=upload_to, null=True, blank=True)  # optional photo of the delivery note
+    # The total on the supplier's invoice, in the station's currency. Blank until known: a delivery can be recorded
+    # from the dips first (the litres matter for the fuel check) and its supplier, value and note number added later.
+    value = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    currency = models.CharField(max_length=3, blank=True, default="")
     recorded_by = models.ForeignKey("accounts.User", null=True, on_delete=models.PROTECT, related_name="+")
 
     class Meta:
@@ -228,8 +232,17 @@ class Delivery(TenantOwnedModel):
         indexes = [models.Index(fields=["tank", "-delivered_at"])]
         constraints = [
             models.CheckConstraint(condition=Q(litres_received__gt=0), name="delivery_positive"),
+            models.CheckConstraint(condition=Q(value__isnull=True) | Q(value__gt=0), name="delivery_value_positive"),
             models.UniqueConstraint(F("tenant"), "client_id", condition=Q(client_id__isnull=False), name="delivery_client_id_unique"),
         ]
+
+
+DELIVERY_DETAILS_PENDING = Q(supplier="") | Q(note_number="") | Q(value__isnull=True)
+
+
+def delivery_details_pending(d):
+    """Supplier, value or delivery note number still to be added."""
+    return not d.supplier or not d.note_number or d.value is None
 
 
 class CashSubmission(TenantOwnedModel):

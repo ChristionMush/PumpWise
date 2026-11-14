@@ -1337,18 +1337,39 @@ def record_expense(*, user, station, category, amount, currency=None, note="", s
     return row
 
 
-def record_delivery(*, user, tank, litres, delivered_at=None, supplier="", note_number="", client_id=None):
-    """Fuel received. Idempotent on the phone's client_id (rule 8)."""
+def record_delivery(*, user, tank, litres, delivered_at=None, supplier="", note_number="", value=None, client_id=None):
+    """Fuel received. Idempotent on the phone's client_id (rule 8). Supplier, value and note number may follow later
+    (complete_delivery). The value is the invoice total, in the station's currency."""
     if client_id and (existing := Delivery.objects.filter(client_id=client_id).first()):
         return existing
     row = Delivery.objects.create(
         tenant_id=tank.tenant_id, client_id=client_id, tank=tank, litres_received=Decimal(str(litres)).quantize(THREE),
-        delivered_at=delivered_at or timezone.now(), supplier=supplier, note_number=note_number, recorded_by=user,
+        delivered_at=delivered_at or timezone.now(), supplier=supplier.strip(), note_number=note_number.strip(), recorded_by=user,
+        value=value, currency=tank.station.pricing_currency if value is not None else "",
     )
     from .rollups import on_tank_changed
 
     on_tank_changed(tank)
     return row
+
+
+def complete_delivery(*, user, delivery, supplier=None, note_number=None, value=None, request=None):
+    """Add or correct a delivery's supplier, value and note number. Its litres and time stay as recorded: they are what
+    the fuel check runs on."""
+    from apps.audit import services as audit
+
+    before = {"supplier": delivery.supplier, "note_number": delivery.note_number, "value": str(delivery.value) if delivery.value is not None else None}
+    if supplier is not None:
+        delivery.supplier = supplier.strip()
+    if note_number is not None:
+        delivery.note_number = note_number.strip()
+    if value is not None:
+        delivery.value, delivery.currency = value, delivery.currency or delivery.tank.station.pricing_currency
+    after = {"supplier": delivery.supplier, "note_number": delivery.note_number, "value": str(delivery.value) if delivery.value is not None else None}
+    if changes := audit.diff(before, after):
+        delivery.save(update_fields=["supplier", "note_number", "value", "currency", "updated_at"])
+        audit.log("delivery_details_added", actor=user, obj=delivery, request=request, changes=changes)
+    return delivery
 
 
 def review_shift(*, user, shift, notes=""):

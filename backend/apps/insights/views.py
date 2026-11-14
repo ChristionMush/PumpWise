@@ -1,14 +1,16 @@
 import hashlib
 import json
+from decimal import Decimal
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import HttpResponse, HttpResponseNotModified
+from rest_framework import serializers
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsOwner, IsOwnerOrManager, can
+from apps.accounts.permissions import IsOwner, IsOwnerOrManager, can, require
 from apps.audit import services as audit
 from apps.operations.services import pump_gaps
 from apps.stations.access import scope
@@ -114,6 +116,32 @@ class AlertResolveView(APIView):
         audit.log("alert_resolved", actor=request.user, obj=alert, request=request,
                   changes={"message": alert.message, "reason": alert.resolution_reason, "note": alert.resolution_note, "status": alert.status})
         return Response(_with_story(alert))
+
+
+class AlertRecordDeliveryView(APIView):
+    """A missing delivery, recorded from its alert's form (filled from the dips); the alert closes. Managers and owners."""
+
+    permission_classes = [IsOwnerOrManager]
+
+    def post(self, request, pk):
+        from apps.operations.serializers import DeliveryDetailsInput
+
+        require(request.user, "tank_records", "Deliveries are recorded by a manager.")
+        data = RecordDeliveryInput(data=request.data)
+        data.is_valid(raise_exception=True)
+        details = DeliveryDetailsInput(data={k: v for k, v in request.data.items() if k in ("supplier", "note_number", "value") and v not in ("", None)})
+        details.is_valid(raise_exception=True)
+        d, x = data.validated_data, details.validated_data
+        alert, _ = alert_actions.record_missing_delivery(user=request.user, alert=_alert(request, pk), tank_id=d["tank"], litres=d["litres"],
+                                                         delivered_at=d["delivered_at"], supplier=x.get("supplier", ""), note_number=x.get("note_number", ""),
+                                                         value=x.get("value"), request=request)
+        return Response(_with_story(alert))
+
+
+class RecordDeliveryInput(serializers.Serializer):
+    tank = serializers.UUIDField()
+    litres = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal("0.001"))
+    delivered_at = serializers.DateTimeField()
 
 
 class AlertApproveView(APIView):

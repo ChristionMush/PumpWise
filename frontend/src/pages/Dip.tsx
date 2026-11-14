@@ -34,7 +34,7 @@ export default function Dip() {
   const [tankId, setTankId] = useState("");
   const [litres, setLitres] = useState("");
   const [dipMm, setDipMm] = useState("");
-  const [delivered, setDelivered] = useState({ fuel: "", tank: "", litres: "", supplier: "", note: "" });
+  const [delivered, setDelivered] = useState({ fuel: "", tank: "", litres: "", supplier: "", note: "", value: "" });
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -138,13 +138,15 @@ export default function Dip() {
   const fuels = [...new Set(tanks.map((t) => t.fuel_code))];
   const fuelTanks = tanks.filter((t) => t.fuel_code === delivered.fuel);
   const deliveryTank = fuelTanks.length === 1 ? fuelTanks[0].id : delivered.tank;
+  const deliveryCurrency = stations.find((st) => (st.tanks ?? []).some((t) => t.id === deliveryTank))?.pricing_currency ?? station?.pricing_currency ?? "USD";
   const saveDelivery = async (e: FormEvent) => {
     e.preventDefault();
     if (!delivered.fuel) return setError("Choose the fuel being received.");
     if (!deliveryTank) return setError("Choose the tank the fuel goes into.");
     if (!delivered.litres) return setError("Enter the litres received.");
-    await enqueue("delivery", { client_id: uuid(), tank: deliveryTank, fuel_code: delivered.fuel, litres: delivered.litres, delivered_at: new Date().toISOString(), supplier: delivered.supplier, note_number: delivered.note });
-    setDelivered({ fuel: "", tank: "", litres: "", supplier: "", note: "" }); setError(null); setMsg("Delivery saved.");
+    await enqueue("delivery", { client_id: uuid(), tank: deliveryTank, fuel_code: delivered.fuel, litres: delivered.litres, delivered_at: new Date().toISOString(),
+      supplier: delivered.supplier, note_number: delivered.note, value: delivered.value || null });
+    setDelivered({ fuel: "", tank: "", litres: "", supplier: "", note: "", value: "" }); setError(null); setMsg("Delivery saved.");
   };
 
   return (
@@ -203,7 +205,12 @@ export default function Dip() {
         <label>Litres received<input inputMode="decimal" value={delivered.litres} onChange={(e) => setDelivered({ ...delivered, litres: e.target.value })} /></label>
         <label>Supplier<input value={delivered.supplier} onChange={(e) => setDelivered({ ...delivered, supplier: e.target.value })} /></label>
         <label>Delivery note no.<input value={delivered.note} onChange={(e) => setDelivered({ ...delivered, note: e.target.value })} /></label>
+        <label>{`Value (${deliveryCurrency})`}
+          <input inputMode="decimal" value={delivered.value} onChange={(e) => setDelivered({ ...delivered, value: e.target.value.replace(",", ".") })} placeholder="Invoice total" /></label>
+        <p className="muted">Supplier, value and note number can be added later if you do not have them yet.</p>
         <button className="btn">Save delivery</button></form>
+
+      <PendingDeliveries />
 
       <details className="card form"><summary><strong>Spot dip</strong> <span className="muted">· a dip outside the day close</span></summary>
         <form onSubmit={saveDip} className="form">
@@ -214,5 +221,48 @@ export default function Dip() {
       </details>
       <ErrorNote message={error} />{msg && <p role="status" className="ok-note">{msg}</p>}
     </>
+  );
+}
+
+interface PendingDelivery {
+  id: string; tank_name: string; station_name: string; delivered_at: string; litres_received: string; supplier: string; note_number: string;
+  value: string | null; station_currency: string;
+}
+
+/** Deliveries saved without their supplier, value or delivery note number (from an alert, or before the note arrived):
+ *  add them here. The litres and time stay as recorded. */
+function PendingDeliveries() {
+  const [rows, setRows] = useState<PendingDelivery[] | null>(null);
+  const load = () => api<PendingDelivery[]>("/api/deliveries/?pending=1").then(setRows).catch(() => setRows([]));
+  useEffect(() => { void load(); }, []);
+  if (!rows?.length) return null;
+  return (
+    <section className="card form" aria-label="Deliveries waiting for details">
+      <h2>Deliveries waiting for details</h2>
+      <p className="muted">Add the supplier, value and delivery note number when you have them.</p>
+      {rows.map((r) => <PendingRow key={r.id} row={r} saved={load} />)}
+    </section>
+  );
+}
+
+function PendingRow({ row, saved }: { row: PendingDelivery; saved: () => Promise<void> }) {
+  const [d, setD] = useState({ supplier: row.supplier, value: row.value ?? "", note: row.note_number });
+  const [error, setError] = useState<string | null>(null);
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const body = { supplier: d.supplier.trim(), note_number: d.note.trim(), ...(d.value ? { value: d.value } : {}) };
+    try { await api(`/api/deliveries/${row.id}/`, { method: "PATCH", body }); await saved(); } catch (err) { setError(errorMessage(err)); }
+  };
+  const when = new Date(row.delivered_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return (
+    <form onSubmit={save} className="form" aria-label={`Delivery ${row.station_name} ${row.tank_name} ${when}`}>
+      <h3>{`${row.station_name} · ${row.tank_name} · ${Number(row.litres_received).toLocaleString()} L · ${when}`}</h3>
+      <label>Supplier<input value={d.supplier} placeholder="Pending" onChange={(e) => setD({ ...d, supplier: e.target.value })} /></label>
+      <label>{`Value (${row.station_currency})`}<input inputMode="decimal" value={d.value} placeholder="Pending" onChange={(e) => setD({ ...d, value: e.target.value.replace(",", ".") })} /></label>
+      <label>Delivery note no.<input value={d.note} placeholder="Pending" onChange={(e) => setD({ ...d, note: e.target.value })} /></label>
+      <button className="btn">Save details</button>
+      <ErrorNote message={error} />
+    </form>
   );
 }

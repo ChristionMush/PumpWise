@@ -10,6 +10,7 @@ urlpatterns = [
     path("alerts/summary/", views.AlertSummaryView.as_view()),
     path("alerts/<str:pk>/", views.AlertDetailView.as_view()),
     path("alerts/<str:pk>/resolve/", views.AlertResolveView.as_view()),
+    path("alerts/<str:pk>/record-delivery/", views.AlertRecordDeliveryView.as_view()),
     path("alerts/<str:pk>/approve/", views.AlertApproveView.as_view()),
     path("alerts/<str:pk>/accept/", views.AlertAcceptView.as_view()),
     path("alerts/<str:pk>/send-back/", views.AlertSendBackView.as_view()),
