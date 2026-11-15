@@ -110,7 +110,7 @@ def every_valid_set():
 
 def test_every_valid_set_of_modules_is_stored_and_read_back_the_same():
     sets = every_valid_set()
-    assert len(sets) == 4 * 2 * 3 * 3  # dips off: litres off; dips on: litres either way
+    assert len(sets) == 4 * 2 * 3 * 3 * 2  # dips off: litres off; dips on: litres either way; start before approval either way
     for values in sets:
         settings = modules.to_settings(values)
         system = settings["pump_system"]  # set_pump_system grants what the system needs
