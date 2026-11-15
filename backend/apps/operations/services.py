@@ -144,7 +144,8 @@ def _ensure_lead(shift):
 
 # ---- end of shift approval -------------------------------------------------------------------------------------
 # An attendant's end of shift (their meters and cash) waits for a manager. Until it is approved they cannot start or
-# join another shift. The manager may send it back to fix. Any other change to what was handed in needs the owner's
+# join another shift, unless the business has the module "start_before_approval" (then only an end sent back to fix, or
+# cash still to hand in, holds them). The manager may send it back to fix. Any other change to what was handed in needs the owner's
 # permission first (UndoRequest). Managers and the owner correct directly; the audit log keeps the old numbers.
 
 def held_end(user):
@@ -158,14 +159,36 @@ def cash_due_part(user):
     return ShiftAttendant.objects.filter(user=user, approval=CASH_DUE).select_related("shift__station", "user").order_by("-left_at").first()
 
 
+def starts_before_approval(person):
+    """The person's business lets them start a new shift while their last end waits for the manager (module
+    "start_before_approval")."""
+    from apps.tenants import modules
+    from apps.tenants.models import Tenant
+
+    return bool(person.tenant_id) and modules.of(Tenant.objects.get(pk=person.tenant_id)).start_before_approval
+
+
+def blocking_end(person):
+    """The end of shift that keeps this person from starting a new one: waiting for the manager or sent back to fix;
+    with the module "start_before_approval", only one sent back to fix."""
+    if starts_before_approval(person):
+        return (ShiftAttendant.objects.filter(user=person, approval=APPROVAL.SENT_BACK).select_related("shift__station", "user")
+                .order_by("-cash_submitted_at").first())
+    return held_end(person)
+
+
 def require_cleared(person):
-    """No new shift for someone whose last end of shift is not approved yet, or whose cash is not handed in yet."""
+    """No new shift for someone whose last end of shift is not approved yet (unless their business lets them start
+    before approval: then one sent back to fix still holds them), or whose cash is not handed in yet."""
     due = cash_due_part(person)
     if due is not None:
         raise ValidationError({"detail": f"{person.full_name} closed their meters at {due.shift.station.name} but has not handed in their cash yet. "
                                          "Hand in the cash first."})
-    row = held_end(person)
+    row = blocking_end(person)
     if row is not None:
+        if row.approval == APPROVAL.SENT_BACK and starts_before_approval(person):
+            raise ValidationError({"detail": f"{person.full_name}'s last shift at {row.shift.station.name} was sent back to fix. "
+                                             "Fix it and send it back to the manager first."})
         what = "was sent back to fix" if row.approval == APPROVAL.SENT_BACK else "is waiting for the manager's approval"
         raise ValidationError({"detail": f"{person.full_name}'s last shift at {row.shift.station.name} {what}. "
                                          "A new shift can start once a manager approves it."})
@@ -1221,7 +1244,10 @@ def phone_stage(user, station):
     and the meter numbers their part started from, per nozzle (so the end screen can show and check them).
 
     {"stage": "held", ...}: their last end of shift waits for a manager or was sent back to fix (no new shift until it
-    is approved), or the owner allowed them to change something they handed in (see approvals.end_stage)."""
+    is approved), or the owner allowed them to change something they handed in (see approvals.end_stage).
+
+    With the module "start_before_approval", an end still waiting for the manager does not hold them: if they are on a
+    new shift they see it; otherwise they see the waiting end with "can_start" true (a button to start the next one)."""
     if user.role == Role.ATTENDANT:
         from .approvals import end_stage, end_summary, fix_grant  # approvals builds on this module
 
@@ -1229,6 +1255,11 @@ def phone_stage(user, station):
             # meters closed at the shift change: count the cash against what the meters say and hand it in
             return {"stage": "cash_due", "shift_id": str(due.shift_id), "end_id": str(due.pk), "ended_at": due.left_at, **end_summary(due)}
         if (held := held_end(user)) is not None:
+            if held.approval == APPROVAL.PENDING and starts_before_approval(user):
+                stage = _shift_stage(user, station)
+                if stage["stage"] == "on_shift":
+                    return stage
+                return {**end_stage(held), "can_start": True}
             return end_stage(held)
         stage = _shift_stage(user, station)
         if stage["stage"] != "on_shift" and (grant := fix_grant(user)) is not None:

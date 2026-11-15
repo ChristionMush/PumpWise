@@ -32,7 +32,7 @@ export interface StationInfo {
   last_dip_at?: string | null;
 }
 /** start: no shift yet · on_shift: started, the end screen is next · done: their part of an open shift is over ·
- *  held: their last end waits for the manager (no new shift until approved), was sent back, or may be changed ·
+ *  held: their last end waits for the manager (no new shift until approved, unless can_start), was sent back, or may be changed ·
  *  cash_due: assigned pumps, meters closed at the shift change, the cash is counted and handed in next. */
 export type Stage =
   | { stage: "start" }
@@ -163,8 +163,10 @@ export default function Shift() {
   const [checking, setChecking] = useState<Record<string, boolean>>({});
   const [belowOk, setBelowOk] = useState(false); // "the pump really shows these numbers" (an end below the start)
   const [warned, setWarned] = useState<string | null>(null); // a big cash difference was pointed out for these numbers
+  const [startAnyway, setStartAnyway] = useState(false); // last end still waits for the manager; starting the next one (module start_before_approval)
   const { user } = useAuth();
   const expenses = useModule("expenses");
+  const startBeforeApproval = useModule("start_before_approval");
   const canType = user?.role === "owner" || user?.role === "manager"; // attendants start from the last closing number
   const navigate = useNavigate();
 
@@ -437,7 +439,7 @@ export default function Shift() {
         </section>
         <ErrorNote message={error} />
         <button className="btn primary big" onClick={() => void handInCash(due?.shift_id ?? cashDue!.shift_id)}>Hand in my cash</button>
-        <p className="muted">Sends your cash. Your manager then approves your end of shift; you can start your next shift after that.</p>
+        <p className="muted">Sends your cash. Your manager then approves your end of shift{startBeforeApproval ? "." : "; you can start your next shift after that."}</p>
       </>
     );
   }
@@ -445,7 +447,9 @@ export default function Shift() {
     <section className="card"><Stages current={2} /><h1>Shift ended</h1>
       <p>Your end of shift is saved on this phone and will be sent when there is signal.</p></section>
   );
-  if (!active && stage?.stage === "held") return <HeldEnd stage={stage} onChanged={() => navigate(0)} />;
+  if (!active && stage?.stage === "held" && !(startAnyway && stage.can_start)) {
+    return <HeldEnd stage={stage} onChanged={() => navigate(0)} onStartNext={stage.can_start ? () => setStartAnyway(true) : undefined} />;
+  }
   if (!active && stage?.stage === "done") return (
     <section className="card"><Stages current={2} /><h1>Your part of the shift is done</h1>
       <p>You ended your part at {new Date(stage.ended_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Your pumps have passed to the next attendant.</p>

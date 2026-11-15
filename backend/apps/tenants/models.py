@@ -74,6 +74,10 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # "07:00" or "18:00": the day closes by itself at that shift change, once everyone from the outgoing shift has ended
     # and every tank was dipped (dayclose.close_at_shift_change). "": closed on the Dip screen as before.
     close_day_at_change = models.CharField(max_length=5, blank=True, default="", choices=[("", "No"), ("07:00", "07:00"), ("18:00", "18:00")])
+    # An attendant may start their next shift while their last end of shift still waits for the manager's approval
+    # (services.require_cleared). Off: no new shift until it is approved. Cash still to hand in, or an end sent back to
+    # fix, always holds them.
+    start_before_approval = models.BooleanField(default=False)
     # Demo and trial businesses (Phase 12): never send real SMS/WhatsApp/email, use the billing sandbox, and are the
     # only tenants the demo loader may ever wipe and reload. A trial expires (suspended), then is removed if not converted.
     is_demo = models.BooleanField(default=False)

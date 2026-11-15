@@ -64,15 +64,21 @@ MODULES = (
                  ("18:00", "At the 18:00 handover (15:00 to 20:00)")),
         default="manager",
     ),
+    Module("start_before_approval", "Start before approval",
+           "An attendant can start their next shift while their last end of shift still waits for the manager. "
+           "Cash still to hand in, or an end sent back to fix, still has to be done first.",
+           lambda t: t.start_before_approval, lambda v: {"start_before_approval": v}, default=False),
 )
 BY_KEY = MappingProxyType({m.key: m for m in MODULES})
 
 # Where each Mark starts. Ticking modules on a business starts from one of these.
 MARKS = MappingProxyType({
     "mark_1": MappingProxyType({"pump_allocation": "assigned", "expenses": False, "dip_at_shift_end": False,
-                                "attendants_see_dip_litres": False, "day_close": "manager"}),
+                                "attendants_see_dip_litres": False, "day_close": "manager",
+                                "start_before_approval": False}),
     "mark_2": MappingProxyType({"pump_allocation": "pick", "expenses": True, "dip_at_shift_end": True,
-                                "attendants_see_dip_litres": True, "day_close": "18:00"}),
+                                "attendants_see_dip_litres": True, "day_close": "18:00",
+                                "start_before_approval": True}),
 })
 
 

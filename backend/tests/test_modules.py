@@ -31,8 +31,8 @@ def test_each_mark_sets_every_module_to_something_allowed(mark):
 @pytest.mark.parametrize("live, expected", [
     (FUEL_ZONE, dict(modules.MARKS["mark_1"])),
     (PESNAT, dict(modules.MARKS["mark_2"])),
-    (LITRIX, {**modules.MARKS["mark_2"], "attendants_see_dip_litres": False}),
-], ids=["fuel_zone_is_mark_1", "pesnat_is_mark_2", "litrix_is_mark_2_without_litres"])
+    (LITRIX, {**modules.MARKS["mark_2"], "attendants_see_dip_litres": False, "start_before_approval": False}),
+], ids=["fuel_zone_is_mark_1", "pesnat_is_mark_2", "litrix_is_mark_2_without_litres_or_starting_before_approval"])
 def test_the_live_businesses_read_as_their_mark(live, expected):
     assert modules.of(tenant(**live)).as_dict() == expected
 

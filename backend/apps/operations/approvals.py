@@ -2,7 +2,7 @@
 
 * An attendant ends their part (meters and cash) as before; their pumps pass on at once. Their end then waits for a
   manager of the station (or the owner): Approve, or Send back with a reason. Until it is approved they cannot start or
-  join another shift (services.require_cleared).
+  join another shift (services.require_cleared), unless the business has the module "start_before_approval".
 * Sent back: the attendant fixes it themselves (cash and their end meter numbers) and it goes back to the manager.
 * Anything else already handed in changes only with permission: the attendant asks to undo (change cash, change meter
   numbers, or "I ended by mistake"), and a manager of the station or the owner allows or refuses. An allowed change can
@@ -413,6 +413,9 @@ def reopen_part(*, user, row):
         raise ValidationError({"detail": "This shift is already reviewed. Ask a manager to correct it."})
     if ShiftAttendant.objects.filter(shift=shift, user=row.user, joined_at__gt=row.joined_at).exists():
         raise ValidationError({"detail": "They have started again on this shift since. Ask the manager to correct the numbers instead."})
+    if ShiftAttendant.objects.filter(user=row.user, left_at__isnull=True, shift__status=Shift.Status.OPEN).exclude(pk=row.pk).exists():
+        # started their next shift before this end was approved (module "start_before_approval"): never on two at once
+        raise ValidationError({"detail": "They are on a new shift since. Ask the manager to correct the numbers instead."})
     periods = list(PumpAssignment.objects.filter(shift=shift, user=row.user, ended_at=row.left_at).select_related("pump")) if row.left_at else []
     for a in periods:
         later = PumpAssignment.objects.filter(shift=shift, pump=a.pump, started_at__gte=a.ended_at).exclude(pk=a.pk).select_related("user").first()

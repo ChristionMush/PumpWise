@@ -28,11 +28,18 @@ def on_mark(profile, mark):
     return a
 
 
+LATER = ("start_before_approval",)  # modules added after migration 0019 (0021 puts it on Mark 2)
+
+
 def test_the_migration_seeds_the_marks_as_the_code_describes_them_and_reads_modules_the_same_way():
-    assert seed.MARK_1 == dict(modules.MARKS["mark_1"]) and seed.MARK_2 == dict(modules.MARKS["mark_2"])
+    def then(values):
+        return {k: v for k, v in values.items() if k not in LATER}
+
+    assert set(modules.BY_KEY) - set(seed.MARK_1) == set(LATER)
+    assert seed.MARK_1 == then(modules.MARKS["mark_1"]) and seed.MARK_2 == then(modules.MARKS["mark_2"])
     for live in (FUEL_ZONE, PESNAT, LITRIX):
         t = Tenant(name="T", slug="t", **live)
-        assert seed._modules(t) == modules.of(t).as_dict()
+        assert seed._modules(t) == then(modules.of(t).as_dict())
 
 
 @pytest.mark.parametrize("live, expected", [(FUEL_ZONE, "Mark 1"), (PESNAT, "Mark 2"), (LITRIX, "Mark 2")], ids=["fuel_zone", "pesnat", "litrix"])
@@ -67,7 +74,8 @@ def test_a_business_shows_its_mark_its_modules_and_where_they_differ():
     body = p.get(f"/api/platform/tenants/{pes['tenant'].id}/").json()
     assert body["mark"]["name"] == "Mark 2" and body["modules"] == dict(modules.MARKS["mark_2"]) and body["mark_differences"] == {}
     body = p.get(f"/api/platform/tenants/{lit['tenant'].id}/").json()
-    assert body["mark_differences"] == {"attendants_see_dip_litres": [True, False]}  # Litrix: Mark 2 without the litres
+    # Litrix: Mark 2 without the litres, and without starting before approval
+    assert body["mark_differences"] == {"attendants_see_dip_litres": [True, False], "start_before_approval": [True, False]}
 
 
 def test_duplicating_a_mark_and_changing_the_copy_leaves_the_original_and_its_businesses_as_they_were():

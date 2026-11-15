@@ -14,6 +14,7 @@ export interface HeldStage {
   cash_received_by?: string | null; cash_received_at?: string | null;
   expenses?: { name: string; amount: string; currency: string }[]; // paid out of the takings on the shift
   expenses_total?: string; // they come off the cash to hand in
+  can_start?: boolean; // waiting for the manager, and the business lets them start their next shift meanwhile
 }
 
 const TYPES = [["cash", "Cash"], ["mobile_money", "EcoCash / mobile money"], ["card", "Card / swipe"], ["credit", "Intercompany issue"]] as const;
@@ -43,7 +44,7 @@ export function EndDetails({ end }: { end: Pick<HeldStage, "meters" | "cash" | "
   );
 }
 
-export default function HeldEnd({ stage, onChanged }: { stage: HeldStage; onChanged: () => void }) {
+export default function HeldEnd({ stage, onChanged, onStartNext }: { stage: HeldStage; onChanged: () => void; onStartNext?: () => void }) {
   const fixing = stage.can_fix.cash || stage.can_fix.meters;
   const own = stage.cash.filter((c) => c.currency === stage.currency);
   const [cash, setCash] = useState<Record<string, string>>(() => Object.fromEntries(own.map((c) => [c.payment_type, c.amount])));
@@ -80,10 +81,11 @@ export default function HeldEnd({ stage, onChanged }: { stage: HeldStage; onChan
       <div className="row between"><h1>{heading}</h1><Badge kind={stage.status === "sent_back" ? "suspended" : "past_due"}>{stage.status === "sent_back" ? "fix it" : stage.status === "pending" ? "waiting" : "allowed"}</Badge></div>
       <section className="card">
         <p>Your shift at {stage.station}, ended {time(stage.ended_at)}.</p>
-        {stage.status === "pending" && <p>Your manager checks it now. You can start a new shift once it is approved.</p>}
+        {stage.status === "pending" && <p>Your manager checks it now. {onStartNext ? "You can start your next shift meanwhile." : "You can start a new shift once it is approved."}</p>}
         {stage.status === "sent_back" && <p className="warn">Manager's note: {stage.note}</p>}
         <EndDetails end={stage} />
       </section>
+      {onStartNext && <button className="btn primary big" onClick={onStartNext}>Start my next shift</button>}
       {fixing && (
         <section className="card form"><h2>Fix it</h2>
           {stage.can_fix.meters && stage.meters.filter((m) => m.end).map((m) => (

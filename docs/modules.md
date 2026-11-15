@@ -35,6 +35,7 @@ Shifts with meter numbers and cash hand-in · shift-end approval and undo reques
 | 3 | **Attendants dip at shift end** | on/off | | off | on | | `dip_at_shift_end` |
 | 4 | **Attendants see dip litres** | on/off | | off | on | module 3 | `attendants_see_dip_litres` |
 | 5 | **Day close** | pick one | Manager closes from 21:00 · At the 07:00 change · At the 18:00 change | Manager from 21:00 | At the evening handover (18:00 setting) | | `close_day_at_change` |
+| 6 | **Start before approval** | on/off | | off | on | | `start_before_approval` |
 
 Notes:
 - Module 1 is the only one that has to be settled before the first shift. Changing it is refused while a shift is open, because it moves the stations. The others take effect straight away: a station open day and night nearly always has a shift open, so the same guard would block them for good.
@@ -45,6 +46,11 @@ Notes:
 - Module 5, "at a shift change": the handover time is human and varies. The 18:00 setting already counts a handover
   any time from 15:00 to 20:00 (3 hours before to 2 hours after), so PESNAT's 16:00, 18:00 and 20:00 handovers all close
   the day. The 07:00 setting works the same way (04:00 to 09:00).
+- Module 6 (added 2026-11-15): an attendant can start their next shift while their last end of shift still waits for
+  the manager. Their phone shows the waiting end with "Start my next shift", and the manager approves it later as
+  usual. Cash still to hand in, or an end sent back to fix, still holds them. "I ended by mistake" is refused once
+  they are on a new shift. On in Mark 2 (migration 0021 updates the saved Mark 2), off in Mark 1. Wanted for PESNAT
+  (2026-11-15): ticked on its business page after the deploy. Fuel Zone and Litrix stay off.
 - Module 4 deliberately breaks rule 11 (attendants never see tank litres). That's why it stays off unless chosen.
 
 ## Wanted but not built yet
@@ -69,5 +75,5 @@ These are the settings the "today's behaviour" tests lock in.
 
 - Mark 2 day close: at the handover, whenever it happens (the 18:00 setting, which counts 15:00 to 20:00).
 - Limited manager view: not for now.
-- No other Fuel Zone vs PESNAT differences beyond the five modules.
+- No other Fuel Zone vs PESNAT differences beyond the five modules (module 6 came later: PESNAT only).
 - Pricing: not tied to Marks or modules.

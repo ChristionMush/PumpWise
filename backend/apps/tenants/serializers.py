@@ -47,6 +47,7 @@ class TenantCreateSerializer(serializers.Serializer):
     dip_at_shift_end = serializers.BooleanField(required=False, default=False)
     attendants_see_dip_litres = serializers.BooleanField(required=False, default=False)
     close_day_at_change = serializers.ChoiceField(choices=["", "07:00", "18:00"], required=False, default="")
+    start_before_approval = serializers.BooleanField(required=False, default=False)
     # The Mark the business starts from, and its modules as ticked (docs/modules.md). Modules given: they decide the
     # pump system and the switches above. A Mark without modules: the Mark's own.
     mark = serializers.UUIDField(required=False, allow_null=True)
@@ -113,6 +114,7 @@ class FeaturesSerializer(serializers.Serializer):
     dip_at_shift_end = serializers.BooleanField(required=False)
     attendants_see_dip_litres = serializers.BooleanField(required=False)
     close_day_at_change = serializers.ChoiceField(choices=["", "07:00", "18:00"], required=False)
+    start_before_approval = serializers.BooleanField(required=False)
 
 
 class PumpSystemSerializer(serializers.Serializer):
