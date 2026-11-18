@@ -101,8 +101,29 @@ def test_an_attendants_expenses_come_off_the_cash_they_hand_in_everywhere_it_is_
     lines = {h["label"]: h["amount"] for h in report["handed_in"]}
     assert lines["Cash"] == "145.00" and lines["Expenses paid out"] == "5.00"
     assert not [b for b in report["balance"] if b["key"] == "short"]  # not short: the 5 is accounted for
+    assert [(s["handed_in"], s["cash_difference"]) for s in report["shifts"]] == [("145.00", "0.00")]  # the shift's line agrees with its people
     card = next(e for e in client_for(a[Role.MANAGER]).get("/api/shift-ends/").json() if e["shift_id"] == sid)
     assert (card["expected"], card["handed_in"], card["expenses_total"], card["cash_difference"]) == ("150.00", "145.00", "5.00", "0.00")
+    # the report by attendant agrees: it once left the expenses out and showed the 5 as a cash difference
+    row = client_for(a[Role.MANAGER]).get("/api/reports/attendants/", {"date_from": "2026-10-01", "date_to": "2026-10-01"}).json()["rows"][0]
+    assert (row["sales"], row["handed_in"], row["expenses"], row["expected"], row["cash_difference"]) == ("150.00", "145.00", "5.00", "150.00", "0.00")
+
+
+def test_a_finished_part_of_a_running_shift_counts_its_expenses_in_the_report_by_attendant():
+    from .test_multi_attendant import T0, T_SWAP, assigned_site, cash, readings
+
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    expenses(a)
+    ca, cb = client_for(att_a), client_for(att_b)
+    body = {"station": str(fc.station.pk), "started_at": T0}
+    sid = ca.post("/api/shifts/start/", {**body, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    cb.post("/api/shifts/start/", {**body, "readings": readings(p2, [0, 0])}, format="json")
+    # A's part: meters say 75, A paid 5 for lunch and hands in 70. B is still on, so the shift stays open.
+    ended = ca.post(f"/api/shifts/{sid}/end/", {"ended_at": T_SWAP, "readings": readings(fc.nozzles, [50, 0]), "cash": cash("70"),
+                                                 "expenses": [{"client_id": str(uuid.uuid4()), "name": "Lunch", "amount": "5"}]}, format="json")
+    assert ended.status_code == 200 and ended.json()["status"] == "open", ended.content
+    row = {r["name"]: r for r in mgr.get("/api/reports/attendants/", {"date_from": "2026-10-01", "date_to": "2026-10-01"}).json()["rows"]}[att_a.full_name]
+    assert (row["handed_in"], row["expenses"], row["expected"], row["cash_difference"], row["flagged_shifts"]) == ("70.00", "5.00", "75.00", "0.00", 0)
 
 
 def test_expenses_sent_after_the_cash_clear_the_dashboards_cash_difference():

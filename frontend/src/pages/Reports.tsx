@@ -71,6 +71,7 @@ export default function Reports() {
         <section key={r.user} className={`card ${r.flagged_shifts ? "bad" : ""}`}>
           <div className="row between"><strong>{r.name}</strong><span className="muted">{r.shifts} shift{r.shifts === 1 ? "" : "s"}</span></div>
           <p>Sold {Number(r.litres).toLocaleString()} L ({r.sales}) · handed in {r.handed_in}
+            {Number(r.expenses) > 0 ? ` · expenses ${r.expenses}` : ""}
             {r.cash_difference !== null ? <> · cash difference <strong>{r.cash_difference}</strong></> : <span className="muted"> · shared pumps on {r.shared_shifts} shift{r.shared_shifts === 1 ? "" : "s"}: no cash difference per person</span>}</p>
           {r.flagged_shifts ? <p className="muted">{r.flagged_shifts} shift{r.flagged_shifts === 1 ? "" : "s"} with a cash difference outside the allowed amount</p> : null}
           <table className="table"><thead><tr><th>Pump</th><th>Fuel</th><th>Litres</th><th>Sales</th></tr></thead>

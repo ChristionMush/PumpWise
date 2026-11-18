@@ -92,7 +92,8 @@ def shift_rows(checks):
         elif handed and all(e["expected"] is not None for _, e in handed):
             expected = _s(sum((Decimal(e["expected"]) for _, e in handed), Decimal(0)), Q2)
             paid = _s(sum((Decimal(e["handed_in"]) for _, e in handed), Decimal(0)), Q2)
-            difference = _s(Decimal(paid) - Decimal(expected), Q2)
+            spent = sum((Decimal(e["expenses_total"]) for _, e in handed), Decimal(0))  # paid out of the takings: accounted for
+            difference = _s(Decimal(paid) + spent - Decimal(expected), Q2)
         else:
             expected, difference = None, None
             paid = _s(sum((Decimal(e["handed_in"]) for _, e in handed), Decimal(0)), Q2)

@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from django.db.models import Q, Sum
 
 from apps.operations.models import Expense
+from apps.operations.services import part_expenses
 from apps.stations.models import Tank
 from apps.stations.pools import pool_of, pools_for
 from apps.stations.services import rate_at
@@ -230,17 +231,25 @@ def finished_parts(shift):
     for uid, p in done.items():
         mine = shift.transactions.filter(attendant_id=uid, occurred_at__lte=p.until) if assigned else shift.transactions.none()
         expected = mine.aggregate(s=Sum("amount"))["s"] or Decimal(0)
-        submitted, missing = Decimal(0), []
+        submitted, spent, missing = Decimal(0), Decimal(0), []
         for c in shift.cash.filter(attendant_id=uid).filter(Q(part_id__in=p.parts) | Q(part__isnull=True)):
             rate = rate_at(c.currency, currency, c.created_at)
             if rate is None:
                 missing.append(c.currency)
             else:
                 submitted += (c.amount * rate).quantize(Q2)
-        difference = submitted - expected
+        # expenses paid on the finished parts count as accounted for, as in the shift's cash check
+        for part in shift.attendants.filter(pk__in=p.parts):
+            for e in part_expenses(part):
+                rate = rate_at(e.currency, currency, e.spent_at)
+                if rate is None:
+                    missing.append(e.currency)
+                else:
+                    spent += (e.amount * rate).quantize(Q2)
+        difference = submitted + spent - expected
         status = _status(True, missing, difference, max(cfg.cash_variance_amount, expected * cfg.cash_variance_pct / 100))
         people.append({"user": str(uid), "name": p.user.full_name, "submitted": str(submitted.quantize(Q2)), "expected": str(expected.quantize(Q2)),
-                       "flagged": assigned and status != "ok"})
+                       **({"expenses": str(spent.quantize(Q2))} if spent else {}), "flagged": assigned and status != "ok"})
         rows = mine.values("nozzle__pump_id", "nozzle__pump__name", "fuel_type__code").annotate(litres=Sum("litres"), amount=Sum("amount")).order_by()
         by_pump += [{"pump_id": str(r["nozzle__pump_id"]), "pump": r["nozzle__pump__name"], "fuel_code": r["fuel_type__code"], "attendant": str(uid),
                      "attendant_name": p.user.full_name, "litres": str((r["litres"] or Decimal(0)).quantize(Q3)),
@@ -257,7 +266,7 @@ def attendant_report(shifts):
 
     def person(uid, name):
         return people.setdefault(uid, {"user": uid, "name": name, "shifts": 0, "pumps": {}, "litres": Decimal(0), "sales": Decimal(0),
-                                       "handed_in": Decimal(0), "expected": Decimal(0), "shared_shifts": 0, "flagged_shifts": 0})
+                                       "handed_in": Decimal(0), "expenses": Decimal(0), "expected": Decimal(0), "shared_shifts": 0, "flagged_shifts": 0})
 
     for shift in shifts:
         s = cash_summary(shift) if shift.status != "open" else finished_parts(shift)
@@ -265,6 +274,7 @@ def attendant_report(shifts):
             row = person(p["user"], p["name"])
             row["shifts"] += 1
             row["handed_in"] += Decimal(p["submitted"])
+            row["expenses"] += Decimal(p.get("expenses", 0))  # paid out of the takings: accounted for, as in each shift's cash check
             if s["per_attendant_expected"]:
                 row["expected"] += Decimal(p["expected"])
                 row["flagged_shifts"] += 1 if p.get("flagged") else 0
@@ -286,8 +296,9 @@ def attendant_report(shifts):
         out.append({
             "user": row["user"], "name": row["name"], "shifts": row["shifts"], "shared_shifts": row["shared_shifts"], "flagged_shifts": row["flagged_shifts"],
             "litres": str(row["litres"].quantize(Q3)), "sales": str(row["sales"].quantize(Q2)), "handed_in": str(row["handed_in"].quantize(Q2)),
+            "expenses": str(row["expenses"].quantize(Q2)),
             "expected": str(row["expected"].quantize(Q2)) if own else None,
-            "cash_difference": str((row["handed_in"] - row["expected"]).quantize(Q2)) if own and not row["shared_shifts"] else None,
+            "cash_difference": str((row["handed_in"] + row["expenses"] - row["expected"]).quantize(Q2)) if own and not row["shared_shifts"] else None,
             "pumps": [{**p, "litres": str(p["litres"].quantize(Q3)), "amount": str(p["amount"].quantize(Q2))} for p in sorted(row["pumps"].values(), key=lambda p: (p["pump"], p["fuel_code"]))],
         })
     return out
