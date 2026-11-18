@@ -36,6 +36,7 @@ Shifts with meter numbers and cash hand-in · shift-end approval and undo reques
 | 4 | **Attendants see dip litres** | on/off | | off | on | module 3 | `attendants_see_dip_litres` |
 | 5 | **Day close** | pick one | Manager closes from 21:00 · At the 07:00 change · At the 18:00 change | Manager from 21:00 | At the evening handover (18:00 setting) | | `close_day_at_change` |
 | 6 | **Start before approval** | on/off | | off | on | | `start_before_approval` |
+| 7 | **Low stock only when every tank is low** | on/off | | off | on | | `low_stock_every_tank` |
 
 Notes:
 - Module 1 is the only one that has to be settled before the first shift. Changing it is refused while a shift is open, because it moves the stations. The others take effect straight away: a station open day and night nearly always has a shift open, so the same guard would block them for good.
@@ -51,6 +52,11 @@ Notes:
   usual. Cash still to hand in, or an end sent back to fix, still holds them. "I ended by mistake" is refused once
   they are on a new shift. On in Mark 2 (migration 0021 updates the saved Mark 2), off in Mark 1. Wanted for PESNAT
   (2026-11-15): ticked on its business page after the deploy. Fuel Zone and Litrix stay off.
+- Module 7 (added 2026-11-18): no low-stock alert while another tank of the same fuel at the station still has fuel.
+  A tank is low when its last dip plus deliveries since is at or below a quarter of its capacity (or its reserve, if
+  higher). When every tank of the fuel is low, one critical alert names each tank's litres and percentage, and it clears
+  itself once a tank has fuel again. Off: the fuel's days of stock left, as before. On in Mark 2 (migration 0023 updates
+  the saved Mark 2), off in Mark 1. Wanted for PESNAT (2026-11-18): ticked on its business page after the deploy.
 - Module 4 deliberately breaks rule 11 (attendants never see tank litres). That's why it stays off unless chosen.
 
 ## Wanted but not built yet

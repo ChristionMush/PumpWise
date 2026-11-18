@@ -28,7 +28,7 @@ def on_mark(profile, mark):
     return a
 
 
-LATER = ("start_before_approval",)  # modules added after migration 0019 (0021 puts it on Mark 2)
+LATER = ("start_before_approval", "low_stock_every_tank")  # modules added after migration 0019 (0021 and 0023 put them on Mark 2)
 
 
 def test_the_migration_seeds_the_marks_as_the_code_describes_them_and_reads_modules_the_same_way():
@@ -75,7 +75,8 @@ def test_a_business_shows_its_mark_its_modules_and_where_they_differ():
     assert body["mark"]["name"] == "Mark 2" and body["modules"] == dict(modules.MARKS["mark_2"]) and body["mark_differences"] == {}
     body = p.get(f"/api/platform/tenants/{lit['tenant'].id}/").json()
     # Litrix: Mark 2 without the litres, and without starting before approval
-    assert body["mark_differences"] == {"attendants_see_dip_litres": [True, False], "start_before_approval": [True, False]}
+    assert body["mark_differences"] == {"attendants_see_dip_litres": [True, False], "start_before_approval": [True, False],
+                                     "low_stock_every_tank": [True, False]}
 
 
 def test_duplicating_a_mark_and_changing_the_copy_leaves_the_original_and_its_businesses_as_they_were():

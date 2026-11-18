@@ -1,5 +1,6 @@
 """Alert rules. `evaluate_tenant` is idempotent: run it as often as you like."""
 import json
+from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
 
@@ -12,10 +13,12 @@ from apps.operations.services import people_names, went_round
 from apps.reports.reconciliation import cash_summary
 from apps.stations.models import Nozzle, Station, Tank
 from apps.stations.pools import pools_for
+from apps.tenants import modules
+from apps.tenants.models import Tenant
 from apps.tenants.services import get_settings
 
 from .alert_actions import AUTO, AWAITING, OPEN, REOPEN_WITHIN, apply_patterns, log_event
-from .forecast import forecast_tank
+from .forecast import forecast_tank, own_level
 from .models import Alert
 
 AUTO_RESOLVE = {Alert.Kind.LOW_STOCK, Alert.Kind.MISSED_READING}  # clear themselves when the cause is gone
@@ -26,6 +29,7 @@ LOOKBACK_DAYS = 3
 CASH_DUE_HOURS = 3  # meters closed at the shift change: the cash is counted and handed in well within this
 MISSING_DELIVERY_LITRES = Decimal(500)  # a tank rising this much between two dips with no delivery recorded
 DELIVERY_TOLERANCE = (Decimal(100), Decimal(3))  # litres, or percent of the delivery, whichever is more
+TANK_LOW_SHARE = Decimal("0.25")  # module "low_stock_every_tank": a tank at or below a quarter of its capacity is low
 ASSIGNED = Station.AssignmentMode.ASSIGNED
 KIND_WORD = {PumpMeterReading.Kind.START: "start", PumpMeterReading.Kind.CHECKPOINT: "handover", PumpMeterReading.Kind.END: "end"}
 
@@ -113,6 +117,37 @@ def delivery_problems(since):
     return found, looked
 
 
+def low_by_days_left(tanks, cfg, now, want):
+    """Low stock per fuel pool (every tank a nozzle draws from, added up): at the reserve, or few days of fuel left."""
+    for p in pools_for(tanks):
+        f = forecast_tank(p, cfg, now)
+        if f["status"] == "ok":
+            if float(f["current_litres"]) <= float(p.reserve_litres):
+                want(f"low:{p.pk}", kind="low_stock", severity="critical", station=p.station, tank=p.lead, message=f"{p.station.name} {p.name}: at or below the reserve ({f['current_litres']} L left).", data=f)
+            elif f["days_to_empty"] is not None and f["days_to_empty"] <= cfg.low_stock_days:
+                want(f"low:{p.pk}", kind="low_stock", severity="warning", station=p.station, tank=p.lead, message=f"{p.station.name} {p.name}: about {f['days_to_empty']} days of fuel left. Order by {f['refill_by']}.", data=f)
+
+
+def low_when_every_tank_is_low(tanks, cfg, now, want):
+    """Module "low_stock_every_tank": nothing while another tank of the fuel at the station still has fuel; once every
+    one of them is low on its own (at or below TANK_LOW_SHARE of its capacity, or its reserve), one critical alert."""
+    by_fuel = defaultdict(list)
+    for t in tanks:
+        by_fuel[(t.station_id, t.fuel_type_id)].append(t)
+    for group in by_fuel.values():
+        group.sort(key=lambda t: t.name.lower())  # the first names the alert, as a fuel pool's lead does
+        levels = [(t, own_level(t, now)) for t in group]
+        if any(level is None or level > max(t.capacity_litres * TANK_LOW_SHARE, t.reserve_litres) for t, level in levels):
+            continue
+        lead = group[0]
+        parts = [{"tank_id": str(t.pk), "tank": t.name, "litres": str(level.quantize(Decimal("0.1"))), "capacity_litres": str(t.capacity_litres),
+                  "level_pct": round(float(level / t.capacity_litres * 100))} for t, level in levels]
+        each = ", ".join(f"{p['tank']} {Decimal(p['litres']):,.0f} L ({p['level_pct']}%)" for p in parts)
+        want(f"low:{lead.pk}", kind="low_stock", severity="critical", station=lead.station, tank=lead,
+             message=f"{lead.station.name} {lead.fuel_type.name}: every tank is low ({each}). Order fuel now.",
+             data={"fuel": lead.fuel_type.name, "tanks": parts})
+
+
 def evaluate_tenant(tenant_id, now=None):
     now = now or timezone.now()
     cfg = get_settings(tenant_id)
@@ -123,13 +158,8 @@ def evaluate_tenant(tenant_id, now=None):
         wanted[key] = kw
 
     tanks = list(Tank.objects.select_related("fuel_type", "station"))
-    for p in pools_for(tanks):  # stock per fuel pool: every tank of the fuel at the station
-        f = forecast_tank(p, cfg, now)
-        if f["status"] == "ok":
-            if float(f["current_litres"]) <= float(p.reserve_litres):
-                want(f"low:{p.pk}", kind="low_stock", severity="critical", station=p.station, tank=p.lead, message=f"{p.station.name} {p.name}: at or below the reserve ({f['current_litres']} L left).", data=f)
-            elif f["days_to_empty"] is not None and f["days_to_empty"] <= cfg.low_stock_days:
-                want(f"low:{p.pk}", kind="low_stock", severity="warning", station=p.station, tank=p.lead, message=f"{p.station.name} {p.name}: about {f['days_to_empty']} days of fuel left. Order by {f['refill_by']}.", data=f)
+    low_stock = low_when_every_tank_is_low if modules.of(Tenant.objects.get(pk=tenant_id)).low_stock_every_tank else low_by_days_left
+    low_stock(tanks, cfg, now, want)
     for t in tanks:  # every tank is dipped
         last = TankReading.objects.filter(tank=t).order_by("-reading_at").first()
         if last is None or now - last.reading_at > timedelta(hours=MISSED_DIP_HOURS):

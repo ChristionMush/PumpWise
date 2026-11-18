@@ -31,8 +31,8 @@ def test_each_mark_sets_every_module_to_something_allowed(mark):
 @pytest.mark.parametrize("live, expected", [
     (FUEL_ZONE, dict(modules.MARKS["mark_1"])),
     (PESNAT, dict(modules.MARKS["mark_2"])),
-    (LITRIX, {**modules.MARKS["mark_2"], "attendants_see_dip_litres": False, "start_before_approval": False}),
-], ids=["fuel_zone_is_mark_1", "pesnat_is_mark_2", "litrix_is_mark_2_without_litres_or_starting_before_approval"])
+    (LITRIX, {**modules.MARKS["mark_2"], "attendants_see_dip_litres": False, "start_before_approval": False, "low_stock_every_tank": False}),
+], ids=["fuel_zone_is_mark_1", "pesnat_is_mark_2", "litrix_is_mark_2_without_litres_starting_before_approval_or_every_tank_low"])
 def test_the_live_businesses_read_as_their_mark(live, expected):
     assert modules.of(tenant(**live)).as_dict() == expected
 
@@ -110,7 +110,7 @@ def every_valid_set():
 
 def test_every_valid_set_of_modules_is_stored_and_read_back_the_same():
     sets = every_valid_set()
-    assert len(sets) == 4 * 2 * 3 * 3 * 2  # dips off: litres off; dips on: litres either way; start before approval either way
+    assert len(sets) == 4 * 2 * 3 * 3 * 2 * 2  # dips off: litres off; dips on: litres either way; start before approval either way; low stock every tank either way
     for values in sets:
         settings = modules.to_settings(values)
         system = settings["pump_system"]  # set_pump_system grants what the system needs

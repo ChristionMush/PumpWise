@@ -78,6 +78,9 @@ class Tenant(UUIDModel, SoftDeleteModel):
     # (services.require_cleared). Off: no new shift until it is approved. Cash still to hand in, or an end sent back to
     # fix, always holds them.
     start_before_approval = models.BooleanField(default=False)
+    # Low stock is raised only when every tank of a fuel at a station is low on its own (each at or below a quarter of
+    # its capacity, or its reserve), as one critical alert (insights/alerts.py). Off: the fuel's days of stock left, as before.
+    low_stock_every_tank = models.BooleanField(default=False)
     # Demo and trial businesses (Phase 12): never send real SMS/WhatsApp/email, use the billing sandbox, and are the
     # only tenants the demo loader may ever wipe and reload. A trial expires (suspended), then is removed if not converted.
     is_demo = models.BooleanField(default=False)

@@ -27,10 +27,10 @@ from .test_multi_attendant import cash, readings
 # Settings exactly as on the live server (2026-11-13).
 FUEL_ZONE = {"pump_system": "assigned", "multi_attendant_enabled": True, "pump_assignment_enabled": True, "attendants_pick_pumps": False,
              "expenses_enabled": False, "dip_at_shift_end": False, "attendants_see_dip_litres": False, "close_day_at_change": "",
-             "start_before_approval": False}
+             "start_before_approval": False, "low_stock_every_tank": False}
 PESNAT = {**FUEL_ZONE, "attendants_pick_pumps": True, "expenses_enabled": True, "dip_at_shift_end": True, "attendants_see_dip_litres": True,
-          "close_day_at_change": "18:00", "start_before_approval": True}
-LITRIX = {**PESNAT, "attendants_see_dip_litres": False, "start_before_approval": False}
+          "close_day_at_change": "18:00", "start_before_approval": True, "low_stock_every_tank": True}
+LITRIX = {**PESNAT, "attendants_see_dip_litres": False, "start_before_approval": False, "low_stock_every_tank": False}
 PROFILES = {"fuel_zone": FUEL_ZONE, "pesnat": PESNAT, "litrix": LITRIX}
 
 # 1 Oct 2026 in Harare (UTC+2): the day shift starts at 07:10; A hands over at 17:55 and B at 18:05.

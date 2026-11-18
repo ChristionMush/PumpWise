@@ -68,6 +68,10 @@ MODULES = (
            "An attendant can start their next shift while their last end of shift still waits for the manager. "
            "Cash still to hand in, or an end sent back to fix, still has to be done first.",
            lambda t: t.start_before_approval, lambda v: {"start_before_approval": v}, default=False),
+    Module("low_stock_every_tank", "Low stock only when every tank is low",
+           "No low-stock alert while another tank of the same fuel still has fuel. When every tank of the fuel is at or "
+           "below a quarter of its capacity, one critical alert names each tank's litres. Off: the fuel's days of stock left.",
+           lambda t: t.low_stock_every_tank, lambda v: {"low_stock_every_tank": v}, default=False),
 )
 BY_KEY = MappingProxyType({m.key: m for m in MODULES})
 
@@ -75,10 +79,10 @@ BY_KEY = MappingProxyType({m.key: m for m in MODULES})
 MARKS = MappingProxyType({
     "mark_1": MappingProxyType({"pump_allocation": "assigned", "expenses": False, "dip_at_shift_end": False,
                                 "attendants_see_dip_litres": False, "day_close": "manager",
-                                "start_before_approval": False}),
+                                "start_before_approval": False, "low_stock_every_tank": False}),
     "mark_2": MappingProxyType({"pump_allocation": "pick", "expenses": True, "dip_at_shift_end": True,
                                 "attendants_see_dip_litres": True, "day_close": "18:00",
-                                "start_before_approval": True}),
+                                "start_before_approval": True, "low_stock_every_tank": True}),
 })
 
 

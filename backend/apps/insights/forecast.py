@@ -28,6 +28,21 @@ def estimated_level(tank, now=None):
     return max(last.litres + delivered - sold, Decimal(0)), last.reading_at
 
 
+def own_level(tank, now=None):
+    """One tank on its own, not its fuel pool: its last dip plus deliveries into it since. Sales since are left out, as
+    a nozzle drawing from several tanks cannot say which one it drew from. None if the tank was never dipped."""
+    from django.db.models import Sum
+
+    from apps.operations.models import Delivery, TankReading
+
+    now = now or timezone.now()
+    last = TankReading.objects.filter(tank=tank, reading_at__lte=now).order_by("-reading_at").first()
+    if last is None:
+        return None
+    delivered = Delivery.objects.filter(tank=tank, delivered_at__gt=last.reading_at, delivered_at__lte=now).aggregate(s=Sum("litres_received"))["s"]
+    return last.litres + (delivered or Decimal(0))
+
+
 def usage_profile(tank, today):
     """(average litres/day, {weekday: average}) over recent history, counting quiet days but not days before the tank was in use."""
     tank = pool_of(tank)
