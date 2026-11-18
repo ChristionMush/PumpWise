@@ -5,7 +5,10 @@ import { Badge, ErrorNote } from "../components";
 
 interface Reason { code: string; label: string; write_off: boolean }
 /** A missing delivery's form, filled from the dips by the server. */
-interface DeliveryForm { tank: string; tanks: { id: string; name: string }[]; fuel: string; litres: string; from: string; to: string; delivered_at: string; currency: string }
+/** One tank's part of a delivery into joined tanks: how much its own dip rose, and the litres put into it. */
+interface SplitPart { tank: string; name: string; rise: string; litres: string }
+interface DeliveryForm { tank: string; tanks: { id: string; name: string }[]; fuel: string; litres: string; from: string; to: string; delivered_at: string; currency: string;
+  split?: SplitPart[] }
 interface Summary { open: number; awaiting_approval: number; to_review: number; reasons: Record<string, Reason[]> }
 type Tab = "open" | "review" | "history";
 
@@ -148,27 +151,42 @@ const localInput = (iso: string) => {
  *  Supplier, value and the delivery note number can be left blank and added later on the Dip screen. */
 function RecordDelivery({ alertId, form, act }: { alertId: string; form: DeliveryForm; act: (p: string, b: any, done: string) => Promise<void> }) {
   const [d, setD] = useState({ tank: form.tank, litres: String(Number(form.litres)), at: localInput(form.delivered_at), supplier: "", value: "", note: "" });
+  // Joined tanks: the litres per tank, from each tank's own dips (form.split); empty when the dips cannot tell.
+  const splitting = (form.split?.length ?? 0) > 0;
+  const [parts, setParts] = useState<Record<string, string>>(() => Object.fromEntries((form.split ?? []).map((p) => [p.tank, String(Number(p.litres))])));
+  const splitTotal = Object.values(parts).reduce((s, v) => s + (Number(v) || 0), 0);
   const pending = [!d.supplier.trim() && "supplier", !d.value && "value", !d.note.trim() && "delivery note number"].filter(Boolean) as string[];
+  const into = splitting ? { split: Object.entries(parts).map(([tank, litres]) => ({ tank, litres: litres || "0" })) } : { tank: d.tank, litres: d.litres };
   const save = () => void act(`/api/alerts/${alertId}/record-delivery/`, {
-    tank: d.tank, litres: d.litres, delivered_at: new Date(d.at).toISOString(), supplier: d.supplier.trim(), value: d.value || null, note_number: d.note.trim(),
+    ...into, delivered_at: new Date(d.at).toISOString(), supplier: d.supplier.trim(), value: d.value || null, note_number: d.note.trim(),
   }, pending.length ? `Delivery recorded. Add the ${pending.join(", ")} on the Dip screen when you have them.` : "Delivery recorded.");
+  const ready = splitting ? splitTotal > 0 && Object.values(parts).every((v) => v === "" || Number(v) >= 0) : !!d.litres && Number(d.litres) > 0;
   return (
     <form className="form" aria-label="Record the delivery" onSubmit={(e) => { e.preventDefault(); save(); }}>
       <h3>Record the delivery</h3>
       <p className="muted">Filled in from the dips. Check the litres against the delivery note if you have it.</p>
       <p>Fuel: <strong>{form.fuel}</strong>{form.tanks.length === 1 ? <> · into {form.tanks[0].name}</> : null}</p>
-      {form.tanks.length > 1 && (
-        <label>Into tank<select value={d.tank} onChange={(e) => setD({ ...d, tank: e.target.value })}>
-          {form.tanks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
-      )}
-      <label>Litres received<input inputMode="decimal" value={d.litres} onChange={(e) => setD({ ...d, litres: e.target.value.replace(",", ".") })} required /></label>
+      {splitting ? <>
+        <p className="muted">Split by how much each tank's dip rose. The litres sold in between are shared the same way.</p>
+        {form.split!.map((p) => (
+          <label key={p.tank}>{`${p.name} (dip rose ${Number(p.rise).toLocaleString()} L)`}
+            <input inputMode="decimal" value={parts[p.tank]} onChange={(e) => setParts({ ...parts, [p.tank]: e.target.value.replace(",", ".") })} /></label>
+        ))}
+        <p>Total: <strong>{`${splitTotal.toLocaleString()} L`}</strong></p>
+      </> : <>
+        {form.tanks.length > 1 && (
+          <label>Into tank<select value={d.tank} onChange={(e) => setD({ ...d, tank: e.target.value })}>
+            {form.tanks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+        )}
+        <label>Litres received<input inputMode="decimal" value={d.litres} onChange={(e) => setD({ ...d, litres: e.target.value.replace(",", ".") })} required /></label>
+      </>}
       <label>Delivered at<input type="datetime-local" value={d.at} min={localInput(form.from)} max={localInput(form.to)} onChange={(e) => setD({ ...d, at: e.target.value })} required /></label>
       <p className="muted">Between the two dips, so the fuel check balances.</p>
       <label>Supplier<input value={d.supplier} placeholder="Pending" onChange={(e) => setD({ ...d, supplier: e.target.value })} /></label>
       <label>{`Value (${form.currency})`}<input inputMode="decimal" value={d.value} placeholder="Pending" onChange={(e) => setD({ ...d, value: e.target.value.replace(",", ".") })} /></label>
       <label>Delivery note no.<input value={d.note} placeholder="Pending" onChange={(e) => setD({ ...d, note: e.target.value })} /></label>
       {pending.length > 0 && <p className="muted">{`Pending: ${pending.join(", ")}. You can save now and add them later.`}</p>}
-      <button className="btn primary" disabled={!d.litres || !(Number(d.litres) > 0) || !d.at}>Save delivery</button>
+      <button className="btn primary" disabled={!ready || !d.at}>Save delivery</button>
     </form>
   );
 }

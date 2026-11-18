@@ -114,4 +114,36 @@ describe("alerts", () => {
     expect(await screen.findByText(/Add the value, delivery note number on the Dip screen/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Not a delivery? Resolve another way" })).toBeInTheDocument();
   });
+
+  it("splits a delivery into joined tanks by how much each tank's dip rose, and saves one part per tank", async () => {
+    const user = userEvent.setup();
+    signedIn();
+    const delivery = { id: "a10", kind: "delivery", severity: "warning", status: "open", station_name: "Mverechena", reopened_count: 0, pattern: null,
+      message: "Mverechena Petrol Tank 1 + Petrol Tank 2: about 7,192 L came in between the dips, but no delivery is recorded. Record the delivery.",
+      created_at: new Date(Date.now() - 36e5).toISOString(),
+      delivery_form: { tank: "k1", tanks: [{ id: "k1", name: "Petrol Tank 1" }, { id: "k2", name: "Petrol Tank 2" }], fuel: "Petrol", litres: "7192", currency: "USD",
+        from: "2026-11-18T06:58:00Z", to: "2026-11-18T15:30:00Z", delivered_at: "2026-11-18T15:29:00Z",
+        split: [{ tank: "k1", name: "Petrol Tank 1", rise: "1658", litres: "2023" }, { tank: "k2", name: "Petrol Tank 2", rise: "4237", litres: "5169" }] } };
+    const { calls } = mockApi({
+      "GET /api/auth/me/": { body: { user: manager, tenant } },
+      "GET /api/alerts/": { body: { count: 1, results: [delivery] } },
+      "GET /api/alerts/summary/": { body: { open: 1, awaiting_approval: 0, to_review: 0, reasons } },
+      "POST /api/alerts/a10/record-delivery/": { body: { ...delivery, status: "resolved", delivery_form: null } },
+    });
+    renderApp("/alerts");
+    const form = await screen.findByRole("form", { name: "Record the delivery" });
+    expect(screen.queryByLabelText("Into tank")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^Petrol Tank 1 \(dip rose 1.658 L\)$/)).toHaveValue("2023");
+    expect(screen.getByLabelText(/^Petrol Tank 2 \(dip rose 4.237 L\)$/)).toHaveValue("5169");
+    expect(form).toHaveTextContent(/Total: 7.192 L/);
+    const tank2 = screen.getByLabelText(/^Petrol Tank 2 \(dip rose 4.237 L\)$/);
+    await user.clear(tank2);
+    await user.type(tank2, "5000");
+    expect(form).toHaveTextContent(/Total: 7.023 L/);
+    await user.click(screen.getByRole("button", { name: "Save delivery" }));
+    await waitFor(() => expect(calls.find((c) => c.path === "/api/alerts/a10/record-delivery/")).toBeTruthy());
+    const body = calls.find((c) => c.path === "/api/alerts/a10/record-delivery/")!.body;
+    expect(body.split).toEqual([{ tank: "k1", litres: "2023" }, { tank: "k2", litres: "5000" }]);
+    expect(body.tank).toBeUndefined();
+  });
 });

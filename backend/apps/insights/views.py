@@ -132,16 +132,30 @@ class AlertRecordDeliveryView(APIView):
         details = DeliveryDetailsInput(data={k: v for k, v in request.data.items() if k in ("supplier", "note_number", "value") and v not in ("", None)})
         details.is_valid(raise_exception=True)
         d, x = data.validated_data, details.validated_data
-        alert, _ = alert_actions.record_missing_delivery(user=request.user, alert=_alert(request, pk), tank_id=d["tank"], litres=d["litres"],
-                                                         delivered_at=d["delivered_at"], supplier=x.get("supplier", ""), note_number=x.get("note_number", ""),
+        split = [(p["tank"], p["litres"]) for p in d["split"]] if d.get("split") else None
+        alert, _ = alert_actions.record_missing_delivery(user=request.user, alert=_alert(request, pk), tank_id=d.get("tank"), litres=d.get("litres"),
+                                                         split=split, delivered_at=d["delivered_at"], supplier=x.get("supplier", ""), note_number=x.get("note_number", ""),
                                                          value=x.get("value"), request=request)
         return Response(_with_story(alert))
 
 
-class RecordDeliveryInput(serializers.Serializer):
+class DeliverySplitInput(serializers.Serializer):
     tank = serializers.UUIDField()
-    litres = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal("0.001"))
+    litres = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal("0"))
+
+
+class RecordDeliveryInput(serializers.Serializer):
+    """Into one tank (tank, litres), or split over the tanks of the fuel (split: [{tank, litres}])."""
+
+    tank = serializers.UUIDField(required=False)
+    litres = serializers.DecimalField(max_digits=12, decimal_places=3, min_value=Decimal("0.001"), required=False)
+    split = DeliverySplitInput(many=True, required=False)
     delivered_at = serializers.DateTimeField()
+
+    def validate(self, attrs):
+        if not attrs.get("split") and not (attrs.get("tank") and attrs.get("litres")):
+            raise serializers.ValidationError({"litres": "Give the tank and the litres received."})
+        return attrs
 
 
 class AlertApproveView(APIView):

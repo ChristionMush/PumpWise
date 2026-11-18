@@ -121,3 +121,71 @@ def test_a_delivery_recorded_on_the_dip_screen_can_carry_its_value():
     res = client_for(a[Role.MANAGER]).post("/api/deliveries/", {"tank": str(fc.tank.pk), "litres": "5000", "supplier": "KFS", "note_number": "1",
                                                                 "value": "7100"}, format="json")
     assert res.status_code == 201 and (res.json()["value"], res.json()["currency"], res.json()["details_pending"]) == ("7100.00", "USD", False)
+
+
+def joined_missing_delivery():
+    """Two petrol tanks a nozzle draws from together. Between two dips Tank 1 rose 1,000 L and Tank 2 rose 3,000 L
+    while 400 L were sold: 4,400 L came in and nobody recorded it."""
+    from .helpers import run_shift, second_tank
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    tank2 = second_tank(fc, code="PETROL", name="Tank 2")
+    owner = client_for(a[Role.OWNER])
+    for n in fc.nozzles:
+        assert owner.patch(f"/api/nozzles/{n.pk}/", {"also_draws_from": [str(tank2.pk)]}, format="json").status_code == 200
+    now = timezone.now()
+    first, second = now - timedelta(hours=10), now - timedelta(hours=2)
+    with db_context(tenant_id=a["tenant"].id):
+        from apps.operations import services
+
+        for tank, before, after in ((fc.tank, 2000, 3000), (tank2, 1000, 4000)):
+            services.record_tank_dip(user=a[Role.OWNER], tank=tank, litres=Decimal(before), at=first)
+            services.record_tank_dip(user=a[Role.OWNER], tank=tank, litres=Decimal(after), at=second)
+    run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [400, 0], started_at=now - timedelta(hours=8), ended_at=now - timedelta(hours=6),
+              cash=[("cash", "USD", 600)])
+    with db_context(tenant_id=a["tenant"].id):
+        evaluate_tenant(a["tenant"].id)
+    mgr = client_for(a[Role.MANAGER])
+    alert = next(x for x in mgr.get("/api/alerts/").json()["results"] if x["kind"] == "delivery")
+    return a, fc, tank2, mgr, alert
+
+
+def test_joined_tanks_the_form_splits_the_litres_by_how_much_each_tanks_dip_rose():
+    a, fc, tank2, mgr, alert = joined_missing_delivery()
+    form = alert["delivery_form"]
+    assert form["litres"] == "4400"
+    assert form["split"] == [{"tank": str(fc.tank.pk), "name": "Tank 1", "rise": "1000", "litres": "1100"},
+                             {"tank": str(tank2.pk), "name": "Tank 2", "rise": "3000", "litres": "3300"}]
+
+
+def test_saving_the_split_records_one_delivery_per_tank_and_shares_the_value():
+    a, fc, tank2, mgr, alert = joined_missing_delivery()
+    form = alert["delivery_form"]
+    res = mgr.post(f"/api/alerts/{alert['id']}/record-delivery/", {
+        "split": [{"tank": p["tank"], "litres": p["litres"]} for p in form["split"]], "delivered_at": form["delivered_at"],
+        "supplier": "Sogo", "note_number": "DN-9", "value": "6600"}, format="json")
+    assert res.status_code == 200, res.content
+    body = res.json()
+    assert body["status"] == "resolved" and body["resolution_note"] == "Recorded: 1,100 L into Tank 1 and 3,300 L into Tank 2."
+    with db_context(tenant_id=a["tenant"].id):
+        rows = {d.tank_id: d for d in Delivery.objects.all()}
+        assert (rows[fc.tank.pk].litres_received, rows[fc.tank.pk].value) == (Decimal(1100), Decimal("1650.00"))
+        assert (rows[tank2.pk].litres_received, rows[tank2.pk].value) == (Decimal(3300), Decimal("4950.00"))
+        assert {d.supplier for d in rows.values()} == {"Sogo"} and AuditLog.objects.filter(action="delivery_recorded").count() == 2
+        evaluate_tenant(a["tenant"].id)  # the fuel check balances: nothing comes back
+        assert not Alert.objects.filter(kind="delivery", status="open").exists()
+
+
+def test_a_split_into_a_tank_of_another_fuel_or_with_no_litres_is_refused():
+    from .helpers import second_tank
+
+    a, fc, tank2, mgr, alert = joined_missing_delivery()
+    diesel = second_tank(fc, code="DIESEL", name="Diesel Tank")
+    form, url = alert["delivery_form"], f"/api/alerts/{alert['id']}/record-delivery/"
+    wrong = mgr.post(url, {"split": [{"tank": str(diesel.pk), "litres": "4400"}], "delivered_at": form["delivered_at"]}, format="json")
+    assert wrong.status_code == 400
+    empty = mgr.post(url, {"split": [{"tank": str(fc.tank.pk), "litres": "0"}, {"tank": str(tank2.pk), "litres": "0"}], "delivered_at": form["delivered_at"]}, format="json")
+    assert empty.status_code == 400
+    with db_context(tenant_id=a["tenant"].id):
+        assert not Delivery.objects.exists()

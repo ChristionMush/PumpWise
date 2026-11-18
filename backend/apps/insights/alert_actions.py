@@ -261,24 +261,56 @@ def _window(alert):
     return parse_datetime(alert.data["from"]), parse_datetime(alert.data["to"])
 
 
+def split_by_dips(pool, start, end, litres):
+    """How the litres that came in between two dips went into each tank of a joined fuel pool, from each tank's own
+    dips: in proportion to how much each tank rose (a tank that did not rise got none). The pool's sales in between
+    cannot be told apart by tank, so they are shared the same way, and the parts add up to the litres. [] when no tank
+    rose (the dips cannot say which tank): the form then asks for one tank."""
+    from decimal import Decimal
+
+    from apps.operations.models import TankReading
+
+    def level(tank, at):
+        row = TankReading.objects.filter(tank=tank, reading_at__lte=at).order_by("-reading_at").first()
+        return row.litres if row else None
+
+    rises = []
+    for t in pool.tanks:
+        before, after = level(t, start), level(t, end)
+        rises.append((t, max(after - before, Decimal(0)) if before is not None and after is not None else Decimal(0)))
+    total, litres = sum((r for _, r in rises), Decimal(0)), Decimal(litres).quantize(Decimal(1))
+    if total <= 0:
+        return []
+    parts = [[t, r, (litres * r / total).quantize(Decimal(1))] for t, r in rises]
+    biggest = max(parts, key=lambda p: p[1])
+    biggest[2] += litres - sum(p[2] for p in parts)  # whole litres that add up exactly
+    return [{"tank": str(t.pk), "name": t.name, "rise": str(r.quantize(Decimal(1))), "litres": str(share)} for t, r, share in parts]
+
+
 def delivery_form(alert):
     """What the delivery form on an open missing-delivery alert starts with: the litres the dips show came in, the
-    fuel, the tanks it can have gone into, and a time between the two dips. None for any other alert."""
+    fuel, the tanks it can have gone into, and a time between the two dips. None for any other alert. Tanks joined in
+    one fuel pool: "split" says how many litres went into each, from each tank's own dips."""
     if alert.status != OPEN or not _missing_delivery(alert):
         return None
     from apps.stations.pools import pool_of
 
     pool = pool_of(alert.tank)
     start, end = _window(alert)
+    litres = alert.data.get("came_in")
     return {"tank": str(alert.tank_id), "tanks": [{"id": str(t.pk), "name": t.name} for t in pool.tanks], "fuel": pool.fuel_type.name,
-            "litres": alert.data.get("came_in"), "from": start, "to": end, "delivered_at": max(start + timedelta(minutes=1), end - timedelta(minutes=1)),
-            "currency": pool.station.pricing_currency}
+            "litres": litres, "from": start, "to": end, "delivered_at": max(start + timedelta(minutes=1), end - timedelta(minutes=1)),
+            "currency": pool.station.pricing_currency, "split": split_by_dips(pool, start, end, litres) if len(pool.tanks) > 1 else []}
 
 
 @transaction.atomic
-def record_missing_delivery(*, user, alert, tank_id, litres, delivered_at, supplier="", note_number="", value=None, request=None):
-    """Record the delivery the alert found missing, and close the alert ("The delivery was recorded"). The time must
-    fall between the two dips, so the fuel check balances. Supplier, value and note number may be added later."""
+def record_missing_delivery(*, user, alert, delivered_at, tank_id=None, litres=None, split=None, supplier="", note_number="", value=None, request=None):
+    """Record the delivery the alert found missing, and close the alert ("The delivery was recorded"). Into one tank
+    (tank_id, litres), or split over the tanks of its fuel pool (split: [(tank_id, litres)], one delivery per tank given
+    litres). The time must fall between the two dips, so the fuel check balances. Supplier, value and note number may
+    be added later; they go on each tank's delivery."""
+    from decimal import Decimal
+
     from apps.audit import services as audit
     from apps.operations import services
     from apps.operations.models import delivery_details_pending
@@ -287,16 +319,30 @@ def record_missing_delivery(*, user, alert, tank_id, litres, delivered_at, suppl
     if alert.status != OPEN or not _missing_delivery(alert):
         raise ValidationError({"detail": "This alert is not waiting for a delivery."})
     pool = pool_of(alert.tank)
-    tank = next((t for t in pool.tanks if str(t.pk) == str(tank_id)), None)
-    if tank is None:
+    by_id = {str(t.pk): t for t in pool.tanks}
+    parts = split if split is not None else [(tank_id, litres)]
+    if any(str(t) not in by_id for t, _ in parts) or len({str(t) for t, _ in parts}) != len(parts):
         raise ValidationError({"tank": "Choose a tank of this fuel at this station."})
+    parts = [(by_id[str(t)], Decimal(str(lt))) for t, lt in parts if lt is not None and Decimal(str(lt)) > 0]
+    if not parts:
+        raise ValidationError({"litres": "Give the litres received."})
     start, end = _window(alert)
     if not start < delivered_at <= end:
         fmt = lambda t: timezone.localtime(t).strftime("%d %b %H:%M")  # noqa: E731
         raise ValidationError({"delivered_at": f"The delivery came between the dips at {fmt(start)} and {fmt(end)}: choose a time in between."})
-    row = services.record_delivery(user=user, tank=tank, litres=litres, delivered_at=delivered_at, supplier=supplier, note_number=note_number, value=value)
-    audit.log("delivery_recorded", actor=user, obj=row, request=request,
-              changes={"litres": str(row.litres_received), "tank": tank.name, "from_alert": str(alert.pk)})
-    pending = " Supplier, value or note number to add." if delivery_details_pending(row) else ""
-    resolve(user=user, alert=alert, reason="delivery_added", note=f"{row.litres_received:,.0f} L recorded into {tank.name}.{pending}")
-    return alert, row
+    total, left, rows = sum(p for _, p in parts), value, []
+    for i, (tank, part) in enumerate(parts):
+        # the invoice total is shared by litres, so the tanks' deliveries add up to it (the last takes the cents left)
+        share = None if value is None else (left if i == len(parts) - 1 else (Decimal(value) * part / total).quantize(Decimal("0.01")))
+        left = None if value is None else left - share
+        row = services.record_delivery(user=user, tank=tank, litres=part, delivered_at=delivered_at, supplier=supplier, note_number=note_number, value=share or None)
+        audit.log("delivery_recorded", actor=user, obj=row, request=request,
+                  changes={"litres": str(row.litres_received), "tank": tank.name, "from_alert": str(alert.pk)})
+        rows.append((tank, row))
+    pending = " Supplier, value or note number to add." if delivery_details_pending(rows[0][1]) else ""
+    if len(rows) == 1:
+        note = f"{rows[0][1].litres_received:,.0f} L recorded into {rows[0][0].name}.{pending}"
+    else:
+        note = "Recorded: " + " and ".join(f"{row.litres_received:,.0f} L into {tank.name}" for tank, row in rows) + f".{pending}"
+    resolve(user=user, alert=alert, reason="delivery_added", note=note)
+    return alert, rows[0][1]
