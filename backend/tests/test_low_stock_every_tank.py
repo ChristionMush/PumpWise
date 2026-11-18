@@ -78,3 +78,24 @@ def test_off_by_default_a_low_tank_alerts_by_its_reserve_as_before():
     second_tank(fc, code="PETROL", name="Tank 2")
     dips(a, ((fc.tank, "400"),))
     assert low_alerts(a) == [("critical", "Main Station Tank 1: at or below the reserve (400.0 L left).")]
+
+
+def test_the_dashboard_badge_follows_the_same_rule():
+    """The "Low" badge on the dashboard (and the daily message) is the forecast's "low": with the module, a tank below
+    its own reserve is not low while another tank of the fuel still has fuel."""
+    from apps.insights.forecast import forecast_tank
+    from apps.stations.models import Tank
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"])  # reserve 500 L
+    tank2 = second_tank(fc, code="PETROL", name="Tank 2")
+    module_on(a)
+
+    def low():
+        with db_context(tenant_id=a["tenant"].id):
+            return forecast_tank(Tank.objects.select_related("fuel_type", "station").get(pk=fc.tank.pk))["low"]
+
+    dips(a, ((fc.tank, "400"), (tank2, "6000")), ago_minutes=30)
+    assert low() is False
+    dips(a, ((tank2, "2000"),))
+    assert low() is True

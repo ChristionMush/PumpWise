@@ -18,7 +18,7 @@ from apps.tenants.models import Tenant
 from apps.tenants.services import get_settings
 
 from .alert_actions import AUTO, AWAITING, OPEN, REOPEN_WITHIN, apply_patterns, log_event
-from .forecast import forecast_tank, own_level
+from .forecast import forecast_tank, own_level, tank_is_low
 from .models import Alert
 
 AUTO_RESOLVE = {Alert.Kind.LOW_STOCK, Alert.Kind.MISSED_READING}  # clear themselves when the cause is gone
@@ -29,7 +29,6 @@ LOOKBACK_DAYS = 3
 CASH_DUE_HOURS = 3  # meters closed at the shift change: the cash is counted and handed in well within this
 MISSING_DELIVERY_LITRES = Decimal(500)  # a tank rising this much between two dips with no delivery recorded
 DELIVERY_TOLERANCE = (Decimal(100), Decimal(3))  # litres, or percent of the delivery, whichever is more
-TANK_LOW_SHARE = Decimal("0.25")  # module "low_stock_every_tank": a tank at or below a quarter of its capacity is low
 ASSIGNED = Station.AssignmentMode.ASSIGNED
 KIND_WORD = {PumpMeterReading.Kind.START: "start", PumpMeterReading.Kind.CHECKPOINT: "handover", PumpMeterReading.Kind.END: "end"}
 
@@ -137,7 +136,7 @@ def low_when_every_tank_is_low(tanks, cfg, now, want):
     for group in by_fuel.values():
         group.sort(key=lambda t: t.name.lower())  # the first names the alert, as a fuel pool's lead does
         levels = [(t, own_level(t, now)) for t in group]
-        if any(level is None or level > max(t.capacity_litres * TANK_LOW_SHARE, t.reserve_litres) for t, level in levels):
+        if not all(tank_is_low(t, level) for t, level in levels):
             continue
         lead = group[0]
         parts = [{"tank_id": str(t.pk), "tank": t.name, "litres": str(level.quantize(Decimal("0.1"))), "capacity_litres": str(t.capacity_litres),

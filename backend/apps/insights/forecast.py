@@ -43,6 +43,23 @@ def own_level(tank, now=None):
     return last.litres + (delivered or Decimal(0))
 
 
+TANK_LOW_SHARE = Decimal("0.25")  # module "low_stock_every_tank": a tank at or below a quarter of its capacity is low
+
+
+def tank_is_low(tank, level):
+    """Module "low_stock_every_tank": one tank on its own, at or below a quarter of its capacity or its reserve."""
+    return level is not None and level <= max(tank.capacity_litres * TANK_LOW_SHARE, tank.reserve_litres)
+
+
+def every_tank_low(tank, now=None):
+    """Module "low_stock_every_tank": every tank of this tank's fuel at its station is low on its own (a tank never
+    dipped is not). Used by the alert, the dashboard badge and the daily message alike."""
+    from apps.stations.models import Tank
+
+    group = Tank.objects.filter(station_id=tank.station_id, fuel_type_id=tank.fuel_type_id)
+    return all(tank_is_low(t, own_level(t, now)) for t in group)
+
+
 def usage_profile(tank, today):
     """(average litres/day, {weekday: average}) over recent history, counting quiet days but not days before the tank was in use."""
     tank = pool_of(tank)
@@ -107,5 +124,15 @@ def forecast_tank(tank, cfg=None, now=None):
         if days is not None:
             empty = today + timedelta(days=int(days))
             out.update({"days_to_empty": round(float(days), 1), "empty_date": empty.isoformat(), "refill_by": (empty - timedelta(days=cfg.refill_lead_days)).isoformat()})
-    out["low"] = bool(level <= tank.reserve_litres or (out["days_to_empty"] is not None and out["days_to_empty"] <= cfg.low_stock_days))
+    if _every_tank_rule(tank.tenant_id):  # PESNAT's way: low only when every tank of the fuel is
+        out["low"] = every_tank_low(tank, now)
+    else:
+        out["low"] = bool(level <= tank.reserve_litres or (out["days_to_empty"] is not None and out["days_to_empty"] <= cfg.low_stock_days))
     return out
+
+
+def _every_tank_rule(tenant_id):
+    from apps.tenants import modules
+    from apps.tenants.models import Tenant
+
+    return modules.of(Tenant.objects.get(pk=tenant_id)).low_stock_every_tank
