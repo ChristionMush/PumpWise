@@ -271,7 +271,8 @@ def split_by_dips(pool, start, end, litres):
     from apps.operations.models import TankReading
 
     def level(tank, at):
-        row = TankReading.objects.filter(tank=tank, reading_at__lte=at).order_by("-reading_at").first()
+        # the alert keeps the dip times to the millisecond (JSON): the dip itself is within a millisecond after
+        row = TankReading.objects.filter(tank=tank, reading_at__lt=at + timedelta(milliseconds=1)).order_by("-reading_at").first()
         return row.litres if row else None
 
     rises = []
