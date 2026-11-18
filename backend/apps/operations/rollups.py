@@ -88,6 +88,19 @@ def on_shift_closed(shift):
         refresh_tank(t)
 
 
+def on_shift_money_changed(shift):
+    """An expense recorded on a shift already closed (the phone sends the cash, then its expenses): the shift's cash
+    check is worked out again, so the dashboard's cash differences count it as accounted for. A shift still open waits
+    for its close, as on_shift_progress does."""
+    if shift.status == "open":
+        return
+    pending = getattr(_state, "pending", None)
+    if pending is not None:
+        pending["shifts"].add(shift.pk)
+        return
+    refresh_shift(shift)
+
+
 def on_shift_progress(shift):
     """Assigned pumps: the shift stays open all day while people come and go, and each handover number closes a stretch
     of pumping. Rebuild the sales so far and refresh those days and the station's tanks now, not when the whole shift

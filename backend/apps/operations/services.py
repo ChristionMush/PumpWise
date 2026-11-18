@@ -1365,6 +1365,10 @@ def record_expense(*, user, station, category, amount, currency=None, note="", s
                                  note=note, spent_at=spent_at, recorded_by=user)
     audit.log("expense_recorded", actor=user, obj=row, changes={"station": station.name, "category": category, "amount": str(row.amount),
                                                                 "currency": row.currency, "note": note})
+    if shift is not None:
+        from .rollups import on_shift_money_changed  # rollups import this module, so import here
+
+        on_shift_money_changed(shift)
     return row
 
 

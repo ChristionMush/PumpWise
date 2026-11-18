@@ -103,3 +103,25 @@ def test_an_attendants_expenses_come_off_the_cash_they_hand_in_everywhere_it_is_
     assert not [b for b in report["balance"] if b["key"] == "short"]  # not short: the 5 is accounted for
     card = next(e for e in client_for(a[Role.MANAGER]).get("/api/shift-ends/").json() if e["shift_id"] == sid)
     assert (card["expected"], card["handed_in"], card["expenses_total"], card["cash_difference"]) == ("150.00", "145.00", "5.00", "0.00")
+
+
+def test_expenses_sent_after_the_cash_clear_the_dashboards_cash_difference():
+    """PESNAT, 14 and 15 Nov 2026: the phone sends the cash, then its expenses a moment later. The shift's stored cash
+    check (the dashboard's "Cash differences (7 days)") was worked out with the cash alone and stayed short."""
+    from decimal import Decimal
+
+    from apps.operations import services
+    from apps.operations.models import Shift, ShiftSummary
+
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    expenses(a)
+    # meters say 150; the attendant hands in 100 and paid 50 for the generator
+    run_shift(a["tenant"], a[Role.ATTENDANT], fc, [0, 0], [100, 0], started_at=at(2026, 10, 1, 5), ended_at=at(2026, 10, 1, 15), cash=[("cash", "USD", 100)])
+    with db_context(tenant_id=a["tenant"].id):
+        shift = Shift.objects.get()
+        assert ShiftSummary.objects.get(shift=shift).flagged  # 50 short, with the cash alone
+        services.record_expense(user=a[Role.ATTENDANT], station=fc.station, category="other", amount=Decimal(50), note="Generator",
+                                spent_at=at(2026, 10, 1, 15), shift=shift)
+        summary = ShiftSummary.objects.get(shift=shift)
+        assert not summary.flagged and summary.cash["expenses"] == "50.00" and summary.cash["cash_difference"] == "0.00"
