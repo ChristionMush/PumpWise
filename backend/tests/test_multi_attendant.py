@@ -338,14 +338,22 @@ def test_cash_waits_for_the_meters_and_a_retyped_hand_in_records_its_expenses_on
     end = [{"nozzle": str(fc.nozzles[0].pk), "reading": "50. 00"}, {"nozzle": str(fc.nozzles[1].pk), "reading": "0"}]
     closed = ca.post("/api/sync/", {"ops": [op("shift_end", {"shift_id": sid, "ended_at": T_SWAP, "readings": end, "cash": [], "cash_later": True})]}, format="json").json()["results"][0]
     assert closed["status"] == "applied", closed
-    for _ in range(2):
-        sent = ca.post("/api/sync/", {"ops": [op("shift_cash", {"shift_id": sid, "cash": cash("73"), **lunch()})]}, format="json").json()["results"][0]
-        assert sent["status"] == "applied", sent
+    sent = ca.post("/api/sync/", {"ops": [op("shift_cash", {"shift_id": sid, "cash": cash("73"), **lunch()})]}, format="json").json()["results"][0]
+    assert sent["status"] == "applied", sent
+    # with the manager now (not stuck on "cash due"): typing it again is refused, a change goes through the manager
+    again = ca.post("/api/sync/", {"ops": [op("shift_cash", {"shift_id": sid, "cash": cash("73"), **lunch()})]}, format="json").json()["results"][0]
+    assert again["status"] == "rejected", again
     with db_context(tenant_id=a["tenant"].id):
+        from apps.operations import services
+
         row = ShiftAttendant.objects.get(shift_id=sid, user=att_a)
         assert row.left_at is not None and row.cash_submitted_at is not None and row.approval == "pending"
         assert PumpMeterReading.objects.filter(shift_id=sid, nozzle=fc.nozzles[0], reading=Decimal("50")).exists()
+        shift = Shift.objects.get(pk=sid)
+        services.record_shift_expenses(user=att_a, shift=shift, expenses=lunch()["expenses"], at=timezone.now())  # the lunch under a new id
         assert Expense.objects.filter(shift_id=sid, recorded_by=att_a).count() == 1
+        services.record_shift_expenses(user=att_a, shift=shift, expenses=lunch()["expenses"] + lunch()["expenses"], at=timezone.now())  # two in one: one more
+        assert Expense.objects.filter(shift_id=sid, recorded_by=att_a).count() == 2
 
 
 # ---- two phones, offline -----------------------------------------------------------------------------------------
