@@ -297,6 +297,28 @@ def test_a_phone_that_sends_end_numbers_for_a_pump_swapped_away_is_ignored_and_f
         assert sum(t.litres for t in Transaction.objects.filter(shift_id=sid, attendant=att_a)) == Decimal("50")
 
 
+def test_no_cash_is_handed_in_for_a_part_whose_meters_were_never_closed():
+    """PESNAT, 19 Nov 2026: an offline start whose pump got no numbers left the attendant on the shift with no pump. Their
+    end then went through with cash and no meters closed. It is refused until they are on their pumps."""
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    ca, cb = client_for(att_a), client_for(att_b)
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": T0, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    # B's phone, offline, sends a start with numbers for A's pump only: Pump 2 gets none and is left out
+    started = cb.post("/api/sync/", {"ops": [op("shift_start", {"shift_id": str(uuid.uuid4()), "station": str(fc.station.pk), "started_at": T0,
+                                                                 "readings": readings(fc.nozzles, [0, 0])})]}, format="json").json()["results"][0]
+    assert started["status"] == "applied", started
+    with db_context(tenant_id=a["tenant"].id):
+        assert ShiftAttendant.objects.filter(shift_id=sid, user=att_b).exists()
+        from apps.operations.models import PumpAssignment
+        assert not PumpAssignment.objects.filter(shift_id=sid, user=att_b).exists()
+    ended = cb.post("/api/sync/", {"ops": [op("shift_end", {"shift_id": sid, "ended_at": T_END, "readings": readings(p2, [20, 0]), "cash": cash("30")})]},
+                    format="json").json()["results"][0]
+    assert ended["status"] == "rejected" and "no meters were closed" in str(ended), ended
+    with db_context(tenant_id=a["tenant"].id):
+        assert not CashSubmission.objects.filter(shift_id=sid, attendant=att_b).exists()
+        assert ShiftAttendant.objects.get(shift_id=sid, user=att_b).left_at is None
+
+
 # ---- two phones, offline -----------------------------------------------------------------------------------------
 
 def _two_phone_shift(order):

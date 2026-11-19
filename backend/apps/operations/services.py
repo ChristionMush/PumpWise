@@ -835,6 +835,11 @@ def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request,
         # ending the part would close their pumps with no meters and count the cash as theirs
         names = ", ".join(sorted(a.pump.name for a in holding))
         raise ValidationError({"readings": f"No meter numbers for {person.full_name}'s pumps ({names}). Enter their end numbers to end the part."})
+    if not holding and not (mine and PumpAssignment.objects.filter(shift=shift, user=person, started_at__gte=mine.joined_at).exists()):
+        # no pump in this part at all (an offline start whose pumps were all busy): no meters were closed, so there is
+        # no cash to hand in. A part whose pumps a manager swapped away was closed at the swap and may hand in.
+        raise ValidationError({"readings": f"{person.full_name} has no pumps on this shift, so no meters were closed. "
+                                           "Start on your pumps and close their meters before handing in cash."})
     if strict:  # from a phone with signal; an offline end is kept, flagged, and the manager is alerted (insights.alerts)
         _refuse_impossible_ends(shift, keep, ended_at)
     last = not [a for a in active_attendants(shift) if a.user_id != person.pk and not a.done]
