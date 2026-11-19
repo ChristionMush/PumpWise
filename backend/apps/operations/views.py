@@ -387,6 +387,7 @@ class ShiftCashView(APIView):
         if not _cash_due_here(request.user, shift):
             services.require_on_shift(request.user, shift)
         who = _user(data.validated_data.get("user"), request.user.tenant_id)
+        services.require_meters_closed(shift, who or request.user)
         with transaction.atomic():
             _conflict_as_400(services.submit_cash, user=request.user, shift=shift, cash=data.validated_data["cash"], who=who, request=request)
             if data.validated_data["expenses"]:
@@ -648,6 +649,7 @@ def _apply(user, kind, p):
         if not _cash_due_here(user, shift):  # meters closed first: the cash is handed in after leaving the pumps
             services.require_on_shift(user, shift)
         who = _user(d.get("user"), user.tenant_id)
+        services.require_meters_closed(shift, who or user)
         _conflict_as_400(services.submit_cash, user=user, shift=shift, cash=d["cash"], who=who, at=d.get("at"))
         if d["expenses"]:
             services.record_shift_expenses(user=user, shift=shift, expenses=d["expenses"], at=d.get("at") or timezone.now(), who=who)

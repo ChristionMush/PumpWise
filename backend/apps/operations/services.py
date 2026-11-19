@@ -99,6 +99,18 @@ def require_on_shift(user, shift):
         raise PermissionDenied("This is not your shift.")
 
 
+def require_meters_closed(shift, person):
+    """Assigned pumps: cash is handed in only once the person's meters are closed (their part ended, or "close my meters,
+    cash after"). PESNAT, 19 Nov 2026: a meter close the server refused (a number typed with a space) left the phone on
+    the cash screen, and the cash went in against pumps still open."""
+    if not is_assigned_station(shift.station):
+        return  # shared pumps: someone on the shift hands in while another closes the meters
+    row = attendant_row(shift, person)
+    if row is not None and row.left_at is None:
+        raise ValidationError({"detail": f"{person.full_name}'s meters are not closed yet. Close the meters first (End shift, or Close meters), "
+                                         "then hand in the cash."})
+
+
 def require_manage(user, shift):
     if not can_manage(user, shift):
         raise PermissionDenied("Only the shift lead or a manager can do this.")
@@ -861,7 +873,7 @@ def _end_my_part(*, user, shift, readings, cash, ended_at, strict, who, request,
     row = attendant_row(shift, person)
     if row.left_at is None:
         row.left_at = ended_at
-        if cash_later:
+        if cash_later and row.cash_submitted_at is None:  # cash already in: it stays with the manager, never "cash due" again
             row.approval = CASH_DUE
         row.save(update_fields=["left_at", "approval", "updated_at"])
         _ensure_lead(shift)
@@ -1331,16 +1343,27 @@ def part_expenses(part):
 def record_shift_expenses(*, user, shift, expenses, at, who=None):
     """Expenses an attendant paid on their shift, sent with their end of shift or their cash (name and cost). Recorded
     only: the cash they hand in is unchanged. Each line is recorded once, however often the phone resends it."""
+    from collections import Counter
+
     from .models import Expense
     from .serializers import ShiftExpenseInput
 
     person = who or user
     data = ShiftExpenseInput(data=list(expenses), many=True)
     data.is_valid(raise_exception=True)
+    # The same line sent again is recorded once: by its id, or by name and amount when the phone gave it a new id (the
+    # attendant typed the hand-in again: PESNAT, 19 Nov 2026, one lunch recorded six times). Two equal lines in one
+    # hand-in are two expenses.
+    have = Counter((x.note, x.amount) for x in Expense.objects.filter(shift=shift, recorded_by=person))
     rows = []
     for e in data.validated_data:
-        if not e.get("client_id") and Expense.objects.filter(shift=shift, recorded_by=person, note=e["name"], amount=e["amount"]).exists():
-            continue  # an older resend without an id
+        key = (e["name"], Decimal(str(e["amount"])).quantize(TWO))
+        known = e.get("client_id") and Expense.objects.filter(client_id=e["client_id"]).first()
+        if known or have[key] > 0:
+            have[key] -= 1
+            if known:
+                rows.append(known)
+            continue
         rows.append(record_expense(user=person, station=shift.station, category="other", amount=e["amount"], note=e["name"], spent_at=at,
                                    client_id=e.get("client_id"), shift=shift))
     return rows

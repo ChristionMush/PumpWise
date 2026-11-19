@@ -10,11 +10,21 @@ from .models import CashSubmission, Delivery, PumpAssignment, PumpMeterReading, 
 NUM = {"max_digits": 14, "decimal_places": 2, "min_value": Decimal(0)}
 
 
+class MeterNumberField(serializers.DecimalField):
+    """A meter number as typed on a phone: spaces inside it are dropped ("14783235. 70" is 14783235.70). PESNAT, 19 Nov
+    2026: a space in one number refused a whole end of shift."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            data = "".join(data.split())
+        return super().to_internal_value(data)
+
+
 class ReadingInput(serializers.Serializer):
     nozzle = serializers.PrimaryKeyRelatedField(queryset=Nozzle.objects.select_related("pump", "tank__fuel_type").all())
-    reading = serializers.DecimalField(**NUM)
+    reading = MeterNumberField(**NUM)
     # taking a pump over: the number the attendant found on the pump, when it is not the handover number (kept for the manager)
-    seen = serializers.DecimalField(**NUM, required=False, allow_null=True)
+    seen = MeterNumberField(**NUM, required=False, allow_null=True)
 
 
 class CashInput(serializers.Serializer):
@@ -143,7 +153,7 @@ class ResolveInput(serializers.Serializer):
 
 class CheckpointInput(serializers.Serializer):
     nozzle = serializers.PrimaryKeyRelatedField(queryset=Nozzle.objects.select_related("pump", "tank__fuel_type").all())
-    reading = serializers.DecimalField(**NUM)
+    reading = MeterNumberField(**NUM)
     at = serializers.DateTimeField(required=False)
 
 

@@ -319,6 +319,35 @@ def test_no_cash_is_handed_in_for_a_part_whose_meters_were_never_closed():
         assert ShiftAttendant.objects.get(shift_id=sid, user=att_b).left_at is None
 
 
+def test_cash_waits_for_the_meters_and_a_retyped_hand_in_records_its_expenses_once():
+    """PESNAT, 19 Nov 2026: a meter number typed with a space ("14783235. 70") refused the meter close, the phone went on
+    to the cash screen, and the cash went in with the pumps still open. Then each retyped hand-in recorded the lunch again."""
+    from apps.operations.models import Expense
+
+    from .test_expenses import expenses
+
+    a, fc, att_a, att_b, pump2, p2, mgr = assigned_site()
+    expenses(a)
+    ca = client_for(att_a)
+    sid = ca.post("/api/shifts/start/", {"station": str(fc.station.pk), "started_at": T0, "readings": readings(fc.nozzles, [0, 0])}, format="json").json()["id"]
+    lunch = lambda: {"expenses": [{"client_id": str(uuid.uuid4()), "name": "Lunch", "amount": "2"}]}  # noqa: E731 - a new id each time, as a retyped form
+    early = ca.post("/api/sync/", {"ops": [op("shift_cash", {"shift_id": sid, "cash": cash("75"), **lunch()})]}, format="json").json()["results"][0]
+    assert early["status"] == "rejected" and "meters are not closed" in early["error"], early
+    assert ca.post(f"/api/shifts/{sid}/cash/", {"cash": cash("75")}, format="json").status_code == 400
+    # the meters close (a space inside a number is fine), then the cash goes in, typed twice
+    end = [{"nozzle": str(fc.nozzles[0].pk), "reading": "50. 00"}, {"nozzle": str(fc.nozzles[1].pk), "reading": "0"}]
+    closed = ca.post("/api/sync/", {"ops": [op("shift_end", {"shift_id": sid, "ended_at": T_SWAP, "readings": end, "cash": [], "cash_later": True})]}, format="json").json()["results"][0]
+    assert closed["status"] == "applied", closed
+    for _ in range(2):
+        sent = ca.post("/api/sync/", {"ops": [op("shift_cash", {"shift_id": sid, "cash": cash("73"), **lunch()})]}, format="json").json()["results"][0]
+        assert sent["status"] == "applied", sent
+    with db_context(tenant_id=a["tenant"].id):
+        row = ShiftAttendant.objects.get(shift_id=sid, user=att_a)
+        assert row.left_at is not None and row.cash_submitted_at is not None and row.approval == "pending"
+        assert PumpMeterReading.objects.filter(shift_id=sid, nozzle=fc.nozzles[0], reading=Decimal("50")).exists()
+        assert Expense.objects.filter(shift_id=sid, recorded_by=att_a).count() == 1
+
+
 # ---- two phones, offline -----------------------------------------------------------------------------------------
 
 def _two_phone_shift(order):

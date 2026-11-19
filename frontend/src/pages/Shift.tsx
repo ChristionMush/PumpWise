@@ -243,6 +243,9 @@ export default function Shift() {
   /** Before meters go: numbers that cannot be right are refused, an end below the start only once the attendant says
    *  the pump really shows it (the start is then what is wrong, and the manager corrects it). */
   const metersWrong = () => {
+    // a number the server cannot read refuses the whole end (PESNAT, 19 Nov 2026: "14783235. 70"); spaces are dropped
+    const bad = rows.filter((n) => nums[n.id] && !/^\d+(\.\d+)?$/.test(String(nums[n.id]).replace(/\s/g, "")));
+    if (bad.length) return `Check the number for ${bad.map((n) => `${n.pump.name} · ${n.label}`).join(", ")}: use digits and one dot only, such as 14783235.70.`;
     const { below, tooMuch } = endProblems(rows, active!.starts, nums, active!.started_at);
     if (tooMuch.length) return tooMuch.join(" ");
     if (below.length && !belowOk) return `${below.join(" ")} Check the pump. If it really shows this, tick "The pump really shows these numbers" and end again: your manager corrects the start.`;
