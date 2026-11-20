@@ -212,6 +212,31 @@ def test_a_tank_that_rises_with_no_delivery_or_more_than_the_delivery_note_is_al
     assert open_alerts(a["tenant"], "delivery") == {}
 
 
+def test_the_same_delivery_entered_twice_is_refused():
+    """Fuel Zone Eastview, 19 Nov 2026: note 261, 4,378 L of diesel, recorded at 21:41 and again at 21:49."""
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    mgr = client_for(a[Role.MANAGER])
+    now = timezone.now()
+    first = {"tank": str(fc.tank.pk), "litres": "4378", "note_number": "261", "supplier": "Blackroots investment AGL 2544",
+             "delivered_at": (now - timedelta(minutes=8)).isoformat(), "client_id": str(uuid.uuid4())}
+    assert mgr.post("/api/deliveries/", first, format="json").status_code == 201
+    assert mgr.post("/api/deliveries/", first, format="json").status_code in (200, 201)  # a retry of the same entry is fine
+    again = {**first, "supplier": "Blackroots investment", "note_number": " 261 ", "delivered_at": now.isoformat(), "client_id": str(uuid.uuid4())}
+    refused = mgr.post("/api/deliveries/", again, format="json")
+    assert refused.status_code == 400 and "already recorded" in str(refused.json()) and "note 261" in str(refused.json())
+    synced = mgr.post("/api/sync/", {"ops": [{"op_id": str(uuid.uuid4()), "kind": "delivery", "payload": {**again, "client_id": str(uuid.uuid4())}}]},
+                      format="json").json()["results"][0]
+    assert synced["status"] == "rejected" and "already recorded" in synced["error"]
+    # a real second load: other litres, another note, or the same note a day later
+    for other in ({"litres": "4544"}, {"note_number": "262"}, {"delivered_at": (now - timedelta(days=1)).isoformat()}, {"note_number": ""}):
+        assert mgr.post("/api/deliveries/", {**again, "client_id": str(uuid.uuid4()), **other}, format="json").status_code == 201, other
+    with db_context(tenant_id=a["tenant"].id):
+        from apps.operations.models import Delivery
+
+        assert Delivery.objects.filter(tank=fc.tank).count() == 5
+
+
 # ---- a day close with nobody on the pump ----------------------------------------------------------------------------
 
 def test_after_a_day_close_with_nobody_on_the_pump_the_next_start_comes_from_the_day_close():

@@ -1404,14 +1404,28 @@ def record_expense(*, user, station, category, amount, currency=None, note="", s
     return row
 
 
+DUPLICATE_DELIVERY_WITHIN = timedelta(hours=6)  # the same tank, note and litres this close together is one delivery
+
+
 def record_delivery(*, user, tank, litres, delivered_at=None, supplier="", note_number="", value=None, client_id=None):
     """Fuel received. Idempotent on the phone's client_id (rule 8). Supplier, value and note number may follow later
     (complete_delivery). The value is the invoice total, in the station's currency."""
     if client_id and (existing := Delivery.objects.filter(client_id=client_id).first()):
         return existing
+    at, amount, note = delivered_at or timezone.now(), Decimal(str(litres)).quantize(THREE), note_number.strip()
+    if note:
+        # The same delivery entered twice (Fuel Zone Eastview, 19 Nov 2026: note 261 recorded again 8 minutes later): the
+        # same tank, delivery note and litres within a few hours is refused. Without a note number it cannot be told apart.
+        same = (Delivery.objects.filter(tank=tank, litres_received=amount, note_number__iexact=note,
+                                        delivered_at__gte=at - DUPLICATE_DELIVERY_WITHIN, delivered_at__lte=at + DUPLICATE_DELIVERY_WITHIN)
+                .select_related("recorded_by").first())
+        if same is not None:
+            when = timezone.localtime(same.delivered_at).strftime("%d %b %H:%M")
+            raise ValidationError({"detail": f"This delivery is already recorded: {tank.name}, {amount:,.0f} L, note {same.note_number}, "
+                                             f"at {when} by {same.recorded_by.full_name}. It was not recorded again."})
     row = Delivery.objects.create(
-        tenant_id=tank.tenant_id, client_id=client_id, tank=tank, litres_received=Decimal(str(litres)).quantize(THREE),
-        delivered_at=delivered_at or timezone.now(), supplier=supplier.strip(), note_number=note_number.strip(), recorded_by=user,
+        tenant_id=tank.tenant_id, client_id=client_id, tank=tank, litres_received=amount,
+        delivered_at=at, supplier=supplier.strip(), note_number=note, recorded_by=user,
         value=value, currency=tank.station.pricing_currency if value is not None else "",
     )
     from .rollups import on_tank_changed
