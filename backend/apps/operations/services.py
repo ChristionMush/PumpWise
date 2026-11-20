@@ -969,6 +969,10 @@ def submit_cash(*, user, shift, cash, who=None, at=None, request=None, part=None
             obj.save(update_fields=["note", "updated_at"])
     if not handed_in:
         _mark_handed_in(row, user, at or timezone.now())
+        if row.approval == APPROVAL.APPROVED:  # a manager entering it approves it, so the cash is in their hand too
+            from .approvals import receive_cash  # approvals imports this module, so import here
+
+            receive_cash(user=user, row=row, request=request)
     elif differs:
         after_change(user, row, grant)
     if changes:

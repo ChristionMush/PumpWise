@@ -254,16 +254,18 @@ def approve(*, user, row, note="", request=None):
         status=STATUS.USED, used_at=row.approval_at, updated_at=row.approval_at)
     audit.log("shift_end_approved", actor=user, obj=row.shift, request=request,
               changes={"who": row.user.full_name, **({"note": note, "flagged": checks} if checks or note else {})})
+    if row.cash_submitted_at is not None:  # approving means the cash is in hand: received if not tapped yet
+        receive_cash(user=user, row=row, request=request)
     return row
 
 
 def receive_cash(*, user, row, request=None):
     """The manager (or the owner) took the attendant's cash in hand: who and when is kept on the end and in the log."""
     require(user, "approve_shift_end", "Only a manager or the owner receives the cash.")
+    if row.cash_received_at is not None:
+        return row  # already received (a second tap, a retry, or approved already)
     if row.cash_submitted_at is None:
         raise ValidationError({"detail": "No cash has been handed in on this end yet."})
-    if row.cash_received_at is not None:
-        return row  # already received (a second tap, a retry)
     row.cash_received_by, row.cash_received_at = user, timezone.now()
     row.save(update_fields=["cash_received_by", "cash_received_at", "updated_at"])
     summary = end_summary(row)

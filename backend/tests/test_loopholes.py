@@ -115,6 +115,20 @@ def test_the_manager_records_receiving_the_cash():
         assert AuditLog.objects.filter(action="cash_received").count() == 1
 
 
+def test_approving_an_end_receives_its_cash_when_not_tapped_yet():
+    a, _ = two_tenants()
+    fc = make_forecourt(a["tenant"], price="1.50")
+    att, owner = client_for(a[Role.ATTENDANT]), client_for(a[Role.OWNER])
+    sid = att.post("/api/shifts/start/", body(fc, [1000, 5000]), format="json").json()["id"]
+    att.post(f"/api/shifts/{sid}/end/", {**body(fc, [1100, 5040]), "cash": cash("210")}, format="json")
+    end_id = stage(att)["end_id"]
+    card = owner.post(f"/api/shift-ends/{end_id}/approve/", {"note": "ok"}, format="json").json()
+    assert card["status"] == "approved"
+    assert card["cash_received_by"] == a[Role.OWNER].full_name and card["cash_received_at"]
+    with db_context(tenant_id=a["tenant"].id):
+        assert AuditLog.objects.filter(action="cash_received").count() == 1
+
+
 # ---- handovers ------------------------------------------------------------------------------------------------------
 
 def test_an_incoming_attendant_who_finds_another_number_on_the_pump_raises_an_alert_until_it_is_corrected():
